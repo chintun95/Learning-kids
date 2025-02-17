@@ -1,8 +1,7 @@
 import React, { useState, memo } from 'react'
-import { StyleSheet, Text, View, ImageBackground,PixelRatio, TextInput,
-   Pressable,TouchableOpacity, ActivityIndicator } from 'react-native'
+import { StyleSheet, Text, View, ImageBackground, PixelRatio, TextInput, TouchableOpacity, Pressable } from 'react-native'
 import loginImage from "@/assets/images/app-background.png"
-import { Link } from 'expo-router';
+import { Link } from 'expo-router'; // Import Link from expo-router
 import { Image } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFonts } from "expo-font"
@@ -10,32 +9,28 @@ import { MaterialIcons } from '@expo/vector-icons';
 // Responsive Scaling
 import { widthPercentageToDP as wp, heightPercentageToDP as hp } from 'react-native-responsive-screen';
 
-
-
 const LogInPage = memo(() => {
-
-  //Font
   const [fontsLoaded] = useFonts({
-      "FredokaOne-Regular": require("@/assets/fonts/FredokaOne-Regular.ttf"),
-    });
-  
-    if (!fontsLoaded) {
-      return <Text>Loading fonts...</Text>;
-    }
+    "FredokaOne-Regular": require("@/assets/fonts/FredokaOne-Regular.ttf"),
+  });
 
-    //Text boxes
-    const [email, setEmail] = useState('');
-    const [password, setPassword] = useState('');
+  if (!fontsLoaded) {
+    return <Text>Loading fonts...</Text>;
+  }
+
+  //Text boxes
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* Background image*/} 
+      {/* Background image */}
       <ImageBackground
         source={loginImage}
         resizeMode='cover'
         style={styles.image}
         contentFit="fill"
-      > 
+      >
       </ImageBackground>
 
       {/* Logo */}
@@ -69,10 +64,9 @@ const LogInPage = memo(() => {
         <Text style={styles.subText} >forgot password?</Text>
       </View>
 
-
-
-      {/* Button */}
-      <Link  href="/" asChild>
+     
+      {/* Link to main.jsx page after clicking the login button */}
+      <Link href="/main" asChild>
         <TouchableOpacity style={styles.button} activeOpacity={0.7}>
           <Text style={styles.buttonText}>Log In</Text>
         </TouchableOpacity>
@@ -80,15 +74,15 @@ const LogInPage = memo(() => {
 
       {/* Sign Up Text */}
       <Link  href="/signIn-page" asChild>
-          <Pressable style={{position: 'absolute',top: hp('75%')}}>
-            <Text style={styles.otherText} >Don’t have account, Sign In</Text>
-          </Pressable>
-        </Link>
-      
+        <Pressable style={{ position: 'absolute', top: hp('75%') }}>
+          <Text style={styles.otherText} >Don’t have an account? Sign In</Text>
+        </Pressable>
+      </Link>
+
       {/* Social Login Icons */}
       <Text style={styles.otherText1}>Or continue with:</Text>
       <View style={styles.iconContainer}>
-        <Link  href="/" asChild>
+        <Link href="/" asChild>
           <Pressable>
             <Image
               source={require("@/assets/images/google-icon.png")}
@@ -96,7 +90,7 @@ const LogInPage = memo(() => {
             />
           </Pressable>
         </Link>
-        <Link  href="/" asChild>
+        <Link href="/" asChild>
           <Pressable>
             <Image
               source={require("@/assets/images/apple-icon.png")}
@@ -104,7 +98,7 @@ const LogInPage = memo(() => {
             />
           </Pressable>
         </Link>
-        <Link  href="/" asChild>
+        <Link href="/" asChild>
           <Pressable>
             <Image
               source={require("@/assets/images/facebook-icon.png")}
@@ -119,7 +113,6 @@ const LogInPage = memo(() => {
     </SafeAreaView>
   );
 });
-
 
 const LOGO_WIDTH = PixelRatio.roundToNearestPixel(471);
 const LOGO_HEIGHT = PixelRatio.roundToNearestPixel(414);
@@ -136,7 +129,6 @@ const styles = StyleSheet.create({
     position: 'absolute',
     width: wp('100%'),
     height: hp('100%'),
-  
   },
   logo: {
     position: 'absolute',
@@ -150,7 +142,7 @@ const styles = StyleSheet.create({
     top: hp('30%'),
     textAlign: 'center',
     color: '#1E1E1E',
-    fontSize: wp('12%'), // Scales with screen size
+    fontSize: wp('12%'),
     fontFamily: 'FredokaOne-Regular',
   },
   boxes: {
@@ -163,7 +155,6 @@ const styles = StyleSheet.create({
     fontSize: wp('4.8%'),
     fontFamily: 'FredokaOne-Regular',
     marginBottom: 5,
-    
   },
   inputText: {
     width: BOX_WIDTH,
@@ -171,7 +162,7 @@ const styles = StyleSheet.create({
     borderWidth: 3,
     borderColor: '#000',
     borderRadius: 30,
-    fontSize: wp('4.6%'), // Scales with screen size
+    fontSize: wp('4.6%'),
     fontFamily: 'FredokaOne-Regular',
     backgroundColor: '#D9D9D9',
     marginBottom: 20,
@@ -186,7 +177,7 @@ const styles = StyleSheet.create({
   },
   button: {
     position: 'absolute',
-    bottom: hp('29%'), // Moves button lower on bigger screens
+    bottom: hp('29%'),
     width: wp('50%'),
     height: hp('7%'),
     borderRadius: 30,
@@ -205,11 +196,11 @@ const styles = StyleSheet.create({
     color: '#000',
     fontSize: wp('7.2%'),
     fontFamily: 'FredokaOne-Regular',
-  },  
+  },
   otherText: {
     textAlign: 'center',
     color: '#0A0A0A',
-    fontSize: wp('4.4%'), // Scales with screen size
+    fontSize: wp('4.4%'),
     fontFamily: 'FredokaOne-Regular',
   },
   otherText1: {
@@ -217,10 +208,10 @@ const styles = StyleSheet.create({
     top: hp('80%'),
     textAlign: 'center',
     color: '#0A0A0A',
-    fontSize: wp('3.8%'), // Scales with screen size
+    fontSize: wp('3.8%'),
     fontFamily: 'FredokaOne-Regular',
   },
-  iconContainer:{
+  iconContainer: {
     position: 'absolute',
     top: hp('81%'),
     flexDirection: 'row',
@@ -228,20 +219,19 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: 25,
   },
-  icon:{
+  icon: {
     width: 60,
     height: 60,
     marginHorizontal: 15,
   },
-  footer:{
+  footer: {
     position: 'absolute',
     top: hp('95%'),
     textAlign: 'center',
     color: '#0A0A0A',
-    fontSize: wp('2.8%'), // Scales with screen size
+    fontSize: wp('2.8%'),
     fontFamily: 'FredokaOne-Regular',
   }
-
 });
 
 export default LogInPage;
