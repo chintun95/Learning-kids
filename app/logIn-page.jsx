@@ -1,12 +1,11 @@
 import React, { useState, memo } from 'react'
 import { StyleSheet, Text, View, ImageBackground, PixelRatio, TextInput, TouchableOpacity, Pressable } from 'react-native'
 import loginImage from "@/assets/images/app-background.png"
-import { Link } from 'expo-router'; // Import Link from expo-router
+import { Link } from 'expo-router'; 
 import { Image } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFonts } from "expo-font"
 import { MaterialIcons } from '@expo/vector-icons';
-// Responsive Scaling
 import { widthPercentageToDP as wp, heightPercentageToDP as hp } from 'react-native-responsive-screen';
 
 const LogInPage = memo(() => {
@@ -18,7 +17,7 @@ const LogInPage = memo(() => {
     return <Text>Loading fonts...</Text>;
   }
 
-  //Text boxes
+  
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
 
@@ -65,7 +64,7 @@ const LogInPage = memo(() => {
       </View>
 
      
-      {/* Link to main.jsx page after clicking the login button */}
+      {/* Link to main.jsx page */}
       <Link href="/main" asChild>
         <TouchableOpacity style={styles.button} activeOpacity={0.7}>
           <Text style={styles.buttonText}>Log In</Text>

@@ -62,7 +62,7 @@ const SignInPage = memo(() => {
                     <View style={{ bottom: hp('25%')}}>
                         <Text style={styles.text}>Sign In</Text>
 
-                        {/* Parent or Guardians section */}
+                        {/* Parent/Guardians section */}
                         <Text style={styles.subText}>Parent or Guardian's Information:</Text>
 
                         <View style={styles.boxes}>

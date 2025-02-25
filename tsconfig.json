@@ -2,17 +2,21 @@
   "extends": "expo/tsconfig.base",
   "compilerOptions": {
     "strict": true,
-    "jsx": "react",  // Ensure JSX is enabled for React
+    "jsx": "react",
+    "baseUrl": "./",
     "paths": {
-      "@/*": [
-        "./*"
-      ]
+      "@/*": ["app/*"],  // Resolves paths from the app directory
+      "@/components/*": ["components/*"],  // Resolves paths from the components directory
+      "@/hooks/*": ["hooks/*"],  // Resolves paths from the hooks directory
+      "@/app/*": ["app/*"],  // Resolves paths specifically for app directory
+      "@/assets/*": ["assets/*"],  // Resolves paths for assets directory
+      "@/assets/fonts/images/*": ["assets/fonts/images/*"]  // Resolves paths for images within fonts directory
     }
   },
   "include": [
-    "**/*.ts",
-    "**/*.tsx",
-    "**/*.jsx",
+    "app/**/*",
+    "components/**/*",  // Explicitly include the components directory
+    "hooks/**/*",       // Explicitly include the hooks directory
     ".expo/types/**/*.ts",
     "expo-env.d.ts"
   ]

@@ -1,7 +1,8 @@
+// app/main.jsx
 import React from 'react';
 import { StyleSheet, Text, View, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Link } from 'expo-router';  // If you want to link to other pages
+import { Link } from 'expo-router';  // Correctly import Link
 
 const MainPage = () => {
   return (
@@ -9,7 +10,7 @@ const MainPage = () => {
       <Text style={styles.title}>Main Page</Text>
 
       <View style={styles.row}>
-        {/* Snake Game Box wrapped in Link */}
+        {/* Snake Game Box Link */}
         <Link href="/SnakeGame" asChild>
           <TouchableOpacity style={styles.box}>
             <Text>Snake Game</Text>
@@ -47,17 +48,17 @@ const styles = StyleSheet.create({
   },
   row: {
     flexDirection: 'row',
-    justifyContent: 'space-between',  
+    justifyContent: 'space-between',
     width: '100%',
     marginBottom: 20,
   },
   box: {
-    width: 100,  
-    height: 100, 
+    width: 100,
+    height: 100,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#DDD',  
-    margin: 10,  
+    backgroundColor: '#DDD',
+    margin: 10,
   },
   profileButton: {
     backgroundColor: '#007AFF',
