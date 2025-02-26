@@ -1,0 +1,28 @@
+{
+<<<<<<< HEAD
+  "extends": "expo/tsconfig.base",
+  "compilerOptions": {
+    "strict": true,
+    "jsx": "react",
+    "baseUrl": "./",
+    "paths": {
+      "@/*": ["app/*"],  // Resolves paths from the app directory
+      "@/components/*": ["components/*"],  // Resolves paths from the components directory
+      "@/hooks/*": ["hooks/*"],  // Resolves paths from the hooks directory
+      "@/assets/*": ["assets/*"],  // Resolves paths for assets directory
+      "@/assets/fonts/images/*": ["assets/fonts/images/*"],  // Resolves paths for images within fonts directory
+      "@/app/constants/*": ["app/constants/*"],
+    }
+  },
+  "include": [
+    "app/**/*",
+    "app/components/**/*",  // Explicitly include the components directory
+    "app/hooks/**/*",       // Explicitly include the hooks directory
+    ".expo/types/**/*.ts",
+    "expo-env.d.ts",
+    "app/components"
+  ]
+=======
+  "extends": "@react-native/typescript-config/tsconfig.json"
+>>>>>>> bf57ac5 (Initial commit)
+}
