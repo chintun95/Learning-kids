@@ -1,6 +1,6 @@
 import React, { useState, memo } from 'react'
 import { StyleSheet, Text, View, ImageBackground,PixelRatio, TextInput,
-   Pressable,TouchableOpacity, ActivityIndicator } from 'react-native'
+   Pressable,TouchableOpacity, ActivityIndicator, Alert } from 'react-native'
 import loginImage from "@/assets/images/app-background.png"
 import { Link } from 'expo-router';
 import { Image } from 'expo-image';
@@ -9,6 +9,8 @@ import { useFonts } from "expo-font"
 import { MaterialIcons } from '@expo/vector-icons';
 // Responsive Scaling
 import { widthPercentageToDP as wp, heightPercentageToDP as hp } from 'react-native-responsive-screen';
+import { getAuth, signInWithEmailAndPassword } from 'firebase/auth';
+import { app, auth } from '../firebase';
 
 
 
@@ -26,6 +28,25 @@ const LogInPage = memo(() => {
     //Text boxes
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
+    const [isLoading, setIsLoading] = useState(false);
+    const [errorMessage, setErrorMessage] = useState("");
+
+    const handleLogin = () => {
+      const emailRegex = /^[a-zA-Z0-9._-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,6}$/;
+      if (!emailRegex.test(email)) {
+        Alert.alert('Invalid email', 'Please re-enter email');
+        return;
+      }
+      signInWithEmailAndPassword(auth, email, password)
+        .then((userCredential) => {
+          const user = userCredential.user;
+          Alert.alert('Login successful!', `Hello, ${user.email}`);
+        })
+        .catch((error) => {
+          Alert.alert('Login failed!', error.message);
+        });
+    };
+  
 
   return (
     <SafeAreaView style={styles.container}>
@@ -48,7 +69,7 @@ const LogInPage = memo(() => {
       <Text style={styles.text}>Log In</Text>
 
       <View style={styles.boxes}>
-        <Text style={styles.boxLabel} >Email or Phone number:</Text>
+        <Text style={styles.boxLabel} >Email:</Text>
         <TextInput
           style={styles.inputText}
           placeholder='Type here...'
@@ -69,15 +90,14 @@ const LogInPage = memo(() => {
         <Text style={styles.subText} >forgot password?</Text>
       </View>
 
-
-
-      {/* Button */}
-      <Link  href="/" asChild>
-        <TouchableOpacity style={styles.button} activeOpacity={0.7}>
-          <Text style={styles.buttonText}>Log In</Text>
-        </TouchableOpacity>
-      </Link>
-
+      <TouchableOpacity onPress={handleLogin}>
+        <View style={styles.button}>
+          <Text style={styles.buttonText}>
+            {isLoading ? "Logging in..." : "Login"}
+          </Text>
+        </View>
+      </TouchableOpacity>
+      
       {/* Sign Up Text */}
       <Link  href="/signIn-page" asChild>
           <Pressable style={{position: 'absolute',top: hp('75%')}}>

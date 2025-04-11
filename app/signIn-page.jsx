@@ -13,12 +13,15 @@ import {
   Platform,
   TouchableWithoutFeedback,
   Keyboard,
+  Alert
 } from 'react-native';
 import { Link } from 'expo-router';
 import { Image } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFonts } from "expo-font";
 import { widthPercentageToDP as wp, heightPercentageToDP as hp } from 'react-native-responsive-screen';
+import { createUserWithEmailAndPassword } from 'firebase/auth';
+import { auth } from '../firebase'; 
 
 import loginImage from "@/assets/images/app-background.png";
 
@@ -46,6 +49,28 @@ const SignInPage = memo(() => {
   const [kemail, setKemail] = useState('');
   const [knum, setKnum] = useState('');
   const [kage, setKage] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
+
+  const handleSignUp = () => {
+    const emailRegex = /^[a-zA-Z0-9._-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,6}$/;
+    if (!emailRegex.test(email)) {
+      Alert.alert('Invalid email', 'Please re-enter email');
+      return;
+    }
+
+    setIsLoading(true);
+    createUserWithEmailAndPassword(auth, email, password)
+      .then((userCredential) => {
+        const user = userCredential.user;
+        Alert.alert('Sign up successful!', `Welcome, ${user.email}`);
+        setErrorMessage('');
+      })
+      .catch((error) => {
+        setErrorMessage(error.message);
+      })
+      .finally(() => setIsLoading(false));
+    };
 
   return (
     <SafeAreaView style={styles.container}>
@@ -158,12 +183,14 @@ const SignInPage = memo(() => {
                         />
 
                     </View>
-                    {/* Sign In Button */}
-                    <Link href="/" asChild>
-                        <TouchableOpacity style={styles.button} activeOpacity={0.7}>
-                            <Text style={styles.buttonText}>Sign In</Text>
-                        </TouchableOpacity>
-                    </Link>
+
+                    <TouchableOpacity onPress={handleSignUp}>
+                      <View style={styles.button}>
+                        <Text style={styles.buttonText}>
+                          {isLoading ? "Signing up..." : "Sign Up"}
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
 
                     {/* Footer */}
                     <Text style={styles.footer}>By continuing, you accept our Terms of Service.</Text>
