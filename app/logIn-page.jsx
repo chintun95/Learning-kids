@@ -108,7 +108,7 @@ const LogInPage = memo(() => {
       {/* Social Login Icons */}
       <Text style={styles.otherText1}>Or continue with:</Text>
       <View style={styles.iconContainer}>
-        <Link  href="/" asChild>
+        <Link  href="/games-temp" asChild>
           <Pressable>
             <Image
               source={require("@/assets/images/google-icon.png")}
