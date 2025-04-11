@@ -1,3 +1,5 @@
+//login
+
 import React, { useState, memo } from 'react'
 import { StyleSheet, Text, View, ImageBackground,PixelRatio, TextInput,
    Pressable,TouchableOpacity, ActivityIndicator, Alert } from 'react-native'
