@@ -13,6 +13,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { widthPercentageToDP as wp, heightPercentageToDP as hp } from 'react-native-responsive-screen';
 import { getAuth, signInWithEmailAndPassword } from 'firebase/auth';
 import { app, auth } from '../firebase';
+import startFlappyGame from './Games/flappy';
 
 
 
