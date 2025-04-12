@@ -126,7 +126,7 @@ const LogInPage = memo(() => {
             />
           </Pressable>
         </Link>
-        <Link  href="/" asChild>
+        <Link  href="/SnakeGame" asChild>
           <Pressable>
             <Image
               source={require("@/assets/images/facebook-icon.png")}
