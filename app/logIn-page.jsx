@@ -14,10 +14,13 @@ import { widthPercentageToDP as wp, heightPercentageToDP as hp } from 'react-nat
 import { getAuth, signInWithEmailAndPassword } from 'firebase/auth';
 import { app, auth } from '../firebase';
 import startFlappyGame from './Games/flappy';
+import { useNavigation } from '@react-navigation/native';
+
 
 
 
 const LogInPage = memo(() => {
+  const navigation = useNavigation();
 
   //Font
   const [fontsLoaded] = useFonts({
@@ -44,6 +47,7 @@ const LogInPage = memo(() => {
         .then((userCredential) => {
           const user = userCredential.user;
           Alert.alert('Login successful!', `Hello, ${user.email}`);
+          navigation.navigate('Profile');
         })
         .catch((error) => {
           Alert.alert('Login failed!', error.message);

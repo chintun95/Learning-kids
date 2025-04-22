@@ -24,6 +24,7 @@ import { useFonts } from "expo-font";
 import { widthPercentageToDP as wp, heightPercentageToDP as hp } from 'react-native-responsive-screen';
 import { createUserWithEmailAndPassword } from 'firebase/auth';
 import { auth } from '../firebase'; 
+import { supabase } from '../backend/supabase';
 
 import loginImage from "@/assets/images/app-background.png";
 
@@ -54,26 +55,50 @@ const SignInPage = memo(() => {
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
 
-  const handleSignUp = () => {
-    const emailRegex = /^[a-zA-Z0-9._-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,6}$/;
+  const handleSignUp = async () => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
       Alert.alert('Invalid email', 'Please re-enter email');
       return;
     }
-
+  
+    if (password !== confirm) {
+      Alert.alert('Passwords do not match');
+      return;
+    }
+  
     setIsLoading(true);
-    createUserWithEmailAndPassword(auth, email, password)
-      .then((userCredential) => {
-        const user = userCredential.user;
+  
+    try {
+      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+      const user = userCredential.user;
+  
+      const { error } = await supabase.from('profiles').insert([
+        {
+          user_id: user.uid,
+          parent_name: name,
+          phone_number: phone,
+          child_name: kname,
+          child_age: parseInt(kage),
+        }
+      ]);
+  
+      if (error) {
+        console.error('Supabase insert error:', error);
+        Alert.alert('Signup failed', 'Could not save profile data.');
+      } else {
         Alert.alert('Sign up successful!', `Welcome, ${user.email}`);
         setErrorMessage('');
-      })
-      .catch((error) => {
-        setErrorMessage(error.message);
-      })
-      .finally(() => setIsLoading(false));
-    };
-
+      }
+    } catch (error) {
+      console.error(error);
+      setErrorMessage(error.message);
+      Alert.alert('Signup Error', error.message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+  
   return (
     <SafeAreaView style={styles.container}>
       <KeyboardAvoidingView
