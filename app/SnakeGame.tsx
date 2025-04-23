@@ -1,4 +1,3 @@
-//snake
 import React, { useEffect } from 'react';
 import { Text, View, SafeAreaView, StyleSheet } from 'react-native';
 import { PanGestureHandler } from 'react-native-gesture-handler';
@@ -57,33 +56,34 @@ function SnakeGame(): JSX.Element {
     }, [snake, isPaused, countdown]);
 
     const moveSnake = () => {
+        if (isGameOver) return;  // Prevent movement if the game is over
+        
         const snakeHead = snake[0];
-        const newHead = { ...snakeHead }; // Create a new head object to avoid mutating the original head
-
-        // Check for Game Over based on boundaries and restart the game if collision occurs
-        if (checkGameOver(snakeHead, GAME_BOUNDS)) {
-            reloadGame(); // Restart the game when snake hits the wall
-            return; // Stop moving the snake after restarting
-        }
-
+        const newHead = { ...snakeHead };
+    
+        // Move the head based on direction
         switch (direction) {
             case Direction.Up:
-                if (newHead.y > GAME_BOUNDS.yMin) newHead.y -= 1; // Prevent moving out of bounds upwards
+                newHead.y -= 1;
                 break;
             case Direction.Down:
-                if (newHead.y < GAME_BOUNDS.yMax) newHead.y += 1; // Prevent moving out of bounds downwards
+                newHead.y += 1;
                 break;
             case Direction.Left:
-                if (newHead.x > GAME_BOUNDS.xMin) newHead.x -= 1; // Prevent moving out of bounds left
+                newHead.x -= 1;
                 break;
             case Direction.Right:
-                if (newHead.x < GAME_BOUNDS.xMax) newHead.x += 1; // Prevent moving out of bounds right
-                break;
-            default:
+                newHead.x += 1;
                 break;
         }
 
-        // If the snake eats food, spawn new food and increase the score
+        // Check for game over using the new position
+        if (checkGameOver(newHead, GAME_BOUNDS)) {
+            setIsGameOver(true);
+            setIsPaused(true);
+            return;  // Exit the function early if the game is over
+        }
+    
         if (checkEatsFood(newHead, food, 2)) {
             setFood(randomFoodPosition(GAME_BOUNDS.xMax, GAME_BOUNDS.yMax));
             setSnake([newHead, ...snake]);
@@ -92,7 +92,7 @@ function SnakeGame(): JSX.Element {
             setSnake([newHead, ...snake.slice(0, -1)]);
         }
     };
-
+    
     const handleGesture = (event: GestureEventType) => {
         if (isGameOver) return; // Prevent movement when game is over
 
@@ -113,13 +113,14 @@ function SnakeGame(): JSX.Element {
     };
 
     const reloadGame = () => {
+        // Reset everything when game is reloaded
         setSnake(SNAKE_INITIAL_POSITION);
         setFood(FOOD_INITIAL_POSITION);
-        setIsGameOver(false);
-        setScore(0);
+        setScore(0); // Reset score
         setDirection(Direction.Right);
-        setIsPaused(false);
-        setCountdown(3); // Reset countdown when restarting the game
+        setIsGameOver(false);  // Reset game over state
+        setIsPaused(false);     // Ensure the game is active
+        setCountdown(3);        // Reset countdown when restarting the game
     };
 
     const pauseGame = () => {
@@ -151,6 +152,16 @@ function SnakeGame(): JSX.Element {
                             <Food x={food.x} y={food.y} />
                         </View>
                     )}
+
+                    {/* Game Over message */}
+                    {isGameOver && (
+                        <Text style={styles.gameOverText}>
+                            Game Over{'\n'}Score: {score}{'\n'}
+                            <Text onPress={reloadGame} style={styles.restartText}>
+                                Tap to Restart
+                            </Text>
+                        </Text>
+                    )}
                 </SafeAreaView>
             </PanGestureHandler>
         </GestureHandlerRootView>
@@ -178,6 +189,21 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: 'orange',
   },
+  gameOverText: {
+    fontSize: 32,
+    fontWeight: "bold",
+    color: "red",
+    position: "absolute",
+    top: "40%",
+    alignSelf: "center",
+    textAlign: "center",
+    zIndex: 1,
+  },
+  restartText: {
+    fontSize: 18,
+    color: 'white',
+    textDecorationLine: 'underline',
+  }
 });
 
 export default SnakeGame;
