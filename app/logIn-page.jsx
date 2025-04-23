@@ -47,7 +47,7 @@ const LogInPage = memo(() => {
         .then((userCredential) => {
           const user = userCredential.user;
           Alert.alert('Login successful!', `Hello, ${user.email}`);
-          navigation.navigate('Profile');
+          navigation.navigate('ProfilePage');
         })
         .catch((error) => {
           Alert.alert('Login failed!', error.message);
@@ -123,7 +123,7 @@ const LogInPage = memo(() => {
             />
           </Pressable>
         </Link>
-        <Link  href="/" asChild>
+        <Link  href="/profile" asChild>
           <Pressable>
             <Image
               source={require("@/assets/images/apple-icon.png")}
