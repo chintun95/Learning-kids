@@ -1,9 +1,10 @@
 import React, { memo, useState, useEffect } from 'react';
-import { StyleSheet, Text, View, ActivityIndicator, Alert } from 'react-native';
+import { StyleSheet, Text, View, ActivityIndicator, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFonts } from 'expo-font';
 import { widthPercentageToDP as wp, heightPercentageToDP as hp } from 'react-native-responsive-screen';
 import { fetchUserProfile } from '../backend/fetchUserProfile';
+import { useNavigation } from '@react-navigation/native';
 
 const ProfilePage = memo(() => {
   const [fontsLoaded] = useFonts({
@@ -13,6 +14,7 @@ const ProfilePage = memo(() => {
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const navigation = useNavigation();
 
   useEffect(() => {
     const loadProfile = async () => {
@@ -70,6 +72,14 @@ const ProfilePage = memo(() => {
         <Text style={styles.label}>Created At:</Text>
         <Text style={styles.value}>{new Date(profile.created_at).toLocaleString()}</Text>
       </View>
+
+      {/* Custom button */}
+      <TouchableOpacity
+        style={styles.button}
+        onPress={() => navigation.navigate('CreateQuestions')}
+      >
+        <Text style={styles.buttonText}>Go to Create Questions</Text>
+      </TouchableOpacity>
     </SafeAreaView>
   );
 });
@@ -110,6 +120,19 @@ const styles = StyleSheet.create({
     fontSize: wp('4.5%'),
     color: 'red',
     fontFamily: 'FredokaOne-Regular',
+  },
+  button: {
+    marginTop: hp('4%'),
+    backgroundColor: '#1E90FF',
+    paddingVertical: hp('1.5%'),
+    paddingHorizontal: wp('6%'),
+    borderRadius: 10,
+  },
+  buttonText: {
+    color: '#fff',
+    fontFamily: 'FredokaOne-Regular',
+    fontSize: wp('4.5%'),
+    textAlign: 'center',
   },
 });
 

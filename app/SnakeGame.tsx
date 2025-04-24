@@ -1,5 +1,5 @@
-import React, { useEffect } from 'react';
-import { Text, View, SafeAreaView, StyleSheet } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { Text, View, SafeAreaView, StyleSheet, Alert, Button } from 'react-native';
 import { PanGestureHandler } from 'react-native-gesture-handler';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';  
 import { Coordinate, Direction, GestureEventType } from './types/types';
@@ -8,9 +8,11 @@ import { checkGameOver } from './utils/checkGameOver';
 import Food from './Food';
 import { checkEatsFood } from './utils/checkEatsFood';
 import { randomFoodPosition } from './utils/randomFoodPosition';
-import Header from './Header'; 
+import Header from './Header';
+import { fetchQuestions } from '../backend/fetchquestions'; 
+import { supabase } from '../backend/supabase';
+import QuestionIcon from './QuestionIcon'; // NEW IMPORT
 
-// Constants for the game state
 const SNAKE_INITIAL_POSITION = [{ x: 5, y: 5 }];
 const FOOD_INITIAL_POSITION = { x: 5, y: 20 };
 const GAME_BOUNDS = { xMin: 0, xMax: 36, yMin: 0, yMax: 63 };
@@ -20,32 +22,67 @@ const SCORE_INCREMENT = 10;
 const primaryColor = 'blue'; 
 const backgroundColor = 'gray'; 
 
-function SnakeGame(): JSX.Element {
-    const [direction, setDirection] = React.useState<Direction>(Direction.Right);
-    const [snake, setSnake] = React.useState<Coordinate[]>(SNAKE_INITIAL_POSITION);
-    const [food, setFood] = React.useState<Coordinate>(FOOD_INITIAL_POSITION);
-    const [score, setScore] = React.useState<number>(0);
-    const [isGameOver, setIsGameOver] = React.useState<boolean>(false);
-    const [isPaused, setIsPaused] = React.useState<boolean>(false);
-    const [countdown, setCountdown] = React.useState<number>(3); // Countdown state
+interface SnakeGameProps {
+    navigation: any;
+}
 
-    // Countdown effect
+function SnakeGame({ navigation }: SnakeGameProps): JSX.Element { 
+    const [childId, setChildId] = useState<string | null>(null); 
+    const [direction, setDirection] = useState<Direction>(Direction.Right);
+    const [snake, setSnake] = useState<Coordinate[]>(SNAKE_INITIAL_POSITION);
+    const [food, setFood] = useState<Coordinate>(FOOD_INITIAL_POSITION);
+    const [score, setScore] = useState<number>(0);
+    const [isGameOver, setIsGameOver] = useState<boolean>(false);
+    const [isPaused, setIsPaused] = useState<boolean>(false);
+    const [countdown, setCountdown] = useState<number>(3); 
+    const [foodEaten, setFoodEaten] = useState<number>(0); 
+    const [questions, setQuestions] = useState<any[]>([]); 
+    const [currentQuestion, setCurrentQuestion] = useState<any>(null);
+    const [isQuestionVisible, setIsQuestionVisible] = useState<boolean>(false); 
+    const [showQuestionIcon, setShowQuestionIcon] = useState<boolean>(false);
+    const [questionIconPos, setQuestionIconPos] = useState<Coordinate | null>(null);
+
+    useEffect(() => {
+        const fetchChildId = async () => {
+            const { data: authData, error: authError } = await supabase.auth.getUser();
+            if (authError) return console.error('Error fetching user:', authError);
+            const user = authData?.user;
+            if (user) {
+                const { data: childData, error: profileError } = await supabase
+                    .from('profiles')
+                    .select('id') 
+                    .eq('parent_id', user.id);
+                if (profileError) return console.error('Error fetching child ID:', profileError);
+                if (childData && childData.length > 0) setChildId(childData[0].id);
+            }
+        };
+        fetchChildId();
+    }, []);
+
+    useEffect(() => {
+        if (childId) {
+            const loadQuestions = async () => {
+                try {
+                    const fetchedQuestions = await fetchQuestions(childId); 
+                    setQuestions(fetchedQuestions);
+                } catch (error) {
+                    console.error('Error fetching questions:', error);
+                }
+            };
+            loadQuestions();
+        }
+    }, [childId]);
+
     useEffect(() => {
         let intervalId: NodeJS.Timeout;
-
         if (countdown > 0) {
-            intervalId = setInterval(() => {
-                setCountdown(prev => prev - 1);
-            }, 1000);
+            intervalId = setInterval(() => setCountdown(prev => prev - 1), 1000);
         } else if (countdown === 0) {
-            // Start the game after countdown reaches 0
-            setIsPaused(false);
+            setIsPaused(false); 
         }
-
         return () => clearInterval(intervalId);
     }, [countdown]);
 
-    // Game loop and movement logic only starts after countdown finishes
     useEffect(() => {
         if (!isPaused && countdown === 0) {
             const intervalId = setInterval(() => {
@@ -56,71 +93,87 @@ function SnakeGame(): JSX.Element {
     }, [snake, isPaused, countdown]);
 
     const moveSnake = () => {
-        if (isGameOver) return;  // Prevent movement if the game is over
-        
+        if (isGameOver) return;
+
         const snakeHead = snake[0];
         const newHead = { ...snakeHead };
-    
-        // Move the head based on direction
+
         switch (direction) {
-            case Direction.Up:
-                newHead.y -= 1;
-                break;
-            case Direction.Down:
-                newHead.y += 1;
-                break;
-            case Direction.Left:
-                newHead.x -= 1;
-                break;
-            case Direction.Right:
-                newHead.x += 1;
-                break;
+            case Direction.Up: newHead.y -= 1; break;
+            case Direction.Down: newHead.y += 1; break;
+            case Direction.Left: newHead.x -= 1; break;
+            case Direction.Right: newHead.x += 1; break;
         }
 
-        // Check for game over using the new position
         if (checkGameOver(newHead, GAME_BOUNDS)) {
             setIsGameOver(true);
             setIsPaused(true);
-            return;  // Exit the function early if the game is over
+            return; 
         }
-    
+
         if (checkEatsFood(newHead, food, 2)) {
             setFood(randomFoodPosition(GAME_BOUNDS.xMax, GAME_BOUNDS.yMax));
             setSnake([newHead, ...snake]);
             setScore(score + SCORE_INCREMENT);
+            const newFoodEaten = foodEaten + 1;
+            setFoodEaten(newFoodEaten);
+
+            if (newFoodEaten % 2 === 0) {
+                const questionPos = randomFoodPosition(GAME_BOUNDS.xMax, GAME_BOUNDS.yMax);
+                setQuestionIconPos(questionPos);
+                setShowQuestionIcon(true);
+            }
+        } else if (showQuestionIcon && questionIconPos && checkEatsFood(newHead, questionIconPos, 2)) {
+            setShowQuestionIcon(false);
+            setIsPaused(true);
+            askQuestion();
+            setSnake([newHead, ...snake]);
         } else {
             setSnake([newHead, ...snake.slice(0, -1)]);
         }
     };
-    
+
+    const askQuestion = () => {
+        if (questions.length > 0) {
+            const randomIndex = Math.floor(Math.random() * questions.length);
+            setCurrentQuestion(questions[randomIndex]);
+            setIsQuestionVisible(true);
+        }
+    };
+
+    const answerQuestion = (isCorrect: boolean) => {
+        setIsQuestionVisible(false);
+        setCurrentQuestion(null);
+        if (isCorrect) {
+            Alert.alert('Correct!', 'You got the answer right!');
+        } else {
+            Alert.alert('Incorrect', 'Sorry, that is not correct.');
+        }
+    };
+
     const handleGesture = (event: GestureEventType) => {
-        if (isGameOver) return; // Prevent movement when game is over
+        if (isGameOver || isQuestionVisible) return;
 
         const { translationX, translationY } = event.nativeEvent;
         if (Math.abs(translationX) > Math.abs(translationY)) {
-            if (translationX > 0) {
-                setDirection(Direction.Right);
-            } else {
-                setDirection(Direction.Left);
-            }
+            translationX > 0 ? setDirection(Direction.Right) : setDirection(Direction.Left);
         } else {
-            if (translationY > 0) {
-                setDirection(Direction.Down);
-            } else {
-                setDirection(Direction.Up);
-            }
+            translationY > 0 ? setDirection(Direction.Down) : setDirection(Direction.Up);
         }
     };
 
     const reloadGame = () => {
-        // Reset everything when game is reloaded
         setSnake(SNAKE_INITIAL_POSITION);
         setFood(FOOD_INITIAL_POSITION);
-        setScore(0); // Reset score
+        setScore(0);
+        setFoodEaten(0); 
         setDirection(Direction.Right);
-        setIsGameOver(false);  // Reset game over state
-        setIsPaused(false);     // Ensure the game is active
-        setCountdown(3);        // Reset countdown when restarting the game
+        setIsGameOver(false);
+        setIsPaused(false);
+        setCountdown(3);
+        setIsQuestionVisible(false);
+        setShowQuestionIcon(false);
+        setQuestionIconPos(null);
     };
 
     const pauseGame = () => {
@@ -131,36 +184,39 @@ function SnakeGame(): JSX.Element {
         <GestureHandlerRootView style={{ flex: 1 }}>  
             <PanGestureHandler onGestureEvent={handleGesture}>
                 <SafeAreaView style={styles.container}>
-                    <Header
-                        reloadGame={reloadGame}
-                        pauseGame={pauseGame}
-                        isPaused={isPaused}
-                    >
-                        <Text style={{
-                            fontSize: 22,
-                            fontWeight: "bold",
-                            color: "orange"
-                        }}>{score}</Text>
+                    <Header reloadGame={reloadGame} pauseGame={pauseGame} isPaused={isPaused}>
+                        <Text style={styles.scoreText}>{score}</Text>
                     </Header>
 
-                    {/* Countdown display */}
                     {countdown > 0 ? (
                         <Text style={styles.countdown}>{countdown}</Text>
                     ) : (
                         <View style={styles.boundaries}>
                             <Snake snake={snake} />
                             <Food x={food.x} y={food.y} />
+                            {showQuestionIcon && questionIconPos && (
+                                <QuestionIcon x={questionIconPos.x} y={questionIconPos.y} />
+                            )}
                         </View>
                     )}
 
-                    {/* Game Over message */}
                     {isGameOver && (
                         <Text style={styles.gameOverText}>
-                            Game Over{'\n'}Score: {score}{'\n'}
-                            <Text onPress={reloadGame} style={styles.restartText}>
-                                Tap to Restart
-                            </Text>
+                            Game Over{'\n'}Score: {score}
                         </Text>
+                    )}
+
+                    {isQuestionVisible && currentQuestion && (
+                        <View style={styles.questionContainer}>
+                            <Text style={styles.questionText}>{currentQuestion.question}</Text>
+                            {currentQuestion.options.map((option: string, index: number) => (
+                                <Button
+                                    key={index}
+                                    title={option}
+                                    onPress={() => answerQuestion(option === currentQuestion.correct_answer)}
+                                />
+                            ))}
+                        </View>
                     )}
                 </SafeAreaView>
             </PanGestureHandler>
@@ -199,11 +255,28 @@ const styles = StyleSheet.create({
     textAlign: "center",
     zIndex: 1,
   },
-  restartText: {
-    fontSize: 18,
-    color: 'white',
-    textDecorationLine: 'underline',
-  }
+  scoreText: {
+    fontSize: 22,
+    fontWeight: "bold",
+    color: "orange"
+  },
+  questionContainer: {
+      position: 'absolute',
+      top: '40%',
+      left: '10%',
+      right: '10%',
+      backgroundColor: 'white',
+      padding: 20,
+      borderRadius: 10,
+      elevation: 5,
+      zIndex: 2,
+      alignItems: 'center',
+      justifyContent: 'center',
+  },
+  questionText: {
+      fontSize: 24,
+      marginBottom: 20,
+  },
 });
 
 export default SnakeGame;
