@@ -1,39 +1,19 @@
+// QuestionIcon.tsx
 import React from 'react';
-import { View, StyleSheet } from 'react-native';
+import { Text, StyleSheet } from 'react-native';
+import { Coordinate } from './types/types';
 
-interface QuestionIconProps {
-  x: number;
-  y: number;
-}
-
-const CELL_SIZE = 10;
-
-const QuestionIcon: React.FC<QuestionIconProps> = ({ x, y }) => {
-  // Ensure that x and y are numbers before applying arithmetic operations
-  const positionX = typeof x === 'number' ? x * CELL_SIZE : 0;
-  const positionY = typeof y === 'number' ? y * CELL_SIZE : 0;
-
+export default function QuestionIcon({ x, y }: Coordinate): JSX.Element {
   return (
-    <View
-      style={[
-        styles.icon,
-        {
-          left: positionX,
-          top: positionY,
-        },
-      ]}
-    />
+    <Text style={[{ top: y * 10, left: x * 10 }, styles.icon]}>❓</Text>
   );
-};
+}
 
 const styles = StyleSheet.create({
   icon: {
+    width: 20,
+    height: 20,
     position: 'absolute',
-    width: CELL_SIZE,
-    height: CELL_SIZE,
-    backgroundColor: 'purple',
-    borderRadius: CELL_SIZE / 2,
+    fontSize: 18,
   },
 });
-
-export default QuestionIcon;

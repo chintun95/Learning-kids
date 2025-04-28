@@ -2,7 +2,6 @@ import React, { useEffect, useState } from 'react';
 import { Text, View, SafeAreaView, StyleSheet, Alert, Button } from 'react-native';
 import { PanGestureHandler } from 'react-native-gesture-handler';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';  
-import { Coordinate, Direction, GestureEventType } from './types/types';
 import Snake from './Snake';
 import { checkGameOver } from './utils/checkGameOver';
 import Food from './Food';
@@ -11,7 +10,8 @@ import { randomFoodPosition } from './utils/randomFoodPosition';
 import Header from './Header';
 import { fetchQuestions } from '../backend/fetchquestions'; 
 import { supabase } from '../backend/supabase';
-import QuestionIcon from './QuestionIcon'; // NEW IMPORT
+import QuestionIcon from './QuestionIcon'; 
+import { Direction,Coordinate,GestureEventType } from './types/types';
 
 const SNAKE_INITIAL_POSITION = [{ x: 5, y: 5 }];
 const FOOD_INITIAL_POSITION = { x: 5, y: 20 };
@@ -149,6 +149,10 @@ function SnakeGame({ navigation }: SnakeGameProps): JSX.Element {
         } else {
             Alert.alert('Incorrect', 'Sorry, that is not correct.');
         }
+
+        // Start timer before resuming the game
+        setIsPaused(true);
+        setCountdown(3); // Set countdown to 3 seconds
     };
 
     const handleGesture = (event: GestureEventType) => {
@@ -258,24 +262,22 @@ const styles = StyleSheet.create({
   scoreText: {
     fontSize: 22,
     fontWeight: "bold",
-    color: "orange"
+    color: primaryColor,
+    textAlign: 'center',
   },
   questionContainer: {
-      position: 'absolute',
-      top: '40%',
-      left: '10%',
-      right: '10%',
-      backgroundColor: 'white',
-      padding: 20,
-      borderRadius: 10,
-      elevation: 5,
-      zIndex: 2,
-      alignItems: 'center',
-      justifyContent: 'center',
+    position: 'absolute',
+    top: '30%',
+    left: '10%',
+    right: '10%',
+    backgroundColor: 'white',
+    padding: 20,
+    borderRadius: 10,
+    elevation: 5,
   },
   questionText: {
-      fontSize: 24,
-      marginBottom: 20,
+    fontSize: 18,
+    fontWeight: 'bold',
   },
 });
 

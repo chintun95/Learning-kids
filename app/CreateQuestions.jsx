@@ -1,241 +1,305 @@
-import React, { useState, useEffect } from 'react';
-import {
-  Text,
-  View,
-  TextInput,
-  Button,
-  FlatList,
-  StyleSheet,
-  ScrollView,
-  Alert,
-} from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useRoute } from '@react-navigation/native';
+//CreateQuestions.jsx
+import React, { memo, useState, useEffect } from 'react';
+import { StyleSheet, Text, TextInput, TouchableOpacity, View, ActivityIndicator, FlatList, ScrollView } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '../backend/supabase';
+import { getAuth } from 'firebase/auth';
+import { useFonts } from 'expo-font';
+import { widthPercentageToDP as wp, heightPercentageToDP as hp } from 'react-native-responsive-screen';
+import { useNavigation } from '@react-navigation/native';
 
-const CreateQuestions = () => {
-  const route = useRoute();
-  const userId = route.params?.userId;
-  const childId = route.params?.childId;
+const CreateQuestions = memo(() => {
+  const [fontsLoaded] = useFonts({
+    'FredokaOne-Regular': require('@/assets/fonts/FredokaOne-Regular.ttf'),
+  });
 
-  const [questionText, setQuestionText] = useState('');
-  const [answers, setAnswers] = useState([
-    { id: 1, text: '', isCorrect: false },
-    { id: 2, text: '', isCorrect: false },
-    { id: 3, text: '', isCorrect: false },
-    { id: 4, text: '', isCorrect: false },
-  ]);
-  const [questions, setQuestions] = useState([]);
+  const [question, setQuestion] = useState('');
+  const [optionA, setOptionA] = useState('');
+  const [optionB, setOptionB] = useState('');
+  const [optionC, setOptionC] = useState('');
+  const [optionD, setOptionD] = useState('');
+  const [correctAnswer, setCorrectAnswer] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [questionsList, setQuestionsList] = useState([]);
+  const navigation = useNavigation();
+
+  const auth = getAuth();
+  const uid = auth.currentUser?.uid;
 
   useEffect(() => {
-    loadQuestionsFromStorage();
-    fetchQuestionsFromDatabase();
-  }, []);
-
-  const loadQuestionsFromStorage = async () => {
-    const stored = await AsyncStorage.getItem('user_questions');
-    if (stored) {
-      setQuestions(JSON.parse(stored));
+    if (uid) {
+      fetchQuestions();
     }
-  };
+  }, [uid]);
 
-  const saveQuestionsToStorage = async (questionsList) => {
-    await AsyncStorage.setItem('user_questions', JSON.stringify(questionsList));
-  };
-
-  const fetchQuestionsFromDatabase = async () => {
+  const fetchQuestions = async () => {
     try {
       const { data, error } = await supabase
         .from('questions')
         .select('*')
-        .eq('child_id', childId);
+        .eq('parent_id', uid);
 
-      if (error) {
-        console.error('Supabase fetch error:', error);
-        return;
-      }
-
-      setQuestions(data);
-      await saveQuestionsToStorage(data);
-    } catch (e) {
-      console.error('Unexpected fetch error:', e);
+      if (error) throw error;
+      setQuestionsList(data);
+    } catch (err) {
+      console.error('Fetch questions error:', err);
     }
   };
 
-  const addAnswer = (index) => (text) => {
-    const newAnswers = [...answers];
-    newAnswers[index].text = text;
-    setAnswers(newAnswers);
-  };
-
-  const handleCorrectAnswer = (answerId) => {
-    const newAnswers = answers.map((a) => ({
-      ...a,
-      isCorrect: a.id === answerId,
-    }));
-    setAnswers(newAnswers);
-  };
-
-  const addQuestion = async () => {
-    if (!questionText.trim()) {
-      Alert.alert('Missing Question', 'Please enter a question.');
+  const handleCreateQuestion = async () => {
+    if (!question || !optionA || !optionB || !optionC || !optionD || !correctAnswer) {
+      setError('Please fill out all fields and select the correct answer');
       return;
     }
 
-    if (!answers.some((a) => a.isCorrect)) {
-      Alert.alert('No Correct Answer', 'Please select the correct answer.');
-      return;
-    }
-
-    const correct = answers.find((a) => a.isCorrect)?.text;
-    const options = answers.map((a) => a.text);
-
+    setLoading(true);
+    setError('');
     try {
-      const { data, error } = await supabase.from('questions').insert({
-        question: questionText,
-        options: options,
-        correct_answer: correct,
-        child_id: childId,
-        parent_id: userId,
-      }).select().single();
-
-      if (error) {
-        console.error('Insert error:', error);
-        Alert.alert('Database Error', 'Could not save the question.');
-        return;
-      }
-
-      const updated = [...questions, data];
-      setQuestions(updated);
-      await saveQuestionsToStorage(updated);
-
-      // Reset inputs
-      setQuestionText('');
-      setAnswers([
-        { id: 1, text: '', isCorrect: false },
-        { id: 2, text: '', isCorrect: false },
-        { id: 3, text: '', isCorrect: false },
-        { id: 4, text: '', isCorrect: false },
+      const { error: insertError } = await supabase.from('questions').insert([
+        {
+          question,
+          options: {
+            a: optionA,
+            b: optionB,
+            c: optionC,
+            d: optionD,
+          },
+          correct_answer: correctAnswer,
+          parent_id: uid,
+        },
       ]);
-    } catch (e) {
-      console.error('Unexpected insert error:', e);
-    }
-  };
 
-  const deleteQuestion = async (questionId) => {
-    if (!questionId || typeof questionId !== 'string' || questionId.length !== 36) {
-      Alert.alert('Invalid Question ID', 'This question cannot be deleted because it was not saved to the database.');
-      return;
-    }
-
-    try {
-      const { error } = await supabase.from('questions').delete().eq('id', questionId);
-      if (error) {
-        console.error('Delete error:', error);
-        Alert.alert('Error', 'Failed to delete question from database');
-        return;
+      if (insertError) {
+        throw insertError;
       }
 
-      const updatedQuestions = questions.filter((q) => q.id !== questionId);
-      setQuestions(updatedQuestions);
-      await saveQuestionsToStorage(updatedQuestions);
-    } catch (e) {
-      console.error('Unexpected error during delete:', e);
+      alert('Question created successfully!');
+      clearFields();
+      fetchQuestions(); // refresh list
+    } catch (err) {
+      console.error('Create question error:', err);
+      setError(err.message || 'Something went wrong');
+    } finally {
+      setLoading(false);
     }
   };
+
+  const clearFields = () => {
+    setQuestion('');
+    setOptionA('');
+    setOptionB('');
+    setOptionC('');
+    setOptionD('');
+    setCorrectAnswer('');
+  };
+
+  const handleDeleteQuestion = async (id) => {
+    try {
+      const { error } = await supabase.from('questions').delete().eq('id', id);
+      if (error) throw error;
+      fetchQuestions();
+    } catch (err) {
+      console.error('Delete question error:', err);
+    }
+  };
+
+  const selectCorrectAnswer = (answerKey) => {
+    setCorrectAnswer(answerKey);
+  };
+
+  if (!fontsLoaded) {
+    return <Text>Loading fonts...</Text>;
+  }
+
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <ActivityIndicator size="large" color="#1E90FF" />
+      </SafeAreaView>
+    );
+  }
 
   return (
-    <ScrollView style={styles.container}>
-      <Text style={styles.header}>Creating questions for child: {childId}</Text>
+    <SafeAreaView style={styles.container}>
+      <ScrollView contentContainerStyle={styles.scrollContent}>
+        <Text style={styles.title}>Create Question</Text>
 
-      <TextInput
-        style={styles.input}
-        placeholder="Enter Question"
-        value={questionText}
-        onChangeText={setQuestionText}
-      />
-
-      {answers.map((answer, index) => (
-        <View key={answer.id} style={styles.answerRow}>
-          <Text style={styles.label}>Answer {index + 1}:</Text>
+        <View style={styles.inputContainer}>
           <TextInput
-            style={styles.answerInput}
-            placeholder={`Enter answer ${index + 1}`}
-            onChangeText={addAnswer(index)}
-            value={answer.text}
+            placeholder="Enter question"
+            value={question}
+            onChangeText={setQuestion}
+            style={styles.input}
+            placeholderTextColor="#999"
           />
-          <Button
-            title={answer.isCorrect ? 'Correct' : 'Mark Correct'}
-            onPress={() => handleCorrectAnswer(answer.id)}
+          <TextInput
+            placeholder="Option A"
+            value={optionA}
+            onChangeText={setOptionA}
+            style={styles.input}
+            placeholderTextColor="#999"
           />
+          <TextInput
+            placeholder="Option B"
+            value={optionB}
+            onChangeText={setOptionB}
+            style={styles.input}
+            placeholderTextColor="#999"
+          />
+          <TextInput
+            placeholder="Option C"
+            value={optionC}
+            onChangeText={setOptionC}
+            style={styles.input}
+            placeholderTextColor="#999"
+          />
+          <TextInput
+            placeholder="Option D"
+            value={optionD}
+            onChangeText={setOptionD}
+            style={styles.input}
+            placeholderTextColor="#999"
+          />
+
+          {/* Correct Answer Selection */}
+          <View style={styles.optionsRow}>
+            {['a', 'b', 'c', 'd'].map((key) => (
+              <TouchableOpacity
+                key={key}
+                style={[
+                  styles.answerButton,
+                  correctAnswer === key && styles.selectedAnswerButton,
+                ]}
+                onPress={() => selectCorrectAnswer(key)}
+              >
+                <Text style={styles.answerButtonText}>{key.toUpperCase()}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
         </View>
-      ))}
 
-      <Button title="Add Question" onPress={addQuestion} />
+        {error ? <Text style={styles.error}>{error}</Text> : null}
 
-      <View style={styles.questionList}>
+        <TouchableOpacity style={styles.button} onPress={handleCreateQuestion}>
+          <Text style={styles.buttonText}>Submit Question</Text>
+        </TouchableOpacity>
+
+        {/* Questions List */}
         <FlatList
-          data={questions}
+          data={questionsList}
           keyExtractor={(item) => item.id.toString()}
           renderItem={({ item }) => (
-            <View style={styles.questionItem}>
-              <Text style={styles.questionText}>Question: {item.question}</Text>
-              {item.options.map((opt, index) => (
-                <Text key={index}>
-                  Answer {index + 1}: {opt} {opt === item.correct_answer ? '(Correct)' : ''}
-                </Text>
-              ))}
-              <Button title="Delete" color="red" onPress={() => deleteQuestion(item.id)} />
+            <View style={styles.questionCard}>
+              <Text style={styles.questionText}>{item.question}</Text>
+              <TouchableOpacity
+                style={styles.deleteButton}
+                onPress={() => handleDeleteQuestion(item.id)}
+              >
+                <Text style={styles.deleteButtonText}>Delete</Text>
+              </TouchableOpacity>
             </View>
           )}
+          scrollEnabled={false} // FlatList inside ScrollView must not scroll
+          contentContainerStyle={{ paddingBottom: hp('10%') }}
         />
-      </View>
-    </ScrollView>
+      </ScrollView>
+    </SafeAreaView>
   );
-};
+});
 
 const styles = StyleSheet.create({
   container: {
-    padding: 20,
+    flex: 1,
+    backgroundColor: '#fff',
   },
-  header: {
-    fontSize: 16,
-    marginBottom: 10,
+  scrollContent: {
+    alignItems: 'center',
+    paddingTop: hp('8%'),
+    paddingBottom: hp('10%'),
+  },
+  title: {
+    fontFamily: 'FredokaOne-Regular',
+    fontSize: wp('10%'),
+    marginBottom: hp('4%'),
+    color: '#1E1E1E',
+  },
+  inputContainer: {
+    width: wp('85%'),
   },
   input: {
-    height: 40,
-    borderColor: 'gray',
-    borderWidth: 1,
-    marginBottom: 10,
-    paddingHorizontal: 10,
+    fontFamily: 'FredokaOne-Regular',
+    fontSize: wp('4.5%'),
+    backgroundColor: '#f1f1f1',
+    padding: wp('3%'),
+    borderRadius: 10,
+    marginBottom: hp('2%'),
+    color: '#000',
   },
-  answerRow: {
+  optionsRow: {
     flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginVertical: hp('2%'),
+  },
+  answerButton: {
+    backgroundColor: '#ccc',
+    padding: wp('3%'),
+    borderRadius: 8,
+  },
+  selectedAnswerButton: {
+    backgroundColor: '#1E90FF',
+  },
+  answerButtonText: {
+    color: '#fff',
+    fontFamily: 'FredokaOne-Regular',
+  },
+  error: {
+    fontFamily: 'FredokaOne-Regular',
+    fontSize: wp('4.5%'),
+    color: 'red',
+    marginTop: hp('1%'),
+    textAlign: 'center',
+  },
+  button: {
+    marginTop: hp('2%'),
+    backgroundColor: '#1E90FF',
+    paddingVertical: hp('1.5%'),
+    paddingHorizontal: wp('6%'),
+    borderRadius: 10,
+  },
+  buttonText: {
+    color: '#fff',
+    fontFamily: 'FredokaOne-Regular',
+    fontSize: wp('4.5%'),
+    textAlign: 'center',
+  },
+  questionCard: {
+    backgroundColor: '#f1f1f1',
+    padding: wp('4%'),
+    marginVertical: hp('1%'),
+    borderRadius: 10,
+    width: wp('85%'),
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 10,
-    gap: 10,
-  },
-  label: {
-    width: 75,
-  },
-  answerInput: {
-    flex: 1,
-    height: 40,
-    borderColor: 'gray',
-    borderWidth: 1,
-    paddingHorizontal: 10,
-  },
-  questionList: {
-    marginTop: 20,
-  },
-  questionItem: {
-    marginBottom: 15,
-    padding: 10,
-    borderWidth: 1,
-    borderColor: 'gray',
   },
   questionText: {
-    fontWeight: 'bold',
+    fontFamily: 'FredokaOne-Regular',
+    fontSize: wp('4%'),
+    color: '#333',
+    flex: 1,
+    flexWrap: 'wrap',
+  },
+  deleteButton: {
+    backgroundColor: 'red',
+    padding: wp('2%'),
+    borderRadius: 5,
+    marginLeft: wp('2%'),
+  },
+  deleteButtonText: {
+    color: '#fff',
+    fontFamily: 'FredokaOne-Regular',
+    fontSize: wp('3.5%'),
   },
 });
 

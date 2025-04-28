@@ -1,25 +1,35 @@
-// fetchQuestions.ts
-import { SupabaseClient } from '@supabase/supabase-js';
-import { supabase } from './supabase'; 
+//fetchquestions.ts
+import { supabase } from './supabase';
 
-export async function fetchQuestions(childId: string) {
-  if (!childId) throw new Error('Child ID is required');
+// Define the Question type to help with type safety
+export interface Question {
+  id: string;
+  question: string;
+  options: string[]; // Assuming 'options' is an array of strings
+  correct_answer: string;
+  parent_id: string; // This should be a string referencing the user_id from profiles
+}
+
+export async function fetchQuestions(parentId: string): Promise<Question[]> {
+  if (!parentId) {
+    throw new Error('Parent ID is required'); // Ensure parentId is not null
+  }
 
   try {
     const { data, error } = await supabase
       .from('questions')
-      .select('*')
-      .eq('child_id', childId);
+      .select('*') // Consider specifying exact columns if necessary
+      .eq('parent_id', parentId);  // Fetch questions based on parent_id
 
     if (error) {
       console.error('Error fetching questions:', error);
-      //  Be more specific in the error message.
       throw new Error(`Failed to fetch questions: ${error.message}`);
     }
 
-    return data;
+    // Return an empty array if data is null or undefined
+    return data ? (data as Question[]) : []; 
   } catch (error) {
-    console.error('Error fetching questions:', error);
-    throw error; // Re-throw for handling outside the function.  Crucial
+    console.error('Error in fetchQuestions:', error); // Log the error
+    throw error; // Re-throw for handling outside the function
   }
 }
