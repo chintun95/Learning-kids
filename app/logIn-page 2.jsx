@@ -1,5 +1,3 @@
-//login
-
 import React, { useState, memo } from 'react'
 import { StyleSheet, Text, View, ImageBackground,PixelRatio, TextInput,
    Pressable,TouchableOpacity, ActivityIndicator, Alert } from 'react-native'
@@ -13,14 +11,10 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { widthPercentageToDP as wp, heightPercentageToDP as hp } from 'react-native-responsive-screen';
 import { getAuth, signInWithEmailAndPassword } from 'firebase/auth';
 import { app, auth } from '../firebase';
-import startFlappyGame from './Games/flappy';
-import { useNavigation } from '@react-navigation/native';
-
 
 
 
 const LogInPage = memo(() => {
-  const navigation = useNavigation();
 
   //Font
   const [fontsLoaded] = useFonts({
@@ -47,7 +41,6 @@ const LogInPage = memo(() => {
         .then((userCredential) => {
           const user = userCredential.user;
           Alert.alert('Login successful!', `Hello, ${user.email}`);
-          navigation.navigate('ProfilePage');
         })
         .catch((error) => {
           Alert.alert('Login failed!', error.message);
@@ -123,7 +116,7 @@ const LogInPage = memo(() => {
             />
           </Pressable>
         </Link>
-        <Link  href="/profile" asChild>
+        <Link  href="/" asChild>
           <Pressable>
             <Image
               source={require("@/assets/images/apple-icon.png")}

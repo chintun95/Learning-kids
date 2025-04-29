@@ -1,5 +1,5 @@
 //for snake
-import { Coordinate } from "@/types/types";
+import { Coordinate } from "../types/types";
 
 export const checkGameOver = (
     snakeHead: Coordinate,

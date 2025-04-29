@@ -5,8 +5,10 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import SnakeGame from './SnakeGame';  
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-
+import GamePage from './game-page';  
 import LogInPage from './logIn-page';
+import ProfilePage from './profile';
+
 const Stack = createStackNavigator();
 
 const App: React.FC = () => (
@@ -14,7 +16,9 @@ const App: React.FC = () => (
     <NavigationContainer>
         <Stack.Navigator initialRouteName="LogInPage">
           <Stack.Screen name="LogInPage" component={LogInPage} /> 
+          <Stack.Screen name="GamePage" component={GamePage} /> 
           <Stack.Screen name="SnakeGame" component={SnakeGame} />
+          <Stack.Screen name="ProfilePage" component={ProfilePage} />
         </Stack.Navigator>
       </NavigationContainer>
 
