@@ -7,7 +7,7 @@ import SnakeGame from './SnakeGame';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import GamePage from './game-page';  
 import LogInPage from './logIn-page';
-import ProfilePage from './profile';
+import ProfilePage from './edit-profile';
 
 const Stack = createStackNavigator();
 
