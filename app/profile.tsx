@@ -67,7 +67,7 @@ const Profile: React.FC<ProfileScreenProps> = ({ route }) => {
   };
 
   const handleEditProfile = () => {
-    navigation.navigate('EditProfile');
+    navigation.navigate('edit-profile');
   };
 
   const handleGames = () => {

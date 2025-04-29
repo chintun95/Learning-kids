@@ -47,7 +47,7 @@ const LogInPage = memo(() => {
         .then((userCredential) => {
           const user = userCredential.user;
           Alert.alert('Login successful!', `Hello, ${user.email}`);
-          navigation.navigate('ProfilePage');
+          navigation.navigate('profile');
         })
         .catch((error) => {
           Alert.alert('Login failed!', error.message);
