@@ -2,19 +2,45 @@
 
 import { StatusBar } from "expo-status-bar";
 import React, {useEffect, useState} from "react";
-import { View, Text, TouchableOpacity } from "react-native";
+import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
 import { GameEngine } from "react-native-game-engine";
 import getGameEntities from "../../entities/games-index";
 import Physics from '../../entities/flappy/physics';
+import { 
+    QuestionScreen, 
+    getRandomQuestion, 
+    checkAnswer, 
+    calculateBonus, 
+    shouldShowQuestion 
+  } from '../../app/QuestionsManager';
 
 export default function startFlappyGame() {
     const [running, setRunning] = useState(false)
     const [gameEngine, setGameEngine] = useState(null)
     const [currentPoints, setCurrentPoints] = useState(0)
+    const [gameState, setGameState] = useState("menu");
+    const [currentQuestion, setCurrentQuestion] = useState(null);
 
     useEffect(() => {
         setRunning(false)
+        setGameState("menu");
     }, [])
+
+    //function to handle answers
+    const handleAnswer = (selectedAnswer) => {
+        const isCorrect = checkAnswer(currentQuestion, selectedAnswer);
+        const bonusPoints = calculateBonus(isCorrect);
+        
+        // Add bonus points for correct answers
+        if (bonusPoints > 0) {
+            setCurrentPoints(currentPoints + bonusPoints);
+        }
+        
+        // Resume game
+        setGameState("running");
+        setRunning(true);
+        setCurrentQuestion(null);
+    };
 
     return (
         <View style={{flex: 1}}>
@@ -28,10 +54,19 @@ export default function startFlappyGame() {
                     switch(e.type){
                         case 'game_over':
                             setRunning(false)
+                            setGameState("game_over")
                             gameEngine.stop()
                             break;
                         case 'new_point':
-                            setCurrentPoints(currentPoints + 1)
+                            const newPoints = currentPoints + 1
+                            setCurrentPoints(newPoints)
+
+                            //show question every 5 points (make this variable at later date)
+                            if(shouldShowQuestion(newPoints)) {
+                                setRunning(false)
+                                setGameState("question")
+                                setCurrentQuestion(getRandomQuestion());
+                            }
                             break;
                     }
                 }}
@@ -39,20 +74,76 @@ export default function startFlappyGame() {
             >
                 <StatusBar style="auto" hidden={true}/>
             </GameEngine>
-            {!running ? 
-                <View style={{flex: 1, justifyContent: 'center', alignItems: 'center'}}>
-                    <TouchableOpacity style={{backgroundColor: 'black', paddingHorizontal: 30, paddingVertical: 10}}
+            {/* Menu Screen */}
+            {gameState === "menu" && (
+                <View style={styles.menuContainer}>
+                    <TouchableOpacity 
+                        style={styles.startButton}
                         onPress={() => {
-                            setCurrentPoints(0)
-                            setRunning(true)
-                            gameEngine.swap(getGameEntities('flappy'))
-                        }}>
-                        <Text style={{fontWeight: 'bold', color: 'white', fontSize: 30}}>
-                            START GAME
-                        </Text>
+                            setCurrentPoints(0);
+                            setRunning(true);
+                            setGameState("running");
+                            gameEngine.swap(getGameEntities('flappy'));
+                        }}
+                    >
+                        <Text style={styles.buttonText}>START GAME</Text>
                     </TouchableOpacity>
-
-                </View> : null}
+                </View>
+            )}
+            
+            {/* Game Over Screen */}
+            {gameState === "game_over" && (
+                <View style={styles.menuContainer}>
+                    <Text style={styles.gameOverText}>Game Over!</Text>
+                    <Text style={styles.scoreText}>Score: {currentPoints}</Text>
+                    <TouchableOpacity 
+                        style={styles.startButton}
+                        onPress={() => {
+                            setCurrentPoints(0);
+                            setRunning(true);
+                            setGameState("running");
+                            gameEngine.swap(getGameEntities('flappy'));
+                        }}
+                    >
+                        <Text style={styles.buttonText}>PLAY AGAIN</Text>
+                    </TouchableOpacity>
+                </View>
+            )}
+            
+            {/* Question Screen */}
+            {gameState === "question" && (
+                <QuestionScreen 
+                    currentQuestion={currentQuestion} 
+                    onAnswerSelected={handleAnswer} 
+                />
+            )}
         </View>
     );
 }
+
+const styles = StyleSheet.create({
+    menuContainer: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    startButton: {
+        backgroundColor: 'black',
+        paddingHorizontal: 30,
+        paddingVertical: 10,
+    },
+    buttonText: {
+        fontWeight: 'bold',
+        color: 'white',
+        fontSize: 30,
+    },
+    gameOverText: {
+        fontSize: 40,
+        fontWeight: 'bold',
+        marginBottom: 20,
+    },
+    scoreText: {
+        fontSize: 30,
+        marginBottom: 20,
+    },
+});
