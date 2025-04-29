@@ -14,7 +14,7 @@ const Physics = (entities, {touches, time, dispatch}) => {
     .forEach(t => {
         Matter.Body.setVelocity(entities.Bird.body, {
             x:0,
-            y:-8
+            y:-7
         })
     })
 
@@ -31,7 +31,8 @@ const Physics = (entities, {touches, time, dispatch}) => {
             const pipeSizePos = getPipeSizePosPair(windowWidth * 0.9);
 
             Matter.Body.setPosition(entities[`ObstacleTop${index}`].body, pipeSizePos.pipeTop.pos)
-            Matter.Body.setPosition(entities[`ObstacleBottom${index}`].body, pipeSizePos.pipeBottom.pos) 
+            Matter.Body.setPosition(entities[`ObstacleBottom${index}`].body, pipeSizePos.pipeBottom.pos)
+            entities[`ObstacleTop${index}`].point = false
         }
 
         Matter.Body.translate(entities[`ObstacleTop${index}`].body, {x: -3, y: 0})
