@@ -8,26 +8,21 @@ import Food from './Food';
 import { checkEatsFood } from './utils/checkEatsFood';
 import { randomFoodPosition } from './utils/randomFoodPosition';
 import Header from './Header';
-import { fetchQuestions } from '../backend/fetchquestions'; 
-import { supabase } from '../backend/supabase';
 import QuestionIcon from './QuestionIcon'; 
-import { Direction,Coordinate,GestureEventType } from './types/types';
-
+import { Direction, Coordinate, GestureEventType } from './types/types';
+import { fetchQuestions } from '../backend/fetchquestions';  
+import { fetchUserProfile } from '../backend/fetchUserProfile';  
 const SNAKE_INITIAL_POSITION = [{ x: 5, y: 5 }];
 const FOOD_INITIAL_POSITION = { x: 5, y: 20 };
 const GAME_BOUNDS = { xMin: 0, xMax: 36, yMin: 0, yMax: 63 };
 const MOVE_INTERVAL = 50;
 const SCORE_INCREMENT = 10;
 
-const primaryColor = 'blue'; 
-const backgroundColor = 'gray'; 
+const primaryColor = '#00BFFF';
+const backgroundColor = '#B2EBF2';
+ 
 
-interface SnakeGameProps {
-    navigation: any;
-}
-
-function SnakeGame({ navigation }: SnakeGameProps): JSX.Element { 
-    const [childId, setChildId] = useState<string | null>(null); 
+function SnakeGame({ navigation }: { navigation: any }): JSX.Element {
     const [direction, setDirection] = useState<Direction>(Direction.Right);
     const [snake, setSnake] = useState<Coordinate[]>(SNAKE_INITIAL_POSITION);
     const [food, setFood] = useState<Coordinate>(FOOD_INITIAL_POSITION);
@@ -36,42 +31,41 @@ function SnakeGame({ navigation }: SnakeGameProps): JSX.Element {
     const [isPaused, setIsPaused] = useState<boolean>(false);
     const [countdown, setCountdown] = useState<number>(3); 
     const [foodEaten, setFoodEaten] = useState<number>(0); 
-    const [questions, setQuestions] = useState<any[]>([]); 
     const [currentQuestion, setCurrentQuestion] = useState<any>(null);
     const [isQuestionVisible, setIsQuestionVisible] = useState<boolean>(false); 
     const [showQuestionIcon, setShowQuestionIcon] = useState<boolean>(false);
     const [questionIconPos, setQuestionIconPos] = useState<Coordinate | null>(null);
+    const [userProfile, setUserProfile] = useState<any>(null);
 
+    // Fetch user profile when the component mounts
     useEffect(() => {
-        const fetchChildId = async () => {
-            const { data: authData, error: authError } = await supabase.auth.getUser();
-            if (authError) return console.error('Error fetching user:', authError);
-            const user = authData?.user;
-            if (user) {
-                const { data: childData, error: profileError } = await supabase
-                    .from('profiles')
-                    .select('id') 
-                    .eq('parent_id', user.id);
-                if (profileError) return console.error('Error fetching child ID:', profileError);
-                if (childData && childData.length > 0) setChildId(childData[0].id);
-            }
+        const loadUserProfile = async () => {
+            const profile = await fetchUserProfile();
+            setUserProfile(profile);
         };
-        fetchChildId();
+        loadUserProfile();
     }, []);
 
+    // Fetch questions based on the parent_id when the user profile is logged
     useEffect(() => {
-        if (childId) {
-            const loadQuestions = async () => {
+        const loadQuestions = async () => {
+            if (userProfile) {
                 try {
-                    const fetchedQuestions = await fetchQuestions(childId); 
-                    setQuestions(fetchedQuestions);
+                    console.log('User profile:', userProfile);
+                    const questions = await fetchQuestions(userProfile.user_id);
+                    console.log('Fetched questions:', questions);
+                    if (questions.length > 0) {
+                        const randomIndex = Math.floor(Math.random() * questions.length);
+                        setCurrentQuestion(questions[randomIndex]);
+                    }
                 } catch (error) {
-                    console.error('Error fetching questions:', error);
+                    console.error('Error fetching questions in SnakeGame:', error);
                 }
-            };
-            loadQuestions();
-        }
-    }, [childId]);
+            }
+        };
+    
+        loadQuestions();
+    }, [userProfile]);
 
     useEffect(() => {
         let intervalId: NodeJS.Timeout;
@@ -134,30 +128,20 @@ function SnakeGame({ navigation }: SnakeGameProps): JSX.Element {
     };
 
     const askQuestion = () => {
-        if (questions.length > 0) {
-            const randomIndex = Math.floor(Math.random() * questions.length);
-            setCurrentQuestion(questions[randomIndex]);
-            setIsQuestionVisible(true);
-        }
+        // No need to randomly pick from hardcoded questions, as we're fetching them
+        setIsQuestionVisible(true);
     };
 
     const answerQuestion = (isCorrect: boolean) => {
         setIsQuestionVisible(false);
         setCurrentQuestion(null);
-        if (isCorrect) {
-            Alert.alert('Correct!', 'You got the answer right!');
-        } else {
-            Alert.alert('Incorrect', 'Sorry, that is not correct.');
-        }
-
-        // Start timer before resuming the game
+        Alert.alert(isCorrect ? 'Correct!' : 'Incorrect', isCorrect ? 'You got the answer right!' : 'Sorry, that is not correct.');
         setIsPaused(true);
-        setCountdown(3); // Set countdown to 3 seconds
+        setCountdown(3);
     };
 
     const handleGesture = (event: GestureEventType) => {
         if (isGameOver || isQuestionVisible) return;
-
         const { translationX, translationY } = event.nativeEvent;
         if (Math.abs(translationX) > Math.abs(translationY)) {
             translationX > 0 ? setDirection(Direction.Right) : setDirection(Direction.Left);
@@ -210,18 +194,22 @@ function SnakeGame({ navigation }: SnakeGameProps): JSX.Element {
                         </Text>
                     )}
 
-                    {isQuestionVisible && currentQuestion && (
-                        <View style={styles.questionContainer}>
-                            <Text style={styles.questionText}>{currentQuestion.question}</Text>
-                            {currentQuestion.options.map((option: string, index: number) => (
-                                <Button
-                                    key={index}
-                                    title={option}
-                                    onPress={() => answerQuestion(option === currentQuestion.correct_answer)}
-                                />
-                            ))}
-                        </View>
-                    )}
+{isQuestionVisible && currentQuestion && (
+    <View style={styles.questionContainer}>
+        <Text style={styles.questionText}>{currentQuestion.question}</Text>
+        {currentQuestion.options && typeof currentQuestion.options === 'object' ? (
+            Object.entries(currentQuestion.options).map(([key, option]) => (
+                <Button
+                    key={key}
+                    title={option}
+                    onPress={() => answerQuestion(key === currentQuestion.correct_answer)}
+                />
+            ))
+        ) : (
+            <Text>No options available</Text>
+        )}
+    </View>
+)}
                 </SafeAreaView>
             </PanGestureHandler>
         </GestureHandlerRootView>

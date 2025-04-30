@@ -1,149 +1,187 @@
 /* Flappy Bird Clone Game */
 
-import { StatusBar } from "expo-status-bar";
-import React, {useEffect, useState} from "react";
-import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
-import { GameEngine } from "react-native-game-engine";
-import getGameEntities from "../../entities/games-index";
+
+import { StatusBar } from 'expo-status-bar';
+import React, { useEffect, useRef, useState } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, Animated, Image } from 'react-native';
+import { GameEngine } from 'react-native-game-engine';
+import getGameEntities from '../../entities/games-index';
 import Physics from '../../entities/flappy/physics';
-import { 
-    QuestionScreen, 
-    getRandomQuestion, 
-    checkAnswer, 
-    calculateBonus, 
-    shouldShowQuestion 
-  } from '../../app/QuestionsManager';
+import { Asset } from 'expo-asset';
+import { Audio } from 'expo-av';
 
-export default function startFlappyGame() {
-    const [running, setRunning] = useState(false)
-    const [gameEngine, setGameEngine] = useState(null)
-    const [currentPoints, setCurrentPoints] = useState(0)
-    const [gameState, setGameState] = useState("menu");
-    const [currentQuestion, setCurrentQuestion] = useState(null);
+export default function StartFlappyGame() {
+  const [running, setRunning] = useState(false);
+  const [currentPoints, setCurrentPoints] = useState(0);
+  const [powerUp, setPowerUp] = useState(null);
+  const [powerUpActive, setPowerUpActive] = useState(false);
+  const [difficulty, setDifficulty] = useState(1);
+  const gameEngine = useRef(null);
+  const scoreAnim = useRef(new Animated.Value(1)).current;
+  const backgroundOffset = useRef(new Animated.Value(0)).current;
 
-    useEffect(() => {
-        setRunning(false)
-        setGameState("menu");
-    }, [])
+  const bgLayers = [
+    require("@/assets/images/fb-game-background.png")
+  ];
 
-    //function to handle answers
-    const handleAnswer = (selectedAnswer) => {
-        const isCorrect = checkAnswer(currentQuestion, selectedAnswer);
-        const bonusPoints = calculateBonus(isCorrect);
-        
-        // Add bonus points for correct answers
-        if (bonusPoints > 0) {
-            setCurrentPoints(currentPoints + bonusPoints);
-        }
-        
-        // Resume game
-        setGameState("running");
-        setRunning(true);
-        setCurrentQuestion(null);
-    };
+  useEffect(() => {
+    startParallax();
+  }, []);
 
-    return (
-        <View style={{flex: 1}}>
-            <Text style={{textAlign: 'center', fontSize: 40, fontWeight: 'bold', margin: 20}}>{currentPoints}</Text>
-            <GameEngine
-                ref={(ref) => {setGameEngine(ref)}}
-                systems={[Physics]}
-                entities={getGameEntities('flappy')}
-                running={running}
-                onEvent={(e) => {
-                    switch(e.type){
-                        case 'game_over':
-                            setRunning(false)
-                            setGameState("game_over")
-                            gameEngine.stop()
-                            break;
-                        case 'new_point':
-                            const newPoints = currentPoints + 1
-                            setCurrentPoints(newPoints)
+  const startParallax = () => {
+    Animated.loop(
+      Animated.timing(backgroundOffset, {
+        toValue: 1,
+        duration: 10000,
+        useNativeDriver: true,
+      })
+    ).start();
+  };
 
-                            //show question every 5 points (make this variable at later date)
-                            if(shouldShowQuestion(newPoints)) {
-                                setRunning(false)
-                                setGameState("question")
-                                setCurrentQuestion(getRandomQuestion());
-                            }
-                            break;
-                    }
-                }}
-                style={{position: 'absolute', top: 0, bottom: 0, left: 0, right: 0,}}
-            >
-                <StatusBar style="auto" hidden={true}/>
-            </GameEngine>
-            {/* Menu Screen */}
-            {gameState === "menu" && (
-                <View style={styles.menuContainer}>
-                    <TouchableOpacity 
-                        style={styles.startButton}
-                        onPress={() => {
-                            setCurrentPoints(0);
-                            setRunning(true);
-                            setGameState("running");
-                            gameEngine.swap(getGameEntities('flappy'));
-                        }}
-                    >
-                        <Text style={styles.buttonText}>START GAME</Text>
-                    </TouchableOpacity>
-                </View>
-            )}
-            
-            {/* Game Over Screen */}
-            {gameState === "game_over" && (
-                <View style={styles.menuContainer}>
-                    <Text style={styles.gameOverText}>Game Over!</Text>
-                    <Text style={styles.scoreText}>Score: {currentPoints}</Text>
-                    <TouchableOpacity 
-                        style={styles.startButton}
-                        onPress={() => {
-                            setCurrentPoints(0);
-                            setRunning(true);
-                            setGameState("running");
-                            gameEngine.swap(getGameEntities('flappy'));
-                        }}
-                    >
-                        <Text style={styles.buttonText}>PLAY AGAIN</Text>
-                    </TouchableOpacity>
-                </View>
-            )}
-            
-            {/* Question Screen */}
-            {gameState === "question" && (
-                <QuestionScreen 
-                    currentQuestion={currentQuestion} 
-                    onAnswerSelected={handleAnswer} 
-                />
-            )}
+  const spawnPowerUp = () => {
+    if (!powerUpActive) {
+      const types = ['double', 'shield'];
+      const selected = types[Math.floor(Math.random() * types.length)];
+      setPowerUp(selected);
+      setPowerUpActive(true);
+      setTimeout(() => {
+        setPowerUp(null);
+        setPowerUpActive(false);
+      }, 10000);
+    }
+  };
+
+  const handleGameEvent = (e) => {
+    if (e.type === 'game_over') {
+      setRunning(false);
+      gameEngine.current?.stop();
+    } else if (e.type === 'new_point') {
+      const newScore = currentPoints + (powerUp === 'double' ? 2 : 1);
+      setCurrentPoints(newScore);
+      scoreAnim.setValue(1.5);
+      Animated.spring(scoreAnim, { toValue: 1, useNativeDriver: true }).start();
+      if (newScore % 5 === 0) setDifficulty((prev) => prev + 1);
+      if (newScore % 7 === 0) spawnPowerUp();
+    }
+  };
+
+  const handleStartGame = () => {
+    setCurrentPoints(0);
+    setDifficulty(1);
+    setPowerUp(null);
+    setPowerUpActive(false);
+    setRunning(true);
+    gameEngine.current?.swap(getGameEntities('flappy', difficulty));
+  };
+
+  return (
+    <View style={styles.container}>
+      {bgLayers.map((src, idx) => (
+        <Animated.Image
+          key={idx}
+          source={src}
+          resizeMode="repeat"
+          style={[
+            styles.bgLayer,
+            {
+              zIndex: -idx,
+              transform: [
+                {
+                  translateX: backgroundOffset.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0, -50 * (idx + 1)],
+                  }),
+                },
+              ],
+            },
+          ]}
+        />
+      ))}
+
+      <Animated.Text style={[styles.scoreText, { transform: [{ scale: scoreAnim }] }]}>
+        {currentPoints}
+      </Animated.Text>
+
+      {powerUp && (
+        <Text style={styles.powerUpText}>🔹 Power-Up: {powerUp.toUpperCase()} 🔹</Text>
+      )}
+
+      <GameEngine
+        ref={(ref) => (gameEngine.current = ref)}
+        systems={[Physics]}
+        entities={getGameEntities('flappy', difficulty)}
+        running={running}
+        onEvent={handleGameEvent}
+        style={styles.gameContainer}
+      >
+        <StatusBar hidden={true} />
+      </GameEngine>
+
+      {!running && (
+        <View style={styles.overlay}>
+          <TouchableOpacity style={styles.startButton} onPress={handleStartGame}>
+            <Text style={styles.startButtonText}>START GAME</Text>
+          </TouchableOpacity>
         </View>
-    );
+      )}
+    </View>
+  );
 }
 
 const styles = StyleSheet.create({
-    menuContainer: {
-        flex: 1,
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
-    startButton: {
-        backgroundColor: 'black',
-        paddingHorizontal: 30,
-        paddingVertical: 10,
-    },
-    buttonText: {
-        fontWeight: 'bold',
-        color: 'white',
-        fontSize: 30,
-    },
-    gameOverText: {
-        fontSize: 40,
-        fontWeight: 'bold',
-        marginBottom: 20,
-    },
-    scoreText: {
-        fontSize: 30,
-        marginBottom: 20,
-    },
+  container: {
+    flex: 1,
+    backgroundColor: '#87CEFA',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  gameContainer: {
+    position: 'absolute',
+    top: 0, bottom: 0, left: 0, right: 0,
+  },
+  bgLayer: {
+    position: 'absolute',
+    top: 0, left: 0,
+    width: '200%',
+    height: '100%',
+    opacity: 0.6,
+  },
+  scoreText: {
+    position: 'absolute',
+    top: 60,
+    fontSize: 42,
+    fontWeight: 'bold',
+    color: '#fff',
+    zIndex: 2,
+  },
+  powerUpText: {
+    position: 'absolute',
+    top: 110,
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#ffff00',
+    backgroundColor: '#000',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    zIndex: 2,
+  },
+  overlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  startButton: {
+    backgroundColor: '#222',
+    paddingHorizontal: 40,
+    paddingVertical: 18,
+    borderRadius: 14,
+    elevation: 10,
+  },
+  startButtonText: {
+    color: '#fff',
+    fontWeight: 'bold',
+    fontSize: 26,
+    letterSpacing: 1.2,
+  },
 });

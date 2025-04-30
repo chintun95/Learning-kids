@@ -27,7 +27,13 @@ export async function fetchQuestions(parentId: string): Promise<Question[]> {
     }
 
     // Return an empty array if data is null or undefined
-    return data ? (data as Question[]) : []; 
+    if (data) {
+      console.log('Raw questions data from supabase:', data);
+      // Since options is JSONB, it should already be parsed as an array
+      // Just return data as is
+      return data as Question[];
+    }
+    return [];
   } catch (error) {
     console.error('Error in fetchQuestions:', error); // Log the error
     throw error; // Re-throw for handling outside the function

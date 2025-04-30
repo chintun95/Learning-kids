@@ -7,6 +7,7 @@ import { useFonts } from 'expo-font';
 import { widthPercentageToDP as wp, heightPercentageToDP as hp } from 'react-native-responsive-screen';
 
 import Flappy from './Games/flappy';
+import Snake from './SnakeGame';
 
 const GamesTemp = memo(() => {
   const [fontsLoaded] = useFonts({
@@ -27,9 +28,8 @@ const GamesTemp = memo(() => {
     switch (selectedGame) {
       case 'flappy':
         return <Flappy />;
-      // Future games:
-      // case 'Snake':
-      //   return <MemoryGame />;
+      case 'Snake':
+        return <Snake />;
       // case 'puzzle':
       //   return <PuzzleGame />;
       // case 'math':
@@ -55,7 +55,7 @@ const GamesTemp = memo(() => {
         </Pressable>
 
         {/* Placeholder Buttons for More Games */}
-        <Pressable onPress={() => {}} style={styles.gameButton}>
+        <Pressable onPress={() => handleGameSelect('Snake')} style={styles.gameButton}>
           <Image source={require('@/assets/images/snake.png')} style={styles.icon} />
           <Text style={styles.gameText}>Snake</Text>
         </Pressable>

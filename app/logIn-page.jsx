@@ -213,7 +213,7 @@ const styles = StyleSheet.create({
   },
   button: {
     position: 'absolute',
-    bottom: hp('29%'), // Moves button lower on bigger screens
+    bottom: hp('25%'), // Moves button lower on bigger screens
     width: wp('50%'),
     height: hp('7%'),
     borderRadius: 30,
@@ -222,6 +222,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#D9D9D9',
     justifyContent: 'center',
     alignItems: 'center',
+    alignSelf: 'center',
     shadowColor: '#000',
     shadowOpacity: 0.2,
     shadowOffset: { width: 2, height: 4 },
