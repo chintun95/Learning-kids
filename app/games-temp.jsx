@@ -4,6 +4,7 @@ import { StyleSheet, Text, View, Pressable, ScrollView } from 'react-native';
 import { Image } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFonts } from 'expo-font';
+import { useRouter } from 'expo-router';
 import { widthPercentageToDP as wp, heightPercentageToDP as hp } from 'react-native-responsive-screen';
 
 import Flappy from './Games/flappy';
@@ -30,6 +31,8 @@ const GamesTemp = memo(() => {
         return <Flappy />;
       case 'Snake':
         return <Snake />;
+      case 'Safety':
+        return router.push('./Games/SafetyQuiz/quiz-session');
       // case 'puzzle':
       //   return <PuzzleGame />;
       // case 'math':
@@ -65,9 +68,9 @@ const GamesTemp = memo(() => {
           <Text style={styles.gameText}>Game 3</Text>
         </Pressable>
 
-        <Pressable onPress={() => {}} style={styles.gameButton}>
-          <Image source={require('@/assets/images/question.png')} style={styles.icon} />
-          <Text style={styles.gameText}>Game 4</Text>
+        <Pressable onPress={() => () => handleGameSelect('Safety')} style={styles.gameButton}>
+          <Image source={require('@/assets/images/saftey-sign.png')} style={styles.icon} />
+          <Text style={styles.gameText}>Saftey Quiz</Text>
         </Pressable>
       </View>
     </SafeAreaView>
