@@ -1,3 +1,5 @@
+//snake animation
+
 import React, { useEffect, useRef } from 'react';
 import { StyleSheet, Animated } from 'react-native';
 import { Fragment } from 'react';

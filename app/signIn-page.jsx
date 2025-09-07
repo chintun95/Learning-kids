@@ -180,6 +180,7 @@ const SignInPage = memo(() => {
                             value={kname}
                             onChangeText={setKname}
                         />
+                        {/* //may remove because kids shouldn't give personal information
                         <Text style={styles.boxLabel}>E-mail:</Text>
                         <TextInput
                             style={styles.inputText}
@@ -190,6 +191,7 @@ const SignInPage = memo(() => {
                             value={kemail}
                             onChangeText={setKemail}
                         />
+                        
                         <Text style={styles.boxLabel}>Phone Number:</Text>
                         <TextInput
                             style={styles.inputText}
@@ -199,6 +201,7 @@ const SignInPage = memo(() => {
                             value={knum}
                             onChangeText={setKnum}
                         />
+                        */}
                         <Text style={styles.boxLabel}>Kids Age:</Text>
                         <TextInput
                             style={styles.inputText}
