@@ -108,14 +108,14 @@ const LogInPage = memo(() => {
       {/* Sign Up Text */}
       <Link  href="/signIn-page" asChild>
           <Pressable style={{position: 'absolute',top: hp('75%')}}>
-            <Text style={styles.otherText} >Don’t have account, Sign In</Text>
+            <Text style={styles.otherText} >Don’t have account, Sign Up</Text>
           </Pressable>
         </Link>
       
       {/* Social Login Icons */}
       <Text style={styles.otherText1}>Or continue with:</Text>
       <View style={styles.iconContainer}>
-        <Link  href="/games-temp" asChild>
+        <Link  href="/games-page" asChild>
           <Pressable>
             <Image
               source={require("@/assets/images/google-icon.png")}
@@ -131,7 +131,7 @@ const LogInPage = memo(() => {
             />
           </Pressable>
         </Link>
-        <Link  href="/SnakeGame" asChild>
+        <Link  href="games-temp" asChild>
           <Pressable>
             <Image
               source={require("@/assets/images/facebook-icon.png")}

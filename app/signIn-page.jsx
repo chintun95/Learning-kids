@@ -1,5 +1,5 @@
-//Sign In Page
-
+//sign up
+// Sign In Page
 import React, { useState, memo } from 'react';
 import {
   StyleSheet,
@@ -49,8 +49,6 @@ const SignInPage = memo(() => {
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
   const [kname, setKname] = useState('');
-  const [kemail, setKemail] = useState('');
-  const [knum, setKnum] = useState('');
   const [kage, setKage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
@@ -108,123 +106,107 @@ const SignInPage = memo(() => {
         <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
           <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
             <ImageBackground source={loginImage} resizeMode="cover" style={styles.image}>
-                <View style={styles.innerContainer}>
-                    {/* Logo */}
-                    <Image source={require("@/assets/images/logo-black.png")} style={styles.logo} />
-                    <View style={{ bottom: hp('25%')}}>
-                        <Text style={styles.text}>Sign In</Text>
 
-                        {/* Parent or Guardians section */}
-                        <Text style={styles.subText}>Parent or Guardian's Information:</Text>
+              {/* Back Arrow */}
+              <View style={styles.backContainer}>
+                <Link href="/" style={styles.backButton}>
+                  <Text style={styles.backText}>← Back</Text>
+                </Link>
+              </View>
 
-                        <View style={styles.boxes}>
+              <View style={styles.innerContainer}>
+                  {/* Logo */}
+                  <Image source={require("@/assets/images/logo-black.png")} style={styles.logo} />
+                  <View style={{ bottom: hp('25%')}}>
+                      <Text style={styles.text}>Sign In</Text>
+
+                      {/* Parent or Guardians section */}
+                      <Text style={styles.subText}>Parent or Guardian's Information:</Text>
+
+                      <View style={styles.boxes}>
                         <Text style={styles.boxLabel}>Full Name:</Text>
                         <TextInput
-                            style={styles.inputText}
-                            placeholder="Full name..."
-                            placeholderTextColor="#aaa"
-                            keyboardType="default"
-                            autoCapitalize="words"
-                            value={name}
-                            onChangeText={setName}
+                          style={styles.inputText}
+                          placeholder="Full name..."
+                          placeholderTextColor="#aaa"
+                          keyboardType="default"
+                          autoCapitalize="words"
+                          value={name}
+                          onChangeText={setName}
                         />
                         <Text style={styles.boxLabel}>E-mail:</Text>
                         <TextInput
-                            style={styles.inputText}
-                            placeholder="E-mail..."
-                            placeholderTextColor="#aaa"
-                            keyboardType="email-address"
-                            autoCapitalize="none"
-                            value={email}
-                            onChangeText={setEmail}
+                          style={styles.inputText}
+                          placeholder="E-mail..."
+                          placeholderTextColor="#aaa"
+                          keyboardType="email-address"
+                          autoCapitalize="none"
+                          value={email}
+                          onChangeText={setEmail}
                         />
                         <Text style={styles.boxLabel}>Phone Number:</Text>
                         <TextInput
-                            style={styles.inputText}
-                            placeholder="Phone number..."
-                            placeholderTextColor="#aaa"
-                            keyboardType="phone-pad"
-                            value={phone}
-                            onChangeText={setPhone}
+                          style={styles.inputText}
+                          placeholder="Phone number..."
+                          placeholderTextColor="#aaa"
+                          keyboardType="phone-pad"
+                          value={phone}
+                          onChangeText={setPhone}
                         />
                         <Text style={styles.boxLabel}>Password:</Text>
                         <TextInput
-                            style={styles.inputText}
-                            placeholder="Enter password..."
-                            placeholderTextColor="#aaa"
-                            secureTextEntry={true}
-                            value={password}
-                            onChangeText={setPassword}
+                          style={styles.inputText}
+                          placeholder="Enter password..."
+                          placeholderTextColor="#aaa"
+                          secureTextEntry={true}
+                          value={password}
+                          onChangeText={setPassword}
                         />
                         <Text style={styles.boxLabel}>Confirm Password:</Text>
                         <TextInput
-                            style={styles.inputText}
-                            placeholder="Confirm password..."
-                            placeholderTextColor="#aaa"
-                            secureTextEntry={true}
-                            value={confirm}
-                            onChangeText={setConfirm}
+                          style={styles.inputText}
+                          placeholder="Confirm password..."
+                          placeholderTextColor="#aaa"
+                          secureTextEntry={true}
+                          value={confirm}
+                          onChangeText={setConfirm}
                         />
-                    </View>
-
-
-                        {/* Kid’s section */}
-                        <Text style={styles.subText}>Kid’s Information:</Text>
-                        <Text style={styles.boxLabel}>Full Name:</Text>
-                        <TextInput
-                            style={styles.inputText}
-                            placeholder="Full name..."
-                            placeholderTextColor="#aaa"
-                            keyboardType="default"
-                            autoCapitalize="words"
-                            value={kname}
-                            onChangeText={setKname}
-                        />
-                        {/* //may remove because kids shouldn't give personal information
-                        <Text style={styles.boxLabel}>E-mail:</Text>
-                        <TextInput
-                            style={styles.inputText}
-                            placeholder="E-mail..."
-                            placeholderTextColor="#aaa"
-                            keyboardType="email-address"
-                            autoCapitalize="none"
-                            value={kemail}
-                            onChangeText={setKemail}
-                        />
-                        
-                        <Text style={styles.boxLabel}>Phone Number:</Text>
-                        <TextInput
-                            style={styles.inputText}
-                            placeholder="Phone number..."
-                            placeholderTextColor="#aaa"
-                            keyboardType="phone-pad"
-                            value={knum}
-                            onChangeText={setKnum}
-                        />
-                        */}
-                        <Text style={styles.boxLabel}>Kids Age:</Text>
-                        <TextInput
-                            style={styles.inputText}
-                            placeholder="Age..."
-                            placeholderTextColor="#aaa"
-                            keyboardType='number-pad'
-                            value={kage}
-                            onChangeText={setKage}
-                        />
-
-                    </View>
-
-                    <TouchableOpacity onPress={handleSignUp}>
-                      <View style={styles.button}>
-                        <Text style={styles.buttonText}>
-                          {isLoading ? "Signing up..." : "Sign Up"}
-                        </Text>
                       </View>
-                    </TouchableOpacity>
 
-                    {/* Footer */}
-                    <Text style={styles.footer}>By continuing, you accept our Terms of Service.</Text>
-                </View>
+                      {/* Kid’s section */}
+                      <Text style={styles.subText}>Kid’s Information:</Text>
+                      <Text style={styles.boxLabel}>Full Name:</Text>
+                      <TextInput
+                        style={styles.inputText}
+                        placeholder="Full name..."
+                        placeholderTextColor="#aaa"
+                        keyboardType="default"
+                        autoCapitalize="words"
+                        value={kname}
+                        onChangeText={setKname}
+                      />
+                      <Text style={styles.boxLabel}>Kids Age:</Text>
+                      <TextInput
+                        style={styles.inputText}
+                        placeholder="Age..."
+                        placeholderTextColor="#aaa"
+                        keyboardType='number-pad'
+                        value={kage}
+                        onChangeText={setKage}
+                      />
+                  </View>
+
+                  <TouchableOpacity onPress={handleSignUp}>
+                    <View style={styles.button}>
+                      <Text style={styles.buttonText}>
+                        {isLoading ? "Signing up..." : "Sign Up"}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+
+                  {/* Footer */}
+                  <Text style={styles.footer}>By continuing, you accept our Terms of Service.</Text>
+              </View>
             </ImageBackground>
           </ScrollView>
         </TouchableWithoutFeedback>
@@ -340,6 +322,23 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     color: '#0A0A0A',
     fontSize: wp('3.2%'),
+    fontFamily: 'FredokaOne-Regular',
+  },
+  backContainer: {
+    width: '100%',
+    paddingHorizontal: wp('5%'),
+    paddingTop: hp('5%'),
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    zIndex: 10,
+  },
+  backButton: {
+    padding: 5,
+  },
+  backText: {
+    fontSize: wp('5%'),
+    color: '#000',
     fontFamily: 'FredokaOne-Regular',
   },
 });

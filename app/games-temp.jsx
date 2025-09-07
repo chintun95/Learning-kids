@@ -1,6 +1,6 @@
 // app/games-temp.jsx
 import React, { memo, useState } from 'react';
-import { StyleSheet, Text, View, Pressable, ScrollView } from 'react-native';
+import { StyleSheet, Text, View, Pressable } from 'react-native';
 import { Image } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFonts } from 'expo-font';
@@ -16,6 +16,7 @@ const GamesTemp = memo(() => {
   });
 
   const [selectedGame, setSelectedGame] = useState(null);
+  const router = useRouter();
 
   if (!fontsLoaded) {
     return <Text>Loading fonts...</Text>;
@@ -25,25 +26,10 @@ const GamesTemp = memo(() => {
     setSelectedGame(gameKey);
   };
 
-  const renderGame = () => {
-    switch (selectedGame) {
-      case 'flappy':
-        return <Flappy />;
-      case 'Snake':
-        return <Snake />;
-      case 'Safety':
-        return router.push('./Games/SafetyQuiz/quiz-session');
-      // case 'puzzle':
-      //   return <PuzzleGame />;
-      // case 'math':
-      //   return <MathGame />;
-      default:
-        return null;
-    }
-  };
-
-  if (selectedGame) {
-    return <SafeAreaView style={{ flex: 1 }}>{renderGame()}</SafeAreaView>;
+  if (selectedGame === 'flappy') {
+    return <SafeAreaView style={{ flex: 1 }}><Flappy /></SafeAreaView>;
+  } else if (selectedGame === 'Snake') {
+    return <SafeAreaView style={{ flex: 1 }}><Snake /></SafeAreaView>;
   }
 
   return (
@@ -51,26 +37,28 @@ const GamesTemp = memo(() => {
       <Text style={styles.title}>Select a Game!</Text>
 
       <View style={styles.grid}>
-        {/* Flappy Game Button */}
+        {/* Flappy Game */}
         <Pressable onPress={() => handleGameSelect('flappy')} style={styles.gameButton}>
           <Image source={require('@/assets/images/kiwi.png')} style={styles.icon} />
           <Text style={styles.gameText}>Flappy</Text>
         </Pressable>
 
-        {/* Placeholder Buttons for More Games */}
+        {/* Snake Game */}
         <Pressable onPress={() => handleGameSelect('Snake')} style={styles.gameButton}>
           <Image source={require('@/assets/images/snake.png')} style={styles.icon} />
           <Text style={styles.gameText}>Snake</Text>
         </Pressable>
 
-        <Pressable onPress={() => {}} style={styles.gameButton}>
+        {/* Game 3 Placeholder */}
+        <Pressable style={styles.gameButton}>
           <Image source={require('@/assets/images/watermelon.png')} style={styles.icon} />
           <Text style={styles.gameText}>Game 3</Text>
         </Pressable>
 
-        <Pressable onPress={() => () => handleGameSelect('Safety')} style={styles.gameButton}>
+        {/* QuizScreen */}
+        <Pressable onPress={() => router.push('./QuizScreen')} style={styles.gameButton}>
           <Image source={require('@/assets/images/saftey-sign.png')} style={styles.icon} />
-          <Text style={styles.gameText}>Saftey Quiz</Text>
+          <Text style={styles.gameText}>Quiz</Text>
         </Pressable>
       </View>
     </SafeAreaView>
