@@ -14,7 +14,7 @@ import { fetchQuestions } from '../backend/fetchquestions';
 import { fetchUserProfile } from '../backend/fetchUserProfile';  
 const SNAKE_INITIAL_POSITION = [{ x: 5, y: 5 }];
 const FOOD_INITIAL_POSITION = { x: 5, y: 20 };
-const GAME_BOUNDS = { xMin: 0, xMax: 36, yMin: 0, yMax: 63 };
+const GAME_BOUNDS = { xMin: 0, xMax: 36, yMin: 0, yMax: 57.2 };
 const MOVE_INTERVAL = 50;
 const SCORE_INCREMENT = 10;
 
