@@ -1,8 +1,10 @@
 import React, { memo } from 'react';
-import { StyleSheet, Text, View, ImageBackground, FlatList, TouchableOpacity, Alert } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { StyleSheet, Text, View, ImageBackground, FlatList, TouchableOpacity, Pressable, Alert } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
+import { useNavigation } from '@react-navigation/native';
 import { useFonts } from "expo-font";
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { widthPercentageToDP as wp, heightPercentageToDP as hp } from 'react-native-responsive-screen';
 import shopBg from '@/assets/images/app-background.png';
 
@@ -13,6 +15,8 @@ const shopItems = [
 ];
 
 const ShopPage = memo(() => {
+  const navigation = useNavigation();
+  const insets = useSafeAreaInsets();
   const [fontsLoaded] = useFonts({
     "FredokaOne-Regular": require("@/assets/fonts/FredokaOne-Regular.ttf"),
   });
@@ -40,6 +44,20 @@ const ShopPage = memo(() => {
       <ImageBackground source={shopBg} resizeMode="cover" style={styles.background} />
 
       <Text style={styles.header}>Shop</Text>
+
+      {/* back button */}
+      <View style={[styles.backContainer, { top: insets.top + hp('1%') }]}>
+        <Pressable
+          style={styles.backButton}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          onPress={() => (navigation.canGoBack() ? navigation.goBack() : navigation.navigate('LogInPage'))}
+          accessibilityRole="button"
+          accessibilityLabel="Go back"
+        >
+          <Ionicons name="chevron-back" size={wp('6.2%')} color="#000" />
+          <Text style={styles.backLabel}>Back</Text>
+        </Pressable>
+      </View>
 
       <FlatList
         data={shopItems}
@@ -109,6 +127,10 @@ const styles = StyleSheet.create({
     fontSize: wp('4.5%'),
     color: '#000',
   },
+  // back
+  backContainer: { position: 'absolute', left: wp('4%'), zIndex: 10 },
+  backButton: { flexDirection: 'row', alignItems: 'center', paddingVertical: 6, paddingHorizontal: 8, minWidth: 48 },
+  backLabel: { marginLeft: 2, fontFamily: 'FredokaOne-Regular', fontSize: wp('4.2%'), color: '#000' },
 });
 
 export default ShopPage;

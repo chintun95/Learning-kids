@@ -1,7 +1,7 @@
 //for snake
-import { SafeAreaView, StyleSheet, Text, View } from "react-native";
-import { Coordinate } from "./types/types";
-import React from 'react'; 
+// Food.tsx
+import React, { useEffect, useRef } from 'react';
+import { Animated, View } from 'react-native';
 
 /*
 function getRandomFruitEmoji() {
@@ -11,15 +11,27 @@ function getRandomFruitEmoji() {
 }
 */
 
-export default function Food({ x, y }: Coordinate): JSX.Element {
-  return <Text style={[{ top: y * 10, left: x * 10 }, styles.food]}>🪙</Text>;
+const CELL = 10;
+export default function Food({ x, y }: { x: number; y: number }) {
+  const s = useRef(new Animated.Value(0.6)).current;
+  useEffect(() => {
+    s.setValue(0.6);
+    Animated.spring(s, { toValue: 1, friction: 4, useNativeDriver: true }).start();
+  }, [x, y]);
+  return (
+    <Animated.View
+      style={{
+        position: 'absolute',
+        left: x * CELL,
+        top: y * CELL,
+        width: 10,
+        height: 10,
+        borderRadius: 5,
+        backgroundColor: '#ff5252',
+        borderWidth: 1.5,
+        borderColor: '#9c1212',
+        transform: [{ scale: s }],
+      }}
+    />
+  );
 }
-
-const styles = StyleSheet.create({
-  food: {
-    width: 20,
-    height: 20,
-    borderRadius: 7,
-    position: "absolute",
-  },
-});

@@ -8,8 +8,11 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import SnakeGame from "./SnakeGame";
 import GamePage from "./game-page";
 import LogInPage from "./logIn-page";
-import ProfilePage from "./edit-profile";
+import ProfilePage from "./profile";
 import SignInPage from "./signIn-page";
+import EditProfilePage from "./edit-profile"
+import ShopPage from "./shop"
+import CreateQuestionsPage from "./CreateQuestions"
 
 import { initAnalyticsWeb } from "../firebase";
 
@@ -27,10 +30,14 @@ const App: React.FC = () => {
       <NavigationContainer>
         <Stack.Navigator initialRouteName="LogInPage">
           <Stack.Screen name="LogInPage" component={LogInPage} options={{ headerShown: false }} />
-          <Stack.Screen name="GamePage" component={GamePage} />
-          <Stack.Screen name="SnakeGame" component={SnakeGame} />
-          <Stack.Screen name="ProfilePage" component={ProfilePage} />
           <Stack.Screen name="SignInPage" component={SignInPage} options={{ headerShown: false }} />
+          <Stack.Screen name="ProfilePage" component={ProfilePage} options={{ headerShown: false }} />
+          <Stack.Screen name="GamePage" component={GamePage} options={{ headerShown: false }} />
+          <Stack.Screen name="EditProfilePage" component={EditProfilePage} options={{ headerShown: false }} />
+          <Stack.Screen name="ShopPage" component={ShopPage} options={{ headerShown: false }} />
+          <Stack.Screen name="CreateQuestionsPage" component={CreateQuestionsPage} options={{ headerShown: false }} />
+          
+          <Stack.Screen name="SnakeGame" component={SnakeGame} />
         </Stack.Navigator>
       </NavigationContainer>
     </GestureHandlerRootView>

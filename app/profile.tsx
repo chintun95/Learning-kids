@@ -59,7 +59,7 @@ const Profile: React.FC<ProfileScreenProps> = ({ route }) => {
     signOut(auth)
       .then(() => {
         Alert.alert('Success', 'You have been signed out');
-        navigation.navigate('logIn-page');
+        navigation.navigate("LogInPage");
       })
       .catch(error => {
         Alert.alert('Error', error.message);
@@ -67,15 +67,15 @@ const Profile: React.FC<ProfileScreenProps> = ({ route }) => {
   };
 
   const handleEditProfile = () => {
-    navigation.navigate('edit-profile');
+    navigation.navigate("EditProfilePage");
   };
 
   const handleGames = () => {
-    navigation.navigate('games-temp');
+    navigation.navigate("GamePage");
   };
 
   const handleShop = () => {
-    navigation.navigate('shop'); 
+    navigation.navigate("ShopPage"); 
   };
 
   return (

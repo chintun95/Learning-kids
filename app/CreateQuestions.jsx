@@ -1,14 +1,16 @@
 //CreateQuestions.jsx
 import React, { memo, useState, useEffect } from 'react';
-import { StyleSheet, Text, TextInput, TouchableOpacity, View, ActivityIndicator, FlatList, ScrollView } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { StyleSheet, Text, TextInput, TouchableOpacity, View, Pressable, ActivityIndicator, FlatList, ScrollView } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { supabase } from '../backend/supabase';
 import { getAuth } from 'firebase/auth';
 import { useFonts } from 'expo-font';
 import { widthPercentageToDP as wp, heightPercentageToDP as hp } from 'react-native-responsive-screen';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 
 const CreateQuestions = memo(() => {
+  const insets = useSafeAreaInsets();
   const [fontsLoaded] = useFonts({
     'FredokaOne-Regular': require('@/assets/fonts/FredokaOne-Regular.ttf'),
   });
@@ -122,6 +124,21 @@ const CreateQuestions = memo(() => {
 
   return (
     <SafeAreaView style={styles.container}>
+
+      {/* back button */}
+      <View style={[styles.backContainer, { top: insets.top + hp('1%') }]}>
+        <Pressable
+          style={styles.backButton}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          onPress={() => (navigation.canGoBack() ? navigation.goBack() : navigation.navigate('LogInPage'))}
+          accessibilityRole="button"
+          accessibilityLabel="Go back"
+        >
+          <Ionicons name="chevron-back" size={wp('6.2%')} color="#000" />
+          <Text style={styles.backLabel}>Back</Text>
+        </Pressable>
+      </View>
+
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <Text style={styles.title}>Create Question</Text>
 
@@ -301,6 +318,10 @@ const styles = StyleSheet.create({
     fontFamily: 'FredokaOne-Regular',
     fontSize: wp('3.5%'),
   },
+  // back
+  backContainer: { position: 'absolute', left: wp('4%'), zIndex: 10 },
+  backButton: { flexDirection: 'row', alignItems: 'center', paddingVertical: 6, paddingHorizontal: 8, minWidth: 48 },
+  backLabel: { marginLeft: 2, fontFamily: 'FredokaOne-Regular', fontSize: wp('4.2%'), color: '#000' },
 });
 
 export default CreateQuestions;

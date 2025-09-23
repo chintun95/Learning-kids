@@ -20,8 +20,9 @@ import {
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { Image } from 'expo-image';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFonts } from "expo-font";
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { widthPercentageToDP as wp, heightPercentageToDP as hp } from 'react-native-responsive-screen';
 import { createUserWithEmailAndPassword } from 'firebase/auth';
 import { auth } from '../firebase'; 
@@ -31,6 +32,7 @@ import loginImage from "@/assets/images/app-background.png";
 
 const SignInPage = memo(() => {
   const navigation = useNavigation();
+  const insets = useSafeAreaInsets();
   // Font Loading
   const [fontsLoaded] = useFonts({
     "FredokaOne-Regular": require("@/assets/fonts/FredokaOne-Regular.ttf"),
@@ -109,13 +111,17 @@ const SignInPage = memo(() => {
           <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
             <ImageBackground source={loginImage} resizeMode="cover" style={styles.image}>
 
-              {/* Back Arrow */}
-              <View style={styles.backContainer}>
+              {/* back button */}
+              <View style={[styles.backContainer, { top: insets.top + hp('1%') }]}>
                 <Pressable
                   style={styles.backButton}
-                  onPress={() => navigation.navigate('LogInPage')} // or navigation.navigate('Home')
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  onPress={() => (navigation.canGoBack() ? navigation.goBack() : navigation.navigate('LogInPage'))}
+                  accessibilityRole="button"
+                  accessibilityLabel="Go back"
                 >
-                  <Text style={styles.backText}>← Back</Text>
+                  <Ionicons name="chevron-back" size={wp('6.2%')} color="#000" />
+                  <Text style={styles.backLabel}>Back</Text>
                 </Pressable>
               </View>
 
@@ -329,23 +335,10 @@ const styles = StyleSheet.create({
     fontSize: wp('3.2%'),
     fontFamily: 'FredokaOne-Regular',
   },
-  backContainer: {
-    width: '100%',
-    paddingHorizontal: wp('5%'),
-    paddingTop: hp('5%'),
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    zIndex: 10,
-  },
-  backButton: {
-    padding: 5,
-  },
-  backText: {
-    fontSize: wp('5%'),
-    color: '#000',
-    fontFamily: 'FredokaOne-Regular',
-  },
+  // back
+  backContainer: { position: 'absolute', left: wp('4%'), zIndex: 10 },
+  backButton: { flexDirection: 'row', alignItems: 'center', paddingVertical: 6, paddingHorizontal: 8, minWidth: 48 },
+  backLabel: { marginLeft: 2, fontFamily: 'FredokaOne-Regular', fontSize: wp('4.2%'), color: '#000' },
 });
 
 export default SignInPage;
