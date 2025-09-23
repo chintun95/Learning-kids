@@ -1,9 +1,9 @@
+// app/Header.tsx
+import React, { useEffect } from "react";
 import { TouchableOpacity, StyleSheet, View } from "react-native";
 import { Ionicons, FontAwesome } from "@expo/vector-icons";
-import { Colors } from "react-native/Libraries/NewAppScreen";
 import * as Updates from "expo-updates";
-import { useEffect } from "react";
-import React from "react";
+import { useTheme } from "@react-navigation/native";
 
 interface HeaderProps {
   reloadGame: () => void;
@@ -19,6 +19,7 @@ export default function Header({
   isPaused,
 }: HeaderProps): JSX.Element {
   const { isUpdatePending } = Updates.useUpdates();
+  const { colors } = useTheme(); // colors.primary, colors.background, colors.border, colors.text
 
   useEffect(() => {
     if (isUpdatePending) {
@@ -27,15 +28,20 @@ export default function Header({
   }, [isUpdatePending]);
 
   return (
-    <View style={styles.container}>
+    <View
+      style={[
+        styles.container,
+        { borderColor: colors.primary, backgroundColor: colors.background },
+      ]}
+    >
       {/* Left: Reset Button */}
       <TouchableOpacity onPress={reloadGame}>
-        <Ionicons name="reload-circle" size={35} color={Colors.primary} />
+        <Ionicons name="reload-circle" size={35} color={colors.primary} />
       </TouchableOpacity>
 
       {/* Center: Placeholder Profile Icon */}
       <View>
-        <FontAwesome name="user-circle" size={35} color={Colors.primary} />
+        <FontAwesome name="user-circle" size={35} color={colors.primary} />
       </View>
 
       {/* Right: Pause/Play Button */}
@@ -43,7 +49,7 @@ export default function Header({
         <FontAwesome
           name={isPaused ? "play-circle" : "pause-circle"}
           size={35}
-          color={Colors.primary}
+          color={colors.primary}
         />
       </TouchableOpacity>
 
@@ -59,12 +65,10 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    borderColor: Colors.primary,
     borderWidth: 12,
     borderTopLeftRadius: 30,
     borderTopRightRadius: 30,
     borderBottomWidth: 0,
     padding: 15,
-    backgroundColor: Colors.background,
   },
 });

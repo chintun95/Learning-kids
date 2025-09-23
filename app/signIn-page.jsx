@@ -5,6 +5,7 @@ import {
   StyleSheet,
   Text,
   View,
+  Pressable,
   ImageBackground,
   PixelRatio,
   TextInput,
@@ -17,7 +18,7 @@ import {
   Keyboard,
   Alert
 } from 'react-native';
-import { Link } from 'expo-router';
+import { useNavigation } from '@react-navigation/native';
 import { Image } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFonts } from "expo-font";
@@ -29,6 +30,7 @@ import { supabase } from '../backend/supabase';
 import loginImage from "@/assets/images/app-background.png";
 
 const SignInPage = memo(() => {
+  const navigation = useNavigation();
   // Font Loading
   const [fontsLoaded] = useFonts({
     "FredokaOne-Regular": require("@/assets/fonts/FredokaOne-Regular.ttf"),
@@ -109,9 +111,12 @@ const SignInPage = memo(() => {
 
               {/* Back Arrow */}
               <View style={styles.backContainer}>
-                <Link href="/" style={styles.backButton}>
+                <Pressable
+                  style={styles.backButton}
+                  onPress={() => navigation.navigate('LogInPage')} // or navigation.navigate('Home')
+                >
                   <Text style={styles.backText}>← Back</Text>
-                </Link>
+                </Pressable>
               </View>
 
               <View style={styles.innerContainer}>

@@ -4,15 +4,14 @@ import React, { useState, memo } from 'react'
 import { StyleSheet, Text, View, ImageBackground,PixelRatio, TextInput,
    Pressable,TouchableOpacity, ActivityIndicator, Alert } from 'react-native'
 import loginImage from "@/assets/images/app-background.png"
-import { Link } from 'expo-router';
 import { Image } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFonts } from "expo-font"
 import { MaterialIcons } from '@expo/vector-icons';
 // Responsive Scaling
 import { widthPercentageToDP as wp, heightPercentageToDP as hp } from 'react-native-responsive-screen';
-import { getAuth, signInWithEmailAndPassword } from 'firebase/auth';
-import { app, auth } from '../firebase';
+import { signInWithEmailAndPassword } from 'firebase/auth';
+import { auth } from '../firebase';
 import startFlappyGame from './Games/flappy';
 import { useNavigation } from '@react-navigation/native';
 
@@ -26,10 +25,6 @@ const LogInPage = memo(() => {
   const [fontsLoaded] = useFonts({
       "FredokaOne-Regular": require("@/assets/fonts/FredokaOne-Regular.ttf"),
     });
-  
-    if (!fontsLoaded) {
-      return <Text>Loading fonts...</Text>;
-    }
 
     //Text boxes
     const [email, setEmail] = useState('');
@@ -37,21 +32,29 @@ const LogInPage = memo(() => {
     const [isLoading, setIsLoading] = useState(false);
     const [errorMessage, setErrorMessage] = useState("");
 
-    const handleLogin = () => {
+    if (!fontsLoaded) {
+      return <Text>Loading fonts...</Text>;
+    }
+
+    const handleLogin = async () => {
       const emailRegex = /^[a-zA-Z0-9._-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,6}$/;
       if (!emailRegex.test(email)) {
         Alert.alert('Invalid email', 'Please re-enter email');
         return;
       }
-      signInWithEmailAndPassword(auth, email, password)
-        .then((userCredential) => {
-          const user = userCredential.user;
-          Alert.alert('Login successful!', `Hello, ${user.email}`);
-          navigation.navigate('profile');
-        })
-        .catch((error) => {
-          Alert.alert('Login failed!', error.message);
-        });
+
+      try {
+        setIsLoading(true);
+        const userCredential = await signInWithEmailAndPassword(auth, email, password);
+        Alert.alert("Login successful!", `Hello, ${userCredential.user.email}`);
+        navigation.navigate("ProfilePage");
+      } catch (err) {
+        const msg = err?.message ?? "Unknown error";
+        setErrorMessage(msg);
+        Alert.alert("Login failed!", msg);
+      } finally {
+        setIsLoading(false);
+      }
     };
   
 
@@ -62,9 +65,8 @@ const LogInPage = memo(() => {
         source={loginImage}
         resizeMode='cover'
         style={styles.image}
-        contentFit="fill"
-      > 
-      </ImageBackground>
+        //contentFit="fill"
+      /> 
 
       {/* Logo */}
       <Image
@@ -81,6 +83,8 @@ const LogInPage = memo(() => {
           style={styles.inputText}
           placeholder='Type here...'
           placeholderTextColor={"#aaa"}
+          autoCapitalize="none"
+          keyboardType="email-address"
           value={email}
           onChangeText={setEmail}
         ></TextInput>
@@ -106,39 +110,27 @@ const LogInPage = memo(() => {
       </TouchableOpacity>
       
       {/* Sign Up Text */}
-      <Link  href="/signIn-page" asChild>
-          <Pressable style={{position: 'absolute',top: hp('75%')}}>
-            <Text style={styles.otherText} >Don’t have account, Sign Up</Text>
-          </Pressable>
-        </Link>
+      <Pressable
+        style={{ position: 'absolute', top: hp('75%') }}
+        onPress={() => navigation.navigate('SignInPage')} 
+      >
+        <Text style={styles.otherText}>Don’t have an account? Sign Up</Text>
+      </Pressable>
       
       {/* Social Login Icons */}
       <Text style={styles.otherText1}>Or continue with:</Text>
       <View style={styles.iconContainer}>
-        <Link  href="/games-page" asChild>
-          <Pressable>
-            <Image
-              source={require("@/assets/images/google-icon.png")}
-              style={styles.icon}
-            />
-          </Pressable>
-        </Link>
-        <Link  href="/profile" asChild>
-          <Pressable>
-            <Image
-              source={require("@/assets/images/apple-icon.png")}
-              style={styles.icon}
-            />
-          </Pressable>
-        </Link>
-        <Link  href="games-temp" asChild>
-          <Pressable>
-            <Image
-              source={require("@/assets/images/facebook-icon.png")}
-              style={styles.icon}
-            />
-          </Pressable>
-        </Link>
+        <Pressable onPress={() => navigation.navigate('GamesPage')}>
+          <Image style={styles.icon} source={require('@/assets/images/google-icon.png')} />
+        </Pressable>
+
+        <Pressable onPress={() => navigation.navigate('ProfilePage')}>
+          <Image style={styles.icon} source={require('@/assets/images/apple-icon.png')} />
+        </Pressable>
+
+        <Pressable onPress={() => navigation.navigate('GamesTemp')}>
+          <Image style={styles.icon} source={require('@/assets/images/facebook-icon.png')} />
+        </Pressable>
       </View>
 
       {/* Footer */}
