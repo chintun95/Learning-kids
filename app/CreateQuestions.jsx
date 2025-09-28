@@ -9,8 +9,6 @@ import { widthPercentageToDP as wp, heightPercentageToDP as hp } from 'react-nat
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 
-const MAX_QUESTIONS_BEFORE_REDIRECT = 5; // adjustable
-
 const CreateQuestions = memo(() => {
   const insets = useSafeAreaInsets();
   const [fontsLoaded] = useFonts({
@@ -29,15 +27,17 @@ const CreateQuestions = memo(() => {
   const [error, setError] = useState('');
   const [questionsList, setQuestionsList] = useState([]);
   const [activeTab, setActiveTab] = useState('create'); // create | practice
+  const [questionsAnsweredCount, setQuestionsAnsweredCount] = useState(0);
+
+  // Adjustable number of questions required before redirect
+  const [questionsToComplete, setQuestionsToComplete] = useState(5); // default 5
 
   const navigation = useNavigation();
   const auth = getAuth();
   const uid = auth.currentUser?.uid;
 
   useEffect(() => {
-    if (uid) {
-      fetchQuestions();
-    }
+    if (uid) fetchQuestions();
   }, [uid]);
 
   const fetchQuestions = async () => {
@@ -55,14 +55,9 @@ const CreateQuestions = memo(() => {
       setError('Please enter a question.');
       return;
     }
-  
-    let payload = {
-      question,
-      parent_id: uid,
-      options: null,
-      correct_answer: '',
-    };
-  
+
+    let payload = { question, parent_id: uid, options: null, correct_answer: '' };
+
     if (questionType === 'multiple_choice') {
       if (!optionA || !optionB || !optionC || !optionD || !correctAnswer) {
         setError('Please fill all options and select a correct answer.');
@@ -78,10 +73,10 @@ const CreateQuestions = memo(() => {
       payload.options = { a: 'True', b: 'False' };
       payload.correct_answer = correctAnswer;
     }
-  
+
     setLoading(true);
     setError('');
-  
+
     try {
       const { error: insertError } = await supabase.from('questions').insert([payload]);
       if (insertError) throw insertError;
@@ -95,7 +90,6 @@ const CreateQuestions = memo(() => {
       setLoading(false);
     }
   };
-  
 
   const clearFields = () => {
     setQuestion('');
@@ -117,7 +111,11 @@ const CreateQuestions = memo(() => {
           <Text style={styles.label}>Correct Answer:</Text>
           <View style={styles.optionsRow}>
             {['a', 'b', 'c', 'd'].map((key) => (
-              <TouchableOpacity key={key} style={[styles.answerButton, correctAnswer === key && styles.selectedAnswerButton]} onPress={() => setCorrectAnswer(key)}>
+              <TouchableOpacity
+                key={key}
+                style={[styles.answerButton, correctAnswer === key && styles.selectedAnswerButton]}
+                onPress={() => setCorrectAnswer(key)}
+              >
                 <Text style={styles.answerButtonText}>{key.toUpperCase()}</Text>
               </TouchableOpacity>
             ))}
@@ -130,10 +128,16 @@ const CreateQuestions = memo(() => {
         <>
           <Text style={styles.label}>Correct Answer:</Text>
           <View style={styles.optionsRow}>
-            <TouchableOpacity style={[styles.answerButton, correctAnswer === 'a' && styles.selectedAnswerButton]} onPress={() => setCorrectAnswer('a')}>
+            <TouchableOpacity
+              style={[styles.answerButton, correctAnswer === 'a' && styles.selectedAnswerButton]}
+              onPress={() => setCorrectAnswer('a')}
+            >
               <Text style={styles.answerButtonText}>True</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={[styles.answerButton, correctAnswer === 'b' && styles.selectedAnswerButton]} onPress={() => setCorrectAnswer('b')}>
+            <TouchableOpacity
+              style={[styles.answerButton, correctAnswer === 'b' && styles.selectedAnswerButton]}
+              onPress={() => setCorrectAnswer('b')}
+            >
               <Text style={styles.answerButtonText}>False</Text>
             </TouchableOpacity>
           </View>
@@ -143,11 +147,20 @@ const CreateQuestions = memo(() => {
     return null;
   };
 
+  const handlePracticeAnswer = () => {
+    const nextCount = questionsAnsweredCount + 1;
+    setQuestionsAnsweredCount(nextCount);
+    if (nextCount >= questionsToComplete) {
+      Alert.alert('Practice Complete!', 'Redirecting back to game...');
+      navigation.navigate('GameScreen'); // redirect back to game page
+    }
+  };
+
   if (!fontsLoaded) return <ActivityIndicator />;
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={[styles.backContainer, { top: insets.top + hp('1%') }]}>
+      <View style={[styles.backContainer, { top: hp('1%') }]}>
         <Pressable style={styles.backButton} onPress={() => navigation.goBack()}>
           <Ionicons name="chevron-back" size={wp('6.2%')} color="#000" />
           <Text style={styles.backLabel}>Back</Text>
@@ -157,7 +170,11 @@ const CreateQuestions = memo(() => {
       {/* Tab selector */}
       <View style={styles.tabRow}>
         {['create', 'practice'].map((tab) => (
-          <TouchableOpacity key={tab} style={[styles.tabButton, activeTab === tab && styles.tabButtonActive]} onPress={() => setActiveTab(tab)}>
+          <TouchableOpacity
+            key={tab}
+            style={[styles.tabButton, activeTab === tab && styles.tabButtonActive]}
+            onPress={() => setActiveTab(tab)}
+          >
             <Text style={styles.tabText}>{tab.toUpperCase()}</Text>
           </TouchableOpacity>
         ))}
@@ -168,46 +185,75 @@ const CreateQuestions = memo(() => {
         <ScrollView contentContainerStyle={styles.scrollContent}>
           <Text style={styles.title}>Create a Question</Text>
           <TextInput placeholder="Enter question" value={question} onChangeText={setQuestion} style={styles.input} />
-          
+
           <Text style={styles.label}>Question Type:</Text>
           <View style={styles.optionsRow}>
-            <TouchableOpacity style={[styles.typeButton, questionType === 'multiple_choice' && styles.selectedTypeButton]} onPress={() => setQuestionType('multiple_choice')}>
+            <TouchableOpacity
+              style={[styles.typeButton, questionType === 'multiple_choice' && styles.selectedTypeButton]}
+              onPress={() => setQuestionType('multiple_choice')}
+            >
               <Text style={styles.answerButtonText}>Multiple Choice</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={[styles.typeButton, questionType === 'true_false' && styles.selectedTypeButton]} onPress={() => setQuestionType('true_false')}>
+            <TouchableOpacity
+              style={[styles.typeButton, questionType === 'true_false' && styles.selectedTypeButton]}
+              onPress={() => setQuestionType('true_false')}
+            >
               <Text style={styles.answerButtonText}>True/False</Text>
             </TouchableOpacity>
           </View>
 
           {renderQuestionInputs()}
-          
+
           {error ? <Text style={styles.error}>{error}</Text> : null}
 
           <TouchableOpacity style={styles.button} onPress={handleCreateQuestion} disabled={loading}>
             {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Submit Question</Text>}
           </TouchableOpacity>
+
+          {/* Adjustable questions-to-complete selector */}
+          <View style={{ marginTop: hp('3%'), alignItems: 'center' }}>
+            <Text style={{ fontFamily: 'FredokaOne-Regular', fontSize: wp('4.5%'), marginBottom: hp('1%') }}>
+              Questions to complete before game ends:
+            </Text>
+            <View style={{ flexDirection: 'row', justifyContent: 'center' }}>
+              {[...Array(10)].map((_, i) => {
+                const num = i + 1;
+                return (
+                  <TouchableOpacity
+                    key={num}
+                    style={{
+                      backgroundColor: questionsToComplete === num ? '#4A90E2' : '#ccc',
+                      paddingVertical: hp('1%'),
+                      paddingHorizontal: wp('3%'),
+                      borderRadius: 12,
+                      marginHorizontal: 3,
+                    }}
+                    onPress={() => setQuestionsToComplete(num)}
+                  >
+                    <Text style={{ color: questionsToComplete === num ? '#fff' : '#000', fontFamily: 'FredokaOne-Regular' }}>
+                      {num}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </View>
         </ScrollView>
       )}
 
       {/* Practice Tab */}
       {activeTab === 'practice' && (
         <FlatList
-          data={[...questionsList].sort(() => Math.random() - 0.5)}
+          data={questionsList}
           keyExtractor={(item) => item.id.toString()}
-          renderItem={({ item, index }) => {
-            if (index >= MAX_QUESTIONS_BEFORE_REDIRECT) {
-              navigation.navigate('GameScreen'); // redirect back to game
-              return null;
-            }
-            return (
-              <View style={styles.questionCard}>
-                <Text style={styles.questionText}>{item.question}</Text>
-                <Text style={styles.questionTypeText}>
-                  {item.question_type ? item.question_type.replace('_', ' ') : 'N/A'}
-                </Text>
-              </View>
-            );
-          }}
+          renderItem={({ item }) => (
+            <TouchableOpacity style={styles.questionCard} onPress={handlePracticeAnswer}>
+              <Text style={styles.questionText}>{item.question}</Text>
+              <Text style={styles.questionTypeText}>
+                {item.question_type ? item.question_type.replace('_', ' ') : 'N/A'}
+              </Text>
+            </TouchableOpacity>
+          )}
         />
       )}
     </SafeAreaView>

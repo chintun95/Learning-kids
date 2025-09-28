@@ -132,9 +132,6 @@ const Profile: React.FC<ProfileScreenProps> = ({ route }) => {
           <TouchableOpacity style={styles.editButton} onPress={handleEditProfile}>
             <Text style={styles.buttonText}>Edit Profile</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={[styles.editButton, {backgroundColor: '#ffc107'}]} onPress={handleApproval}>
-            <Text style={styles.buttonText}>Approve Answers</Text>
-          </TouchableOpacity>
           <TouchableOpacity style={styles.signOutButton} onPress={handleSignOut}>
             <Text style={styles.buttonText}>Sign Out</Text>
           </TouchableOpacity>
