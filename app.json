@@ -4,7 +4,7 @@
     "slug": "Learning-Kids1",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/logo-black.png",
+    "icon": "./assets/images/app-logo.png",
     "scheme": "myapp",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
@@ -15,7 +15,8 @@
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"
-      }
+      },
+      "package": "com.anonymous.LearningKids1"
     },
     "web": {
       "bundler": "metro",
