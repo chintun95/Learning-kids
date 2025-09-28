@@ -106,21 +106,35 @@ const QuizScreen = () => {
   const currentQuestion = questions[currentQuestionIndex];
 
   const renderInputs = () => {
-    if (currentQuestion.question_type === 'multiple_choice') {
+    if (!currentQuestion) return null;
+
+    // Infer question type for older data that might not have it
+    let type = currentQuestion.question_type;
+    if (!type) {
+      if (currentQuestion.options && currentQuestion.options.a === 'True' && currentQuestion.options.b === 'False') {
+        type = 'true_false';
+      } else if (currentQuestion.options && typeof currentQuestion.options === 'object') {
+        type = 'multiple_choice';
+      } else {
+        type = 'typed_answer'; // Fallback
+      }
+    }
+
+    if (type === 'multiple_choice' && currentQuestion.options) {
       return Object.entries(currentQuestion.options).map(([key, value]) => (
         <TouchableOpacity key={key} style={styles.button} onPress={() => handleAnswer(key)}>
             <Text style={styles.buttonText}>{`${key.toUpperCase()}: ${value}`}</Text>
         </TouchableOpacity>
       ));
     }
-    if (currentQuestion.question_type === 'true_false') {
+    if (type === 'true_false' && currentQuestion.options) {
         return Object.entries(currentQuestion.options).map(([key, value]) => (
             <TouchableOpacity key={key} style={styles.button} onPress={() => handleAnswer(key)}>
                 <Text style={styles.buttonText}>{value}</Text>
             </TouchableOpacity>
       ));
     }
-    if (currentQuestion.question_type === 'typed_answer') {
+    if (type === 'typed_answer') {
       return (
         <>
           <TextInput
@@ -196,3 +210,4 @@ const styles = StyleSheet.create({
 });
 
 export default QuizScreen;
+
