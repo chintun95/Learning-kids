@@ -1,9 +1,9 @@
-//for snake
+//for snake, randomFooPosition.ts
 import { Coordinate } from "../types/types";
 
-export const randomFoodPosition = (maxX: number, maxY: number): Coordinate => {
+export const randomFoodPosition = (xMax: number, yMax: number): Coordinate => {
   return {
-    x: Math.floor(Math.random() * maxX),
-    y: Math.floor(Math.random() * maxY),
+    x: Math.floor(Math.random() * xMax),
+    y: Math.floor(Math.random() * yMax),
   };
 };

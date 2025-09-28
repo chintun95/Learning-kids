@@ -5,9 +5,10 @@ import { supabase } from './supabase';
 export interface Question {
   id: string;
   question: string;
-  options: string[]; // Assuming 'options' is an array of strings
+  options: { [key: string]: string } | null;
   correct_answer: string;
   parent_id: string; // This should be a string referencing the user_id from profiles
+  question_type: 'multiple_choice' | 'true_false' | 'typed_answer';
 }
 
 export async function fetchQuestions(parentId: string): Promise<Question[]> {
@@ -29,7 +30,7 @@ export async function fetchQuestions(parentId: string): Promise<Question[]> {
     // Return an empty array if data is null or undefined
     if (data) {
       console.log('Raw questions data from supabase:', data);
-      // Since options is JSONB, it should already be parsed as an array
+      // Since options is JSONB, it should already be parsed as an object
       // Just return data as is
       return data as Question[];
     }
@@ -39,3 +40,4 @@ export async function fetchQuestions(parentId: string): Promise<Question[]> {
     throw error; // Re-throw for handling outside the function
   }
 }
+

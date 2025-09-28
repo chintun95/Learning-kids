@@ -39,7 +39,6 @@ const Profile: React.FC<ProfileScreenProps> = ({ route }) => {
   });
 
   useEffect(() => {
-    // This is where we will fetch more user data from database
     if (auth.currentUser) {
       const user = auth.currentUser;
       const joinDate = user.metadata.creationTime 
@@ -69,13 +68,13 @@ const Profile: React.FC<ProfileScreenProps> = ({ route }) => {
   const handleEditProfile = () => {
     navigation.navigate("EditProfilePage");
   };
+  
+  const handleApproval = () => {
+    navigation.navigate("ApprovalScreen");
+  };
 
   const handleGames = () => {
     navigation.navigate("GamePage");
-  };
-
-  const handleShop = () => {
-    navigation.navigate("ShopPage"); 
   };
 
   return (
@@ -86,7 +85,7 @@ const Profile: React.FC<ProfileScreenProps> = ({ route }) => {
       <ScrollView contentContainerStyle={styles.scrollContainer}>
         <View style={styles.header}>
           <Image 
-            source={{ uri: 'https://via.placeholder.com/150' }} 
+            source={{ uri: 'https://placehold.co/150x150/a2d2ff/333?text=User' }} 
             style={styles.profileImage} 
           />
           <Text style={styles.name}>{userData.name}</Text>
@@ -129,12 +128,12 @@ const Profile: React.FC<ProfileScreenProps> = ({ route }) => {
           </TouchableOpacity>
         </View>
 
-        <TouchableOpacity style={styles.shopButton} onPress={handleShop}>
-          <Text style={styles.buttonText}>Shop</Text>
-        </TouchableOpacity>
         <View style={styles.buttonContainer}>
           <TouchableOpacity style={styles.editButton} onPress={handleEditProfile}>
             <Text style={styles.buttonText}>Edit Profile</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={[styles.editButton, {backgroundColor: '#ffc107'}]} onPress={handleApproval}>
+            <Text style={styles.buttonText}>Approve Answers</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.signOutButton} onPress={handleSignOut}>
             <Text style={styles.buttonText}>Sign Out</Text>
@@ -332,24 +331,6 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 5,
   },
-
-  shopButton: {
-    width: wp('70%'),
-    height: hp('7%'),
-    marginTop: hp('2%'),
-    borderRadius: 30,
-    borderWidth: 3,
-    borderColor: '#000',
-    backgroundColor: '#D9D9D9',
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOpacity: 0.2,
-    shadowOffset: { width: 2, height: 4 },
-    shadowRadius: 4,
-    elevation: 5,
-  },
-
   buttonText: {
     color: '#000',
     fontSize: wp('5%'),
