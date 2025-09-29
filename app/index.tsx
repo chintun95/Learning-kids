@@ -1,3 +1,4 @@
+// app/index.tsx
 import {
   View,
   StyleSheet,
@@ -5,23 +6,22 @@ import {
   Platform,
   Text,
   Image,
-  Dimensions,
   Linking,
 } from "react-native";
 import { useVideoPlayer, VideoView, VideoSource } from "expo-video";
-import PillButton from "../components/Button";
+import Button from "../components/Button";
 import { useRouter } from "expo-router";
-import { useAuthStore } from "../lib/store/authStore"; // <-- import store
+import { responsive } from "../utils/responsive";
 
 const assetId = require("../assets/video/app-welcome-page.mp4");
 const logo = require("../assets/images/app-logo.png");
+import { useSessionStore } from "@/lib/store/sessionStore";
 
 const videoSource: VideoSource = { assetId };
 
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
-
 export default function Index() {
   const router = useRouter();
+  const { isOnboarded, setOnboarded } = useSessionStore();
 
   const player = useVideoPlayer(videoSource, (player) => {
     player.muted = true;
@@ -29,19 +29,14 @@ export default function Index() {
     player.play();
   });
 
-  // Access Zustand auth store
-  const { isOnboarded, setIsOnboarded } = useAuthStore();
-
-  // Open Terms of Service link (replace with your actual URL)
+  // Open Terms of Service link
   const onTermsPress = () => {
     Linking.openURL("https://en.wikipedia.org/wiki/Inigo_Montoya");
   };
 
   // Navigate to auth index screen
   const onBeginPress = () => {
-    console.log("Let's Begin button pressed");
-    setIsOnboarded(true);
-    console.log("Updated auth state:", { isOnboarded: true });
+    setOnboarded(true);
     router.push("./(auth)");
   };
 
@@ -67,7 +62,7 @@ export default function Index() {
           where we make learning safety information fun
         </Text>
 
-        <PillButton
+        <Button
           title="Let's Begin !"
           onPress={onBeginPress}
           outlined={true}
@@ -76,9 +71,9 @@ export default function Index() {
           backgroundColor="#93DEFF"
           textColor="black"
           fontSize={25}
-          paddingVertical={SCREEN_HEIGHT * 0.016}
-          paddingHorizontal={SCREEN_WIDTH * 0.12}
-          marginTop={SCREEN_HEIGHT * 0.05}
+          paddingVertical={responsive.screenHeight * 0.016}
+          paddingHorizontal={responsive.screenWidth * 0.12}
+          marginTop={responsive.screenHeight * 0.05}
         />
 
         <View style={styles.termsContainer}>
@@ -101,47 +96,51 @@ const styles = StyleSheet.create({
   overlay: {
     flex: 1,
     paddingTop:
-      Platform.OS === "android" ? SCREEN_HEIGHT * 0.2 : SCREEN_HEIGHT * 0.1,
+      Platform.OS === "android"
+        ? responsive.screenHeight * 0.2
+        : responsive.screenHeight * 0.1,
     justifyContent: "flex-start",
     alignItems: "center",
-    paddingHorizontal: SCREEN_WIDTH * 0.05,
+    paddingHorizontal: responsive.screenWidth * 0.05,
     backgroundColor: "rgba(0,0,0,0.3)",
   },
 
   welcomeText: {
-    fontSize: SCREEN_WIDTH * 0.15,
+    fontSize: responsive.screenWidth * 0.15,
     fontFamily: "Fredoka-Bold",
     color: "black",
-    marginBottom: SCREEN_HEIGHT * 0.015,
+    marginBottom: responsive.screenHeight * 0.015,
   },
 
   logo: {
-    width: SCREEN_WIDTH * 0.9,
-    height: SCREEN_WIDTH * 0.35,
-    marginBottom: SCREEN_HEIGHT * 0.004,
+    width: responsive.screenWidth * 0.9,
+    height: responsive.screenWidth * 0.35,
+    marginBottom: responsive.screenHeight * 0.004,
   },
 
   tagline: {
-    fontSize: SCREEN_WIDTH * 0.065,
+    fontSize: responsive.screenWidth * 0.065,
     fontFamily: "Fredoka-SemiBold",
     color: "black",
     fontWeight: "400",
     textAlign: "center",
-    marginTop: SCREEN_HEIGHT * 0.01,
-    marginBottom: SCREEN_HEIGHT * 0.05,
+    marginTop: responsive.screenHeight * 0.01,
+    marginBottom: responsive.screenHeight * 0.05,
   },
 
   termsContainer: {
     position: "absolute",
     bottom:
-      Platform.OS === "android" ? SCREEN_HEIGHT * 0.09 : SCREEN_HEIGHT * 0.03,
+      Platform.OS === "android"
+        ? responsive.screenHeight * 0.09
+        : responsive.screenHeight * 0.03,
     alignSelf: "center",
-    paddingHorizontal: SCREEN_WIDTH * 0.05,
+    paddingHorizontal: responsive.screenWidth * 0.05,
   },
 
   termsText: {
     color: "black",
-    fontSize: SCREEN_WIDTH * 0.035,
+    fontSize: responsive.screenWidth * 0.035,
     textAlign: "center",
   },
 

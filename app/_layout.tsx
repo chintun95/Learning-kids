@@ -1,16 +1,17 @@
 import React, { useEffect, useState } from "react";
-import { Stack } from "expo-router";
+import { Stack, useRouter } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import * as Font from "expo-font";
 import { Asset } from "expo-asset";
 import { View, ActivityIndicator, StyleSheet } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
-import { ClerkProvider } from "@clerk/clerk-expo";
+import { ClerkLoaded, ClerkProvider } from "@clerk/clerk-expo";
+import { tokenCache } from "@clerk/clerk-expo/token-cache";
+import { useSessionStore } from "@/lib/store/sessionStore";
 
 // Catch any errors thrown by the Layout component.
 export { ErrorBoundary } from "expo-router";
 
-// Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync();
 
 const imageAssets = [
@@ -36,6 +37,8 @@ const fontAssets = {
 };
 
 const InitialLayout = () => {
+  const isOnboarded = useSessionStore((state) => state.isOnboarded);
+
   const [assetsLoaded, setAssetsLoaded] = useState(false);
   const [fontsLoaded, setFontsLoaded] = useState(false);
 
@@ -75,17 +78,16 @@ const InitialLayout = () => {
 
   return (
     <Stack screenOptions={{ headerShown: false }}>
-      {/* Onboarding Screen */}
+      {/* Onboarding */}
+      <Stack.Protected guard={!isOnboarded}>
         <Stack.Screen name="index" />
+      </Stack.Protected>
 
-      {/* Authentication Screens */}
+      <Stack.Protected guard={isOnboarded}>
         <Stack.Screen name="(auth)" />
-
-      {/* Protected Screens */}
         <Stack.Screen name="(protected)" />
-
-      {/* Games Screens */}
-      <Stack.Screen name="games" />
+        <Stack.Screen name="games" />
+      </Stack.Protected>
     </Stack>
   );
 };
@@ -93,10 +95,12 @@ const InitialLayout = () => {
 const RootLayoutNav = () => {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <ClerkProvider> 
-      <InitialLayout />
+      <ClerkProvider tokenCache={tokenCache}>
+        <ClerkLoaded>
+          <InitialLayout />
+        </ClerkLoaded>
       </ClerkProvider>
-    </GestureHandlerRootView>    
+    </GestureHandlerRootView>
   );
 };
 

@@ -10,24 +10,75 @@ import {
   KeyboardAvoidingView,
   Platform,
   Linking,
+  Alert,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import InputBox from "@/components/InputBox";
 import Button from "@/components/Button";
 import { responsive } from "@/utils/responsive";
+import { formatSignIn } from "@/utils/formatter";
+import { useSignIn } from "@clerk/clerk-expo";
+import { useSessionStore } from "@/lib/store/sessionStore";
 
 export default function AuthIndex() {
   const router = useRouter();
   const { width: logoWidth, height: logoHeight } = responsive.logoSize();
 
+  const { signIn, setActive, isLoaded } = useSignIn();
+  const setRole = useSessionStore((state) => state.setRole);
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
 
-  const handleLogin = (role: "Parent" | "Child") => {
-    console.log("Logging in as", role, { email, password });
-    // TODO: Implement login logic
+  const handleLogin = async (role: "parent" | "child") => {
+    if (!isLoaded) return;
+
+    try {
+      // Validate inputs
+      const parsed = formatSignIn({ email, password });
+
+      // Attempt sign-in with Clerk
+      const signInAttempt = await signIn.create({
+        identifier: parsed.email,
+        password: parsed.password,
+      });
+
+      if (signInAttempt.status === "complete") {
+        await setActive({ session: signInAttempt.createdSessionId });
+
+        // Set role in session store
+        setRole(role);
+        console.log("Role set to:", role);
+
+        // Redirect based on role
+        router.replace(
+          role === "parent" ? "./(protected)/(parent)" : "./(protected)/(child)"
+        );
+      } else {
+        console.warn(
+          "Sign-in not complete:",
+          JSON.stringify(signInAttempt, null, 2)
+        );
+        Alert.alert(
+          "Sign-in Incomplete",
+          "Please complete any additional steps (e.g., email verification)."
+        );
+      }
+    } catch (err: any) {
+      console.error("Login failed:", JSON.stringify(err, null, 2));
+
+      let message = "Something went wrong. Please try again.";
+
+      if (err?.errors && Array.isArray(err.errors) && err.errors.length > 0) {
+        message = err.errors.map((e: any) => e.message).join("\n");
+      } else if (err?.message) {
+        message = err.message;
+      }
+
+      Alert.alert("Login Error", message);
+    }
   };
 
   const handleForgotPassword = () => router.push("./(auth)/reset-password");
@@ -133,7 +184,7 @@ export default function AuthIndex() {
             <View style={styles.buttonRow}>
               <Button
                 title="Parent"
-                onPress={() => handleLogin("Parent")}
+                onPress={() => handleLogin("parent")}
                 backgroundColor="#000"
                 textColor="#fff"
                 fontSize={responsive.buttonFontSize}
@@ -141,7 +192,7 @@ export default function AuthIndex() {
               />
               <Button
                 title="Child"
-                onPress={() => handleLogin("Child")}
+                onPress={() => handleLogin("child")}
                 backgroundColor="#000"
                 textColor="#fff"
                 fontSize={responsive.buttonFontSize}
