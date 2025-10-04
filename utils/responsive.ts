@@ -30,6 +30,9 @@ export const responsive = {
   // Social icons
   socialIconSize: Math.min(wp("22%"), 60),
 
+  // Profile icons
+  profileIconSize: (factor = 1) => Math.min(wp("20%") * factor, 60 * factor), // scalable
+
   // Sign up / footer
   signUpFontSize: Math.min(wp("4.5%"), 40),
   footerFontSize: Math.min(wp("3.5%"), 24),

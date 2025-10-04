@@ -1,0 +1,26 @@
+[
+  {
+    "id": "child-001",
+    "firstName": "Emma",
+    "lastName": "Johnson",
+    "activityStatus": "active",
+    "profilePin": null,
+    "profilePicture": "@/assets/profile-icons/avatar1.png"
+  },
+  {
+    "id": "child-002",
+    "firstName": "Liam",
+    "lastName": "Smith",
+    "activityStatus": "inactive",
+    "profilePin": "1234",
+    "profilePicture": "@/assets/profile-icons/avatar2.png"
+  },
+  {
+    "id": "child-003",
+    "firstName": "Olivia",
+    "lastName": "Williams",
+    "activityStatus": "active",
+    "profilePin": null,
+    "profilePicture": "@/assets/profile-icons/avatar3.png"
+  }
+]
