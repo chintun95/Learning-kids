@@ -1,6 +1,15 @@
 import { useUser } from "@clerk/clerk-expo";
-import { Text, View, StyleSheet, Platform, StatusBar } from "react-native";
+import {
+  Text,
+  View,
+  StyleSheet,
+  Platform,
+  StatusBar,
+  ScrollView,
+} from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import ChildCard from "@/components/ChildCard";
+import childData from "@/test/data/child.json";
 
 export default function ProtectedParentIndex() {
   const { user } = useUser();
@@ -21,11 +30,11 @@ export default function ProtectedParentIndex() {
           </Text>
         </View>
 
-        <View style={styles.content}>
-          <Text style={styles.placeholderText}>
-            Parent dashboard content goes here.
-          </Text>
-        </View>
+        {/* Content with ChildCard */}
+        <ScrollView contentContainerStyle={styles.content}>
+          {/* Render first child as example */}
+          {childData.length > 0 && <ChildCard child={childData[1]} />}
+        </ScrollView>
       </View>
     </SafeAreaView>
   );
@@ -59,11 +68,6 @@ const styles = StyleSheet.create({
     color: "#E0E7FF",
   },
   content: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  placeholderText: {
-    color: "#6B7280",
+    padding: 16,
   },
 });

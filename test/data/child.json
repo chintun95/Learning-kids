@@ -19,7 +19,7 @@
     "id": "child-003",
     "firstName": "Olivia",
     "lastName": "Williams",
-    "activityStatus": "active",
+    "activityStatus": "pending",
     "profilePin": null,
     "profilePicture": "@/assets/profile-icons/avatar3.png"
   }

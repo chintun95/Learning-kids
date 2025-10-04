@@ -7,7 +7,6 @@ export default function ManageChildIndex() {
         flex: 1,
         justifyContent: "center",
         alignItems: "center",
-        
       }}
     >
       <Text> Manage Child Screen</Text>
