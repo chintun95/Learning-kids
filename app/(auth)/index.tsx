@@ -17,16 +17,24 @@ import { useRouter } from "expo-router";
 import InputBox from "@/components/InputBox";
 import Button from "@/components/Button";
 import { responsive } from "@/utils/responsive";
-import { formatSignIn } from "@/utils/formatter";
-import { useSignIn } from "@clerk/clerk-expo";
+import { useSignIn, useAuth } from "@clerk/clerk-expo";
+import { formatSignIn, formatDate, formatTime } from "@/utils/formatter";
 import { useSessionStore } from "@/lib/store/sessionStore";
 
 export default function AuthIndex() {
   const router = useRouter();
   const { width: logoWidth, height: logoHeight } = responsive.logoSize();
 
+  const { sessionId } = useAuth();
   const { signIn, setActive, isLoaded } = useSignIn();
   const setRole = useSessionStore((state) => state.setRole);
+  const setSessionID = useSessionStore((state) => state.setSessionID);
+  const setIsLoggedIn = useSessionStore((state) => state.setIsLoggedIn);
+  const setIsParent = useSessionStore((state) => state.setIsParent);
+  const setIsChild = useSessionStore((state) => state.setIsChild);
+  const setCurrentDate = useSessionStore((state) => state.setCurrentDate);
+  const setStartTime = useSessionStore((state) => state.setStartTime);
+  const setEndTime = useSessionStore((state) => state.setEndTime);
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -48,11 +56,42 @@ export default function AuthIndex() {
       if (signInAttempt.status === "complete") {
         await setActive({ session: signInAttempt.createdSessionId });
 
-        // Set role in session store
-        setRole(role);
-        console.log("Role set to:", role);
+        // Start the session using the new sessionStore logic
+        if (sessionId) {
+          console.log(sessionId);
+          setSessionID(sessionId);
+        } else {
+          console.warn(" No sessionId available after login");
+        }
 
-        // Redirect based on role
+        // Assign role and logged-in state
+        setStartTime();
+        setCurrentDate();
+        setRole(role);
+        setIsLoggedIn(true);
+
+        console.log(" Role set:", role);
+        console.log(" Logged-in status:", true);
+
+        // Assign role-specific flags
+        if (role === "parent") {
+          setIsParent(true);
+          setIsChild(false);
+        } else {
+          setIsChild(true);
+          setIsParent(false);
+        }
+
+        // Debug: check state after startSession
+        const sessionState = useSessionStore.getState();
+        console.log(" Session started:", {
+          sessionID: sessionState.sessionID,
+          currentDate: sessionState.currentDate,
+          sessionStartTime: sessionState.sessionStartTime,
+          sessionEndTime: sessionState.sessionEndTime,
+        });
+
+        // Navigate based on role
         router.replace(
           role === "parent" ? "./(protected)/(parent)" : "./(protected)/(child)"
         );

@@ -1,60 +1,72 @@
-
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 import { zustandStorage } from "@/lib/mmkv-storage";
-
-type Role = "default" | "parent" | "child";
+import { formatDate, formatTime } from "@/utils/formatter";
 
 interface SessionState {
-  role: Role;
   sessionID: string | null;
   currentDate: string | null;
-  sessionStartTime: number | null;
-  sessionEndTime: number | null;
+  sessionStartTime: string | null;
+  sessionEndTime: string | null;
   isOnboarded: boolean;
-  // Actions
-  setRole: (role: Role) => void;
+  isLoggedIn: boolean;
+  role: "parent" | "child" | "default";
+  isParent: boolean;
+  isChild: boolean;
+
+  // setters
+  setSessionID: (id: string | null) => void;
+  setCurrentDate: () => void;
+  setStartTime: () => void;
+  setEndTime: () => void;
+
+  // auth-related
+  setRole: (role: "parent" | "child" | "default") => void;
   setOnboarded: (value: boolean) => void;
-  startSession: (sessionID: string) => void;
-  endSession: () => void;
-  resetSession: () => void;
+  setIsLoggedIn: (status: boolean) => void;
+  setIsParent: (status: boolean) => void;
+  setIsChild: (status: boolean) => void;
 }
 
 export const useSessionStore = create<SessionState>()(
   persist(
-    (set) => ({
-      role: "default",
+    (set, get) => ({
       sessionID: null,
       currentDate: null,
       sessionStartTime: null,
       sessionEndTime: null,
+      isLoggedIn: false,
       isOnboarded: false,
+      role: "default",
+      isParent: false,
+      isChild: false,
+
+      // Assigns sessionID manually (useful for restore)
+      setSessionID: (id) => set({ sessionID: id }),
+
+      // Automatically assigns current date
+      setCurrentDate: () => {
+        const now = new Date();
+        set({ currentDate: formatDate(now) });
+      },
+
+      // Automatically assigns session start time
+      setStartTime: () => {
+        const now = new Date();
+        set({ sessionStartTime: formatTime(now) });
+      },
+
+      // Automatically assigns session end time
+      setEndTime: () => {
+        const now = new Date();
+        set({ sessionEndTime: formatTime(now) });
+      },
 
       setRole: (role) => set({ role }),
       setOnboarded: (value) => set({ isOnboarded: value }),
-
-      startSession: (sessionID) =>
-        set({
-          sessionID,
-          currentDate: new Date().toISOString().split("T")[0], // YYYY-MM-DD
-          sessionStartTime: Date.now(),
-          sessionEndTime: null,
-        }),
-
-      endSession: () =>
-        set({
-          sessionEndTime: Date.now(),
-        }),
-
-      resetSession: () =>
-        set({
-          role: "default",
-          sessionID: null,
-          currentDate: null,
-          sessionStartTime: null,
-          sessionEndTime: null,
-          isOnboarded: false,
-        }),
+      setIsLoggedIn: (status) => set({ isLoggedIn: status }),
+      setIsParent: (status) => set({ isParent: status }),
+      setIsChild: (status) => set({ isChild: status }),
     }),
     {
       name: "session-storage",

@@ -38,6 +38,7 @@ const fontAssets = {
 
 const InitialLayout = () => {
   const isOnboarded = useSessionStore((state) => state.isOnboarded);
+  const isLoggedIn = useSessionStore((state) => state.isLoggedIn);
 
   const [assetsLoaded, setAssetsLoaded] = useState(false);
   const [fontsLoaded, setFontsLoaded] = useState(false);
@@ -83,8 +84,13 @@ const InitialLayout = () => {
         <Stack.Screen name="index" />
       </Stack.Protected>
 
-      <Stack.Protected guard={isOnboarded}>
+      {/* Authentication */}
+      <Stack.Protected guard={isOnboarded && !isLoggedIn}>
         <Stack.Screen name="(auth)" />
+      </Stack.Protected>
+
+      {/* Protected Screens */}
+      <Stack.Protected guard={isOnboarded && isLoggedIn}>
         <Stack.Screen name="(protected)" />
         <Stack.Screen name="games" />
       </Stack.Protected>
