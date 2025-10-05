@@ -1,9 +1,9 @@
 import { Stack } from "expo-router";
-import { useSessionStore } from "@/lib/store/sessionStore";
+import { useAuthStore } from "@/lib/store/authStore";
 
 export default function ProtectedLayout() {
-  const isParent = useSessionStore((state) => state.isParent);
-  const isChild = useSessionStore((state) => state.isChild);
+  const isParent = useAuthStore((state) => state.isParent);
+  const isChild = useAuthStore((state) => state.isChild);
 
   return (
     <Stack screenOptions={{ headerShown: false }}>

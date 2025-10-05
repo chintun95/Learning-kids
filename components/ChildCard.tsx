@@ -1,4 +1,3 @@
-// components/ChildCard.tsx
 import React, { useState } from "react";
 import {
   View,
@@ -11,17 +10,9 @@ import {
 } from "react-native";
 import StatusIndicator from "./StatusIndicator";
 import { responsive } from "@/utils/responsive";
+import { Child } from "@/types/types";
 
-interface Child {
-  id: string;
-  firstName: string;
-  lastName: string;
-  activityStatus: "active" | "inactive" | "pending";
-  profilePin: string | null;
-  profilePicture: any;
-}
-
-interface ChildCardProps {
+type ChildCardProps = {
   child: Child;
 }
 
@@ -29,7 +20,7 @@ if (Platform.OS === "android") {
   UIManager.setLayoutAnimationEnabledExperimental?.(true);
 }
 
-const ChildCard: React.FC<ChildCardProps> = ({ child }) => {
+export default function ChildCard ({ child }: ChildCardProps) {
   const [expanded, setExpanded] = useState(false);
 
   const toggleExpand = () => {
@@ -87,9 +78,7 @@ const ChildCard: React.FC<ChildCardProps> = ({ child }) => {
 };
 
 const styles = StyleSheet.create({
-  cardWrapper: {
-    marginVertical: 8,
-  },
+  cardWrapper: { marginVertical: 8 },
   cardContainer: {
     flexDirection: "row",
     alignItems: "center",
@@ -102,10 +91,7 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
     elevation: 3,
   },
-  infoContainer: {
-    flex: 1,
-    marginLeft: 12,
-  },
+  infoContainer: { flex: 1, marginLeft: 12 },
   nameText: {
     fontSize: responsive.buttonFontSize,
     fontWeight: "600",
@@ -122,10 +108,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
-  expandButtonText: {
-    fontSize: 20,
-    color: "#4B5563",
-  },
+  expandButtonText: { fontSize: 20, color: "#4B5563" },
   drawer: {
     backgroundColor: "#F3F4F6",
     padding: 12,
@@ -133,10 +116,5 @@ const styles = StyleSheet.create({
     borderBottomRightRadius: 16,
     marginTop: 4,
   },
-  drawerText: {
-    color: "#111827",
-    fontSize: responsive.buttonFontSize * 0.85,
-  },
+  drawerText: { color: "#111827", fontSize: responsive.buttonFontSize * 0.85 },
 });
-
-export default ChildCard;

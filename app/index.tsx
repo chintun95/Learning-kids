@@ -15,13 +15,13 @@ import { responsive } from "../utils/responsive";
 
 const assetId = require("../assets/video/app-welcome-page.mp4");
 const logo = require("../assets/images/app-logo.png");
-import { useSessionStore } from "@/lib/store/sessionStore";
+import { useAuthStore } from "@/lib/store/authStore";
 
 const videoSource: VideoSource = { assetId };
 
 export default function Index() {
   const router = useRouter();
-  const { isOnboarded, setOnboarded } = useSessionStore();
+  const { setOnboarded } = useAuthStore();
 
   const player = useVideoPlayer(videoSource, (player) => {
     player.muted = true;

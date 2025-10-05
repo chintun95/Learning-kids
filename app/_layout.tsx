@@ -7,7 +7,7 @@ import { View, ActivityIndicator, StyleSheet } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { ClerkLoaded, ClerkProvider } from "@clerk/clerk-expo";
 import { tokenCache } from "@clerk/clerk-expo/token-cache";
-import { useSessionStore } from "@/lib/store/sessionStore";
+import { useAuthStore } from "@/lib/store/authStore";
 
 // Catch any errors thrown by the Layout component.
 export { ErrorBoundary } from "expo-router";
@@ -15,15 +15,21 @@ export { ErrorBoundary } from "expo-router";
 SplashScreen.preventAutoHideAsync();
 
 const imageAssets = [
+  // Images
   require("../assets/images/adaptive-icon.png"),
   require("../assets/images/app-background.png"),
   require("../assets/images/app-logo.png"),
   require("../assets/images/app-game-page.png"),
   require("../assets/images/favicon.png"),
   require("../assets/images/splash-icon.png"),
+
+  // Icons
   require("../assets/icons/apple-icon.png"),
   require("../assets/icons/facebook-icon.png"),
   require("../assets/icons/google-icon.png"),
+
+  // Profile Icon
+  require("../assets/profile-icons/avatar1.png"),
 ];
 
 const videoAssets = [require("../assets/video/app-welcome-page.mp4")];
@@ -37,8 +43,8 @@ const fontAssets = {
 };
 
 const InitialLayout = () => {
-  const isOnboarded = useSessionStore((state) => state.isOnboarded);
-  const isLoggedIn = useSessionStore((state) => state.isLoggedIn);
+  const isOnboarded = useAuthStore((state) => state.isOnboarded);
+  const isLoggedIn = useAuthStore((state) => state.isLoggedIn);
 
   const [assetsLoaded, setAssetsLoaded] = useState(false);
   const [fontsLoaded, setFontsLoaded] = useState(false);

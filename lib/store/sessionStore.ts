@@ -8,24 +8,12 @@ interface SessionState {
   currentDate: string | null;
   sessionStartTime: string | null;
   sessionEndTime: string | null;
-  isOnboarded: boolean;
-  isLoggedIn: boolean;
-  role: "parent" | "child" | "default";
-  isParent: boolean;
-  isChild: boolean;
 
-  // setters
+  // Setters
   setSessionID: (id: string | null) => void;
   setCurrentDate: () => void;
   setStartTime: () => void;
   setEndTime: () => void;
-
-  // auth-related
-  setRole: (role: "parent" | "child" | "default") => void;
-  setOnboarded: (value: boolean) => void;
-  setIsLoggedIn: (status: boolean) => void;
-  setIsParent: (status: boolean) => void;
-  setIsChild: (status: boolean) => void;
 }
 
 export const useSessionStore = create<SessionState>()(
@@ -35,11 +23,6 @@ export const useSessionStore = create<SessionState>()(
       currentDate: null,
       sessionStartTime: null,
       sessionEndTime: null,
-      isLoggedIn: false,
-      isOnboarded: false,
-      role: "default",
-      isParent: false,
-      isChild: false,
 
       // Assigns sessionID manually (useful for restore)
       setSessionID: (id) => set({ sessionID: id }),
@@ -61,12 +44,6 @@ export const useSessionStore = create<SessionState>()(
         const now = new Date();
         set({ sessionEndTime: formatTime(now) });
       },
-
-      setRole: (role) => set({ role }),
-      setOnboarded: (value) => set({ isOnboarded: value }),
-      setIsLoggedIn: (status) => set({ isLoggedIn: status }),
-      setIsParent: (status) => set({ isParent: status }),
-      setIsChild: (status) => set({ isChild: status }),
     }),
     {
       name: "session-storage",
