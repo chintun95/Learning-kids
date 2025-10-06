@@ -1,0 +1,77 @@
+// test/data/session.ts
+import { Session } from "@/types/types";
+
+const sessionData: Session[] = [
+  {
+    id: "session-001",
+    childId: "child-01",
+    date: "2025-10-05",
+    startTime: "09:00:00",
+    endTime: "09:30:00",
+    sessionStatus: "Completed",
+    activityType: "Game",
+    sessionDetails: "Math matching game completed successfully.",
+  },
+  {
+    id: "session-002",
+    childId: "child-01",
+    date: "2025-10-05",
+    startTime: "12:00:00",
+    endTime: null,
+    sessionStatus: "In Progress",
+    activityType: "Lesson",
+    sessionDetails: "Currently wokring on Reading lesson.",
+  },
+  {
+    id: "session-003",
+    childId: "child-01",
+    date: "2025-10-04",
+    startTime: "10:00:00",
+    endTime: "10:30:02",
+    sessionStatus: "Completed",
+    activityType: "Quiz",
+    sessionDetails: "Lesson 1 Knowledge Test Completed.",
+  },
+  {
+    id: "session-003",
+    childId: "child-02",
+    date: "2025-10-05",
+    startTime: "11:00:00",
+    endTime: "11:45:00",
+    sessionStatus: "Completed",
+    activityType: "Quiz",
+    sessionDetails: "Science quiz completed with score 85%.",
+  },
+  {
+    id: "session-004",
+    childId: "child-03",
+    date: "2025-10-04",
+    startTime: "14:00:00",
+    endTime: "14:30:00",
+    sessionStatus: "Completed",
+    activityType: "Game",
+    sessionDetails: "Memory card game completed.",
+  },
+  {
+    id: "session-005",
+    childId: "child-04",
+    date: "2025-10-05",
+    startTime: "13:00:00",
+    endTime: null,
+    sessionStatus: "In Progress",
+    activityType: "Lesson",
+    sessionDetails: "Started spelling lesson, paused midway.",
+  },
+  {
+    id: "session-005",
+    childId: "child-01",
+    date: "2025-08-05",
+    startTime: "13:00:00",
+    endTime: "13:30:40",
+    sessionStatus: "Completed",
+    activityType: "Lesson",
+    sessionDetails: "Started spelling lesson, paused midway.",
+  },
+];
+
+export default sessionData;

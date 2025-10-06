@@ -8,20 +8,23 @@ import {
   Platform,
   UIManager,
 } from "react-native";
+import { useRouter } from "expo-router";
 import StatusIndicator from "./StatusIndicator";
 import { responsive } from "@/utils/responsive";
 import { Child } from "@/types/types";
 
 type ChildCardProps = {
   child: Child;
-}
+  handleManageChild?: () => void;
+};
 
 if (Platform.OS === "android") {
   UIManager.setLayoutAnimationEnabledExperimental?.(true);
 }
 
-export default function ChildCard ({ child }: ChildCardProps) {
+export default function ChildCard({ child }: ChildCardProps) {
   const [expanded, setExpanded] = useState(false);
+  const router = useRouter(); // <-- initialize router
 
   const toggleExpand = () => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
@@ -40,6 +43,10 @@ export default function ChildCard ({ child }: ChildCardProps) {
     }
   };
 
+  const handleManageChild = () => {
+    router.push(`/manage-child/${child.id}`);
+  };
+
   return (
     <View style={styles.cardWrapper}>
       <View style={styles.cardContainer}>
@@ -54,9 +61,7 @@ export default function ChildCard ({ child }: ChildCardProps) {
           <Text style={styles.nameText}>
             {child.firstName} {child.lastName}
           </Text>
-          <TouchableOpacity
-            onPress={() => console.log(`Manage ${child.firstName}`)}
-          >
+          <TouchableOpacity onPress={handleManageChild}>
             <Text style={styles.manageText}>Manage Child</Text>
           </TouchableOpacity>
         </View>
@@ -75,7 +80,7 @@ export default function ChildCard ({ child }: ChildCardProps) {
       )}
     </View>
   );
-};
+}
 
 const styles = StyleSheet.create({
   cardWrapper: { marginVertical: 8 },
