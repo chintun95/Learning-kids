@@ -72,6 +72,16 @@ const sessionData: Session[] = [
     activityType: "Lesson",
     sessionDetails: "Started spelling lesson, paused midway.",
   },
+  {
+    id: "session-006",
+    childId: "child-01",
+    date: "2025-10-06",
+    startTime: "10:00:00",
+    endTime: "10:30:40",
+    sessionStatus: "Completed",
+    activityType: "Game",
+    sessionDetails: "Completed a level in Sanke Game with a score of 210",
+  },
 ];
 
 export default sessionData;

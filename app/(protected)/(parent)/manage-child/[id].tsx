@@ -1,4 +1,3 @@
-// app/(parent)/manage-child/[id].tsx
 import React, { useState } from "react";
 import {
   View,
@@ -23,13 +22,18 @@ import DateTimePickerModal from "react-native-modal-datetime-picker";
 import childData from "@/test/data/child";
 import sessionData from "@/test/data/session";
 import ProfileIcon from "@/components/ProfileIcon";
+import { responsive } from "@/utils/responsive";
 import { Child, Session } from "@/types/types";
+import Button from "@/components/Button";
+import InputBox from "@/components/InputBox";
 
 export default function ManageChildIndex() {
   const { id } = useLocalSearchParams();
   const child: Child | undefined = childData.find((c) => c.id === id);
 
   const [showPinModal, setShowPinModal] = useState(false);
+  const [showEditPinModal, setShowEditPinModal] = useState(false);
+  const [pinValue, setPinValue] = useState(child?.profilePin ?? "");
   const [showEmergencyModal, setShowEmergencyModal] = useState(false);
   const [showStartPicker, setShowStartPicker] = useState(false);
   const [showEndPicker, setShowEndPicker] = useState(false);
@@ -39,7 +43,7 @@ export default function ManageChildIndex() {
   if (!child) {
     return (
       <View style={styles.centered}>
-        <Text>Child not found</Text>
+        <Text style={styles.notFoundText}>Child not found</Text>
       </View>
     );
   }
@@ -53,7 +57,6 @@ export default function ManageChildIndex() {
     (s) => s.childId === child.id
   );
 
-  // Apply date range filter if selected
   if (startDate && endDate) {
     childSessions = childSessions.filter((s) => {
       const sessionDate = parseISO(s.date);
@@ -61,14 +64,12 @@ export default function ManageChildIndex() {
     });
   }
 
-  // Sort by date & startTime descending
   childSessions.sort((a, b) => {
     const dateA = parseISO(`${a.date}T${a.startTime}`);
     const dateB = parseISO(`${b.date}T${b.startTime}`);
     return compareDesc(dateA, dateB);
   });
 
-  // Group sessions by month and today
   const groupedSessions: Record<string, Session[]> = {};
   childSessions.forEach((session) => {
     const sessionDate = parseISO(session.date);
@@ -79,10 +80,8 @@ export default function ManageChildIndex() {
     groupedSessions[groupKey].push(session);
   });
 
-  // Ensure "Today" group exists even if empty
   if (!groupedSessions["Today"]) groupedSessions["Today"] = [];
 
-  // Sort the group keys: Today first, then descending month
   const groupKeys = Object.keys(groupedSessions).sort((a, b) => {
     if (a === "Today") return -1;
     if (b === "Today") return 1;
@@ -93,7 +92,6 @@ export default function ManageChildIndex() {
     return compareDesc(dateA, dateB);
   });
 
-  // Check if there are no sessions at all
   const hasAnySession = childSessions.length > 0;
 
   return (
@@ -103,35 +101,39 @@ export default function ManageChildIndex() {
         backgroundColor="transparent"
         barStyle="dark-content"
       />
+
       <ScrollView style={styles.container}>
         {/* Header Section */}
         <View style={styles.headerSection}>
-          <ProfileIcon source={child.profilePicture} size={135} />
+          <ProfileIcon
+            source={child.profilePicture}
+            size={responsive.screenWidth * 0.25}
+          />
           <View style={styles.headerRight}>
+            <Text style={styles.nameText}>
+              {child.firstName} {child.lastName}
+            </Text>
+            <Text style={styles.dobText}>
+              Date of Birth: {formattedDob} ({age} yrs)
+            </Text>
             <TouchableOpacity
               onPress={() => setShowPinModal(true)}
-              style={styles.pinButton}
+              style={styles.linkButton}
             >
               <Text style={styles.linkText}>Manage Profile Pin</Text>
             </TouchableOpacity>
-
-            <View style={styles.infoBlock}>
-              <Text style={styles.nameText}>
-                {child.firstName} {child.lastName}
-              </Text>
-              <Text style={styles.dobText}>
-                Date of Birth: {formattedDob} ({age} yrs)
-              </Text>
-              <TouchableOpacity onPress={() => setShowEmergencyModal(true)}>
-                <Text style={styles.linkText}>Emergency Contact</Text>
-              </TouchableOpacity>
-            </View>
+            <TouchableOpacity
+              onPress={() => setShowEmergencyModal(true)}
+              style={styles.linkButton}
+            >
+              <Text style={styles.linkText}>Emergency Contact</Text>
+            </TouchableOpacity>
           </View>
         </View>
 
         <View style={styles.separator} />
 
-        {/* Activity Tracker Title & Filter */}
+        {/* Activity Tracker Header */}
         <View style={styles.activityHeader}>
           <Text style={styles.activityTitle}>Activity Tracker</Text>
           <TouchableOpacity
@@ -141,9 +143,9 @@ export default function ManageChildIndex() {
             <Text style={styles.filterText}>Filter by Date</Text>
             <Ionicons
               name="filter"
-              size={18}
+              size={responsive.screenWidth * 0.045}
               color="#4F46E5"
-              style={{ marginLeft: 6 }}
+              style={{ marginLeft: responsive.screenWidth * 0.015 }}
             />
           </TouchableOpacity>
         </View>
@@ -215,12 +217,66 @@ export default function ManageChildIndex() {
                 style={styles.modalClose}
                 onPress={() => setShowPinModal(false)}
               >
-                <Ionicons name="close" size={24} color="#111827" />
+                <Ionicons
+                  name="close"
+                  size={responsive.screenWidth * 0.06}
+                  color="#111827"
+                />
               </TouchableOpacity>
               <Text style={styles.modalTitle}>Profile Pin</Text>
               <Text style={styles.modalText}>
                 Current Profile Pin: {child.profilePin ?? "Profile Pin Not set"}
               </Text>
+
+              <Button
+                title={child.profilePin ? "Change Pin" : "Add Pin"}
+                onPress={() => setShowEditPinModal(true)}
+                backgroundColor="#000"
+                marginTop={responsive.screenHeight * 0.02}
+              />
+            </View>
+          </View>
+        </Modal>
+
+        {/* Change/Add Pin Modal */}
+        <Modal
+          visible={showEditPinModal}
+          transparent
+          animationType="slide"
+          onRequestClose={() => setShowEditPinModal(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContent}>
+              <TouchableOpacity
+                style={styles.modalClose}
+                onPress={() => setShowEditPinModal(false)}
+              >
+                <Ionicons
+                  name="close"
+                  size={responsive.screenWidth * 0.06}
+                  color="#111827"
+                />
+              </TouchableOpacity>
+              <Text style={styles.modalTitle}>
+                {child.profilePin ? "Change Profile Pin" : "Add Profile Pin"}
+              </Text>
+              <InputBox
+                placeholder="Enter PIN"
+                value={pinValue}
+                onChangeText={setPinValue}
+                keyboardType="numeric"
+              />
+              <Button
+                title="Done"
+                onPress={() => {
+                  // Update the child's pin in local state or call API
+                  console.log("New PIN:", pinValue);
+                  setShowEditPinModal(false);
+                  setShowPinModal(false);
+                }}
+                backgroundColor="#000"
+                marginTop={responsive.screenHeight * 0.02}
+              />
             </View>
           </View>
         </Modal>
@@ -238,22 +294,66 @@ export default function ManageChildIndex() {
                 style={styles.modalClose}
                 onPress={() => setShowEmergencyModal(false)}
               >
-                <Ionicons name="close" size={24} color="#111827" />
+                <Ionicons
+                  name="close"
+                  size={responsive.screenWidth * 0.06}
+                  color="#111827"
+                />
               </TouchableOpacity>
               <Text style={styles.modalTitle}>Emergency Contact</Text>
-              <Text style={styles.modalText}>
-                Name: {child.emergencyContact.name}
-              </Text>
-              <Text style={styles.modalText}>
-                Relationship: {child.emergencyContact.relationship}
-              </Text>
-              <Text style={styles.modalText}>
-                Phone: {child.emergencyContact.phoneNumber}
-              </Text>
-              <Text style={styles.modalText}>
-                Address: {child.emergencyContact.streetAddress},{" "}
-                {child.emergencyContact.city}, {child.emergencyContact.state}
-              </Text>
+
+              {/* Editable Fields */}
+              <InputBox
+                label="Name"
+                value={child.emergencyContact.name}
+                onChangeText={(text) => (child.emergencyContact.name = text)}
+              />
+              <InputBox
+                label="Relationship"
+                value={child.emergencyContact.relationship}
+                onChangeText={(text) =>
+                  (child.emergencyContact.relationship = text)
+                }
+              />
+              <InputBox
+                label="Phone Number"
+                value={child.emergencyContact.phoneNumber}
+                keyboardType="phone-pad"
+                onChangeText={(text) =>
+                  (child.emergencyContact.phoneNumber = text)
+                }
+              />
+              <InputBox
+                label="Street Address"
+                value={child.emergencyContact.streetAddress}
+                onChangeText={(text) =>
+                  (child.emergencyContact.streetAddress = text)
+                }
+              />
+              <InputBox
+                label="City"
+                value={child.emergencyContact.city}
+                onChangeText={(text) => (child.emergencyContact.city = text)}
+              />
+              <InputBox
+                label="State"
+                value={child.emergencyContact.state}
+                onChangeText={(text) => (child.emergencyContact.state = text)}
+              />
+
+              {/* Done Button */}
+              <Button
+                title="Done"
+                onPress={() => {
+                  console.log(
+                    "Updated Emergency Contact:",
+                    child.emergencyContact
+                  );
+                  setShowEmergencyModal(false);
+                }}
+                backgroundColor="#000"
+                marginTop={responsive.screenHeight * 0.02}
+              />
             </View>
           </View>
         </Modal>
@@ -262,6 +362,9 @@ export default function ManageChildIndex() {
         <DateTimePickerModal
           isVisible={showStartPicker}
           mode="date"
+          textColor="#111827"
+          confirmTextIOS="Confirm"
+          cancelTextIOS="Cancel"
           onConfirm={(date) => {
             setStartDate(date);
             setShowStartPicker(false);
@@ -272,6 +375,9 @@ export default function ManageChildIndex() {
         <DateTimePickerModal
           isVisible={showEndPicker}
           mode="date"
+          textColor="#111827"
+          confirmTextIOS="Confirm"
+          cancelTextIOS="Cancel"
           onConfirm={(date) => {
             setEndDate(date);
             setShowEndPicker(false);
@@ -286,51 +392,86 @@ export default function ManageChildIndex() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#F9FAFB" },
   centered: { flex: 1, justifyContent: "center", alignItems: "center" },
-  headerSection: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    backgroundColor: "#F3F4F6",
-    padding: 20,
+  notFoundText: {
+    fontFamily: "Fredoka-Regular",
+    fontSize: responsive.buttonFontSize,
+    color: "#6B7280",
   },
-  headerRight: { marginLeft: 16, flex: 1 },
-  pinButton: { marginTop: -10, marginBottom: 5, alignSelf: "flex-start" },
-  infoBlock: { marginTop: 0 },
-  nameText: { fontSize: 24, fontWeight: "700", color: "#111827" },
-  dobText: { fontSize: 16, marginTop: 4, color: "#374151" },
+  headerSection: {
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#F3F4F6",
+    padding: responsive.screenWidth * 0.05,
+    borderBottomWidth: 1,
+    borderBottomColor: "#E5E7EB",
+  },
+  headerRight: {
+    alignItems: "center",
+    marginTop: responsive.screenHeight * 0.015,
+  },
+  nameText: {
+    fontSize: responsive.buttonFontSize * 1.1,
+    fontFamily: "Fredoka-Bold",
+    color: "#111827",
+    textAlign: "center",
+  },
+  dobText: {
+    fontSize: responsive.buttonFontSize * 0.85,
+    fontFamily: "Fredoka-Medium",
+    marginTop: responsive.screenHeight * 0.005,
+    color: "#374151",
+    textAlign: "center",
+  },
+  linkButton: { marginTop: responsive.screenHeight * 0.01 },
   linkText: {
-    marginTop: 8,
-    fontSize: 16,
+    fontSize: responsive.buttonFontSize * 0.8,
+    fontFamily: "Fredoka-Medium",
     color: "#4F46E5",
     textDecorationLine: "underline",
+    textAlign: "center",
   },
-  separator: { height: 1, backgroundColor: "#E5E7EB", marginVertical: 20 },
+  separator: {
+    height: 1,
+    backgroundColor: "#E5E7EB",
+    marginVertical: responsive.screenHeight * 0.02,
+  },
   activityHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingHorizontal: 20,
-    marginBottom: 12,
+    paddingHorizontal: responsive.screenWidth * 0.05,
+    marginBottom: responsive.screenHeight * 0.015,
   },
-  activityTitle: { fontSize: 20, fontWeight: "700", color: "#111827" },
+  activityTitle: {
+    fontSize: responsive.buttonFontSize,
+    fontFamily: "Fredoka-SemiBold",
+    color: "#111827",
+  },
   filterButton: { flexDirection: "row", alignItems: "center" },
   filterText: {
-    fontSize: 16,
+    fontSize: responsive.buttonFontSize * 0.8,
+    fontFamily: "Fredoka-Medium",
     color: "#4F46E5",
     textDecorationLine: "underline",
   },
-  activityList: { paddingHorizontal: 20 },
-  group: { marginBottom: 24 },
+  activityList: { paddingHorizontal: responsive.screenWidth * 0.05 },
+  group: { marginBottom: responsive.screenHeight * 0.03 },
   groupTitle: {
-    fontSize: 18,
-    fontWeight: "700",
-    marginBottom: 12,
+    fontSize: responsive.buttonFontSize * 0.9,
+    fontFamily: "Fredoka-SemiBold",
+    marginBottom: responsive.screenHeight * 0.01,
     color: "#111827",
   },
-  todayNote: { fontSize: 14, color: "#4F46E5", marginLeft: 6 },
+  todayNote: {
+    fontSize: responsive.buttonFontSize * 0.7,
+    color: "#4F46E5",
+    marginLeft: responsive.screenWidth * 0.015,
+  },
   sessionItem: {
-    marginBottom: 16,
+    marginBottom: responsive.screenHeight * 0.015,
     backgroundColor: "#FFFFFF",
-    padding: 12,
+    padding: responsive.screenWidth * 0.03,
     borderRadius: 12,
     shadowColor: "#000",
     shadowOpacity: 0.05,
@@ -341,17 +482,35 @@ const styles = StyleSheet.create({
   sessionHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
-    marginBottom: 4,
+    marginBottom: responsive.screenHeight * 0.005,
   },
-  activityType: { fontSize: 16, fontWeight: "600", color: "#111827" },
-  sessionStatus: { fontSize: 16, fontWeight: "600", color: "#4F46E5" },
-  sessionDate: { fontSize: 14, color: "#6B7280", marginBottom: 4 },
-  sessionDetails: { fontSize: 14, color: "#374151" },
+  activityType: {
+    fontSize: responsive.buttonFontSize * 0.8,
+    fontFamily: "Fredoka-Medium",
+    color: "#111827",
+  },
+  sessionStatus: {
+    fontSize: responsive.buttonFontSize * 0.8,
+    fontFamily: "Fredoka-Medium",
+    color: "#4F46E5",
+  },
+  sessionDate: {
+    fontSize: responsive.buttonFontSize * 0.7,
+    fontFamily: "Fredoka-Regular",
+    color: "#6B7280",
+    marginBottom: responsive.screenHeight * 0.002,
+  },
+  sessionDetails: {
+    fontSize: responsive.buttonFontSize * 0.7,
+    fontFamily: "Fredoka-Regular",
+    color: "#374151",
+  },
   noActivityText: {
-    fontSize: 16,
+    fontSize: responsive.buttonFontSize * 0.8,
+    fontFamily: "Fredoka-Regular",
     color: "#6B7280",
     textAlign: "center",
-    marginTop: 20,
+    marginTop: responsive.screenHeight * 0.02,
   },
   modalOverlay: {
     flex: 1,
@@ -363,9 +522,22 @@ const styles = StyleSheet.create({
     width: "90%",
     backgroundColor: "#ffffff",
     borderRadius: 16,
-    padding: 20,
+    padding: responsive.screenWidth * 0.04,
   },
-  modalClose: { position: "absolute", top: 12, right: 12 },
-  modalTitle: { fontSize: 20, fontWeight: "700", marginBottom: 12 },
-  modalText: { fontSize: 16, marginBottom: 8, color: "#111827" },
+  modalClose: {
+    position: "absolute",
+    top: responsive.screenHeight * 0.01,
+    right: responsive.screenWidth * 0.03,
+  },
+  modalTitle: {
+    fontSize: responsive.buttonFontSize,
+    fontFamily: "Fredoka-Bold",
+    marginBottom: responsive.screenHeight * 0.015,
+  },
+  modalText: {
+    fontSize: responsive.buttonFontSize * 0.8,
+    fontFamily: "Fredoka-Medium",
+    marginBottom: responsive.screenHeight * 0.01,
+    color: "#111827",
+  },
 });

@@ -24,7 +24,7 @@ if (Platform.OS === "android") {
 
 export default function ChildCard({ child }: ChildCardProps) {
   const [expanded, setExpanded] = useState(false);
-  const router = useRouter(); // <-- initialize router
+  const router = useRouter();
 
   const toggleExpand = () => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
@@ -62,7 +62,7 @@ export default function ChildCard({ child }: ChildCardProps) {
             {child.firstName} {child.lastName}
           </Text>
           <TouchableOpacity onPress={handleManageChild}>
-            <Text style={styles.manageText}>Manage Child</Text>
+            <Text style={styles.manageText}>Manage Child Data</Text>
           </TouchableOpacity>
         </View>
 
@@ -83,43 +83,57 @@ export default function ChildCard({ child }: ChildCardProps) {
 }
 
 const styles = StyleSheet.create({
-  cardWrapper: { marginVertical: 8 },
+  cardWrapper: {
+    marginVertical: responsive.screenHeight * 0.01,
+  },
   cardContainer: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#fff",
+    backgroundColor: "#FFFFFF",
     borderRadius: 16,
-    padding: 12,
+    padding: responsive.screenWidth * 0.04,
     shadowColor: "#000",
     shadowOpacity: 0.1,
     shadowOffset: { width: 0, height: 2 },
     shadowRadius: 6,
     elevation: 3,
   },
-  infoContainer: { flex: 1, marginLeft: 12 },
+  infoContainer: { flex: 1, marginLeft: responsive.screenWidth * 0.03 },
+
   nameText: {
     fontSize: responsive.buttonFontSize,
-    fontWeight: "600",
     color: "#111827",
+    fontFamily: "Fredoka-SemiBold",
   },
   manageText: {
     color: "#4F46E5",
     textDecorationLine: "underline",
-    marginTop: 4,
+    marginTop: responsive.screenHeight * 0.005,
     fontSize: responsive.buttonFontSize * 0.8,
+    fontFamily: "Fredoka-Medium",
   },
+
   expandButton: {
-    paddingHorizontal: 12,
+    paddingHorizontal: responsive.screenWidth * 0.03,
     justifyContent: "center",
     alignItems: "center",
   },
-  expandButtonText: { fontSize: 20, color: "#4B5563" },
+  expandButtonText: {
+    fontSize: responsive.isNarrowScreen ? 16 : 20,
+    color: "#4B5563",
+    fontFamily: "Fredoka-Medium",
+  },
+
   drawer: {
     backgroundColor: "#F3F4F6",
-    padding: 12,
+    padding: responsive.screenWidth * 0.04,
     borderBottomLeftRadius: 16,
     borderBottomRightRadius: 16,
     marginTop: 4,
   },
-  drawerText: { color: "#111827", fontSize: responsive.buttonFontSize * 0.85 },
+  drawerText: {
+    color: "#111827",
+    fontSize: responsive.buttonFontSize * 0.85,
+    fontFamily: "Fredoka-Regular",
+  },
 });
