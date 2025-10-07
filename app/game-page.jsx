@@ -278,11 +278,12 @@ const styles = StyleSheet.create({
   topBar: {
     width: '100%',
     alignItems: 'center',
-    marginBottom: hp('1%'),
+    marginBottom: hp('6%'),
   },
   title: {
     fontFamily: 'FredokaOne-Regular',
-    fontSize: wp('9%'),
+    fontSize: wp('11%'),
+    marginTop: hp('5%'),
     color: '#1E1E1E',
     textShadowColor: 'rgba(0,0,0,0.15)',
     textShadowOffset: { width: 0, height: 2 },
@@ -290,7 +291,7 @@ const styles = StyleSheet.create({
   },
   subtitle: {
     fontFamily: 'FredokaOne-Regular',
-    fontSize: wp('4%'),
+    fontSize: wp('5%'),
     color: '#2f2f2f',
     opacity: 0.9,
     marginTop: 2,

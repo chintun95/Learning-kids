@@ -1,6 +1,6 @@
-// file: app/Games/SnakeGame.tsx
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Text, View, SafeAreaView, StyleSheet, Button, Animated } from 'react-native';
+// app/Games/SnakeGame.tsx
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Text, View, SafeAreaView, StyleSheet, Button, Animated, Pressable } from 'react-native';
 import { PanGestureHandler, GestureHandlerRootView } from 'react-native-gesture-handler';
 import * as Haptics from 'expo-haptics';
 import Snake from './Snake';
@@ -13,13 +13,13 @@ import QuestionIcon from './QuestionIcon';
 import { Direction, Coordinate, GestureEventType } from './types/types';
 import { fetchQuestions } from '../backend/fetchquestions';
 import { fetchUserProfile } from '../backend/fetchUserProfile';
+import { SNAKE_MODES, SnakeModeKey } from './snakeModes';
 
 const CELL = 10;
 const SNAKE_INITIAL_POSITION: Coordinate[] = [{ x: 5, y: 5 }];
 const FOOD_INITIAL_POSITION: Coordinate = { x: 5, y: 20 };
-const GAME_BOUNDS = { xMin: 0, xMax: 36, yMin: 0, yMax: 57.2 }; // matches your canvas
-const BASE_MOVE_INTERVAL = 90; // baseline; we scale with score
-const SCORE_INCREMENT = 10;
+const GAME_BOUNDS = { xMin: 0, xMax: 36, yMin: 0, yMax: 57.2 };
+const SCORE_INCREMENT = 10; // fallback
 
 const primaryColor = '#00BFFF';
 const backgroundColor = '#B2EBF2';
@@ -31,34 +31,15 @@ type ActivePowerUp = { type: PowerUpType; until: number } | null;
 const POWERUP_DURATION_MS = 8000;
 const COMBO_WINDOW_MS = 2000;
 
-/** Lightweight grid (memoized) */
-const Grid = React.memo(function Grid({
-  cols, rows, cell, radius = 18,
-}: { cols: number; rows: number; cell: number; radius?: number }) {
-  return (
-    <View pointerEvents="none" style={StyleSheet.absoluteFillObject}>
-      {Array.from({ length: rows }).map((_, r) => (
-        <View key={`r${r}`} style={{ flexDirection: 'row', height: cell }}>
-          {Array.from({ length: cols }).map((__, c) => (
-            <View
-              key={`c${c}`}
-              style={{
-                width: cell,
-                height: cell,
-                borderRightWidth: 0.5,
-                borderBottomWidth: 0.5,
-                borderColor: 'rgba(0,0,0,0.08)',
-              }}
-            />
-          ))}
-        </View>
-      ))}
-      <View style={{ ...StyleSheet.absoluteFillObject as any, borderRadius: radius, overflow: 'hidden' }} />
-    </View>
-  );
-});
+type Cell = { x: number; y: number };
 
-function SnakeGame({ navigation }: { navigation: any }): JSX.Element {
+function SnakeGame(): JSX.Element {
+  // --- mode & settings ---
+  const [modeKey, setModeKey] = useState<SnakeModeKey>('classic');
+  const mode = SNAKE_MODES[modeKey];
+  const [speedOffset, setSpeedOffset] = useState(0);
+  const [showSettings, setShowSettings] = useState(false);
+
   // --- core game ---
   const [direction, setDirection] = useState<Direction>(Direction.Right);
   const [snake, setSnake] = useState<Coordinate[]>(SNAKE_INITIAL_POSITION);
@@ -96,6 +77,9 @@ function SnakeGame({ navigation }: { navigation: any }): JSX.Element {
   const [activePowerUp, setActivePowerUp] = useState<ActivePowerUp>(null);
   const [bonusPending, setBonusPending] = useState<boolean>(false);
 
+  // --- walls (for modes with obstacles) ---
+  const [walls, setWalls] = useState<Cell[]>([]);
+
   // --- refs to avoid stale closures in interval ---
   const directionRef = useRef(direction);
   const snakeRef = useRef(snake);
@@ -110,11 +94,7 @@ function SnakeGame({ navigation }: { navigation: any }): JSX.Element {
   useEffect(() => { activePowerUpRef.current = activePowerUp; }, [activePowerUp]);
 
   // profile + questions
-  useEffect(() => {
-    (async () => {
-      try { setUserProfile(await fetchUserProfile()); } catch {}
-    })();
-  }, []);
+  useEffect(() => { (async () => { try { setUserProfile(await fetchUserProfile()); } catch {} })(); }, []);
   useEffect(() => {
     (async () => {
       if (!userProfile) return;
@@ -152,14 +132,29 @@ function SnakeGame({ navigation }: { navigation: any }): JSX.Element {
     return () => { if (intervalId) clearInterval(intervalId); };
   }, [countdown]);
 
-  // dynamic speed (friendlier clamp)
+  // build walls when mode changes
+  const buildWalls = useCallback(() => {
+    if (!mode.hasWalls) { setWalls([]); return; }
+    const inset = 4;
+    const cells: Cell[] = [];
+    for (let x = inset; x <= GAME_BOUNDS.xMax - inset; x++) {
+      cells.push({ x, y: inset }, { x, y: GAME_BOUNDS.yMax - inset });
+    }
+    for (let y = inset; y <= GAME_BOUNDS.yMax - inset; y++) {
+      cells.push({ x: inset, y }, { x: GAME_BOUNDS.xMax - inset, y });
+    }
+    setWalls(cells);
+  }, [mode.hasWalls]);
+  useEffect(() => { buildWalls(); }, [buildWalls]);
+
+  // dynamic speed from mode + offset
   const level = useMemo(() => 1 + Math.floor(score / 50), [score]);
   const effectiveInterval = useMemo(() => {
     const speedUp = Math.max(0, level - 1) * 6; // -6ms per level
-    let ms = Math.max(55, BASE_MOVE_INTERVAL - speedUp); // clamp to 55ms so late game stays playable
+    let ms = Math.max(55, mode.baseSpeedMs + speedOffset - speedUp);
     if (activePowerUp?.type === 'slow') ms = Math.round(ms * 1.6);
     return ms;
-  }, [level, activePowerUp]);
+  }, [level, activePowerUp, mode.baseSpeedMs, speedOffset]);
 
   // main loop
   useEffect(() => {
@@ -213,6 +208,7 @@ function SnakeGame({ navigation }: { navigation: any }): JSX.Element {
   };
 
   const spawnFood = () => setFood(safeRandomCell(boardPowerUp ? [boardPowerUp.pos] : []));
+
   const spawnPowerUp = () => {
     if (boardPowerUp || activePowerUp) return;
     const r = Math.random();
@@ -242,8 +238,8 @@ function SnakeGame({ navigation }: { navigation: any }): JSX.Element {
       case Direction.Right: newHead.x += 1; break;
     }
 
-    // ghost power wrap
-    if (activePowerUpRef.current?.type === 'ghost') {
+    // wrap if mode says so (ghost still stacks as a bonus)
+    if (mode.wrap || activePowerUpRef.current?.type === 'ghost') {
       const width = GAME_BOUNDS.xMax;
       const height = GAME_BOUNDS.yMax;
       if (newHead.x < GAME_BOUNDS.xMin) newHead.x = width;
@@ -255,6 +251,12 @@ function SnakeGame({ navigation }: { navigation: any }): JSX.Element {
         consumeLifeOrEnd();
         return;
       }
+    }
+
+    // wall collision (only when not wrapping)
+    if (!mode.wrap && walls.some(w => w.x === newHead.x && w.y === newHead.y)) {
+      consumeLifeOrEnd();
+      return;
     }
 
     // self-collision
@@ -272,7 +274,8 @@ function SnakeGame({ navigation }: { navigation: any }): JSX.Element {
       setCombo(nextCombo);
       if (nextCombo >= 3) triggerComboToast();
 
-      const base = SCORE_INCREMENT;
+      // score from mode (fallback to old constant)
+      const base = mode.foods[0]?.points ?? SCORE_INCREMENT;
       const comboBonus = (nextCombo - 1) * 2;
       const bonus = bonusPending ? base : 0; // double this bite
       const gained = base + comboBonus + bonus;
@@ -359,8 +362,6 @@ function SnakeGame({ navigation }: { navigation: any }): JSX.Element {
     setActivePowerUp({ type, until: Date.now() + POWERUP_DURATION_MS });
   };
 
-  const askQuestion = () => setIsQuestionVisible(true);
-
   const answerQuestion = (isCorrect: boolean) => {
     setIsQuestionVisible(false);
     if (isCorrect) {
@@ -423,6 +424,8 @@ function SnakeGame({ navigation }: { navigation: any }): JSX.Element {
     </Animated.View>
   ) : null;
 
+  const theme = { head: '#1e88e5', body: '#43a047', glow: '#1e88e5' };
+
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <PanGestureHandler onGestureEvent={handleGesture}>
@@ -434,6 +437,11 @@ function SnakeGame({ navigation }: { navigation: any }): JSX.Element {
               <Text style={styles.hudPill}>LV {level}</Text>
               <Text style={styles.hudPill}>♥ {lives}</Text>
               {powerChip}
+
+              {/* Settings button */}
+              <Pressable onPress={() => setShowSettings(true)} style={{ marginLeft: 8 }}>
+                <Text style={[styles.hudPill, { paddingHorizontal: 10 }]}>⚙️</Text>
+              </Pressable>
             </View>
           </Header>
 
@@ -441,11 +449,19 @@ function SnakeGame({ navigation }: { navigation: any }): JSX.Element {
             <Text style={styles.countdown}>{countdown > 0 ? countdown : 'GO!'}</Text>
           ) : (
             <View style={styles.boundaries}>
-              {/* grid */}
-              <Grid cols={Math.ceil(GAME_BOUNDS.xMax)} rows={Math.ceil(GAME_BOUNDS.yMax)} cell={CELL} />
+              {/* simple grid tint removed for cleanliness; re-add if you want */}
+              {/* walls */}
+              {walls.map((w, i) => (
+                <View key={i} style={{
+                  position:'absolute',
+                  left: w.x * CELL, top: w.y * CELL,
+                  width: 10, height: 10,
+                  backgroundColor: '#0a2540', opacity: 0.6, borderRadius: 2
+                }}/>
+              ))}
 
               {/* actors */}
-              <Snake snake={snake} />
+              <Snake snake={snake} theme={theme} />
               <Animated.View style={{ transform: [{ scale: foodScale }] }}>
                 <Food x={food.x} y={food.y} />
               </Animated.View>
@@ -520,6 +536,35 @@ function SnakeGame({ navigation }: { navigation: any }): JSX.Element {
               )}
             </View>
           )}
+
+          {/* SETTINGS PANEL */}
+          {showSettings && (
+            <View style={styles.settingsPanel}>
+              <Text style={styles.settingsTitle}>Settings</Text>
+
+              <Text style={styles.settingsSection}>Mode</Text>
+              {Object.entries(SNAKE_MODES).map(([k, m]) => (
+                <View key={k} style={{ marginBottom: 6 }}>
+                  <Button
+                    title={`${m.label}${modeKey === k ? ' ✓' : ''}`}
+                    onPress={() => setModeKey(k as SnakeModeKey)}
+                  />
+                </View>
+              ))}
+
+              <View style={{ height: 10 }} />
+              <Text style={styles.settingsSection}>Speed tweak (ms): {speedOffset}</Text>
+              <View style={{ flexDirection: 'row' }}>
+                <View style={{ marginRight: 8 }}>
+                  <Button title="-10" onPress={() => setSpeedOffset(s => Math.max(-40, s - 10))} />
+                </View>
+                <Button title="+10" onPress={() => setSpeedOffset(s => Math.min(60, s + 10))} />
+              </View>
+
+              <View style={{ height: 12 }} />
+              <Button title="Close" onPress={() => setShowSettings(false)} />
+            </View>
+          )}
         </SafeAreaView>
       </PanGestureHandler>
     </GestureHandlerRootView>
@@ -555,11 +600,10 @@ const styles = StyleSheet.create({
     flex: 1,
     width: '100%',
     height: '100%',
-    borderColor: primaryColor,
-    borderWidth: 12,
+    backgroundColor,
     borderBottomLeftRadius: 30,
     borderBottomRightRadius: 30,
-    backgroundColor,
+    // removed heavy border for Google-like clean canvas
   },
   countdown: { fontSize: 48, fontWeight: 'bold', color: 'orange' },
   hudRow: { flexDirection: 'row', alignItems: 'center' },
@@ -654,6 +698,24 @@ const styles = StyleSheet.create({
     borderColor: '#ffd84d',
   },
   comboTxt: { color: '#ffd84d', fontWeight: '900', letterSpacing: 0.4 },
+
+  // settings
+  settingsPanel: {
+    position: 'absolute',
+    top: '22%',
+    left: '8%',
+    right: '8%',
+    backgroundColor: '#fff',
+    padding: 16,
+    borderRadius: 12,
+    elevation: 6,
+    shadowColor: '#000',
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+  },
+  settingsTitle: { fontWeight: '900', fontSize: 18, marginBottom: 8 },
+  settingsSection: { fontWeight: '700', marginBottom: 6 },
 });
 
 export default SnakeGame;

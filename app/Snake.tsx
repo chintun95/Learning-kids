@@ -1,15 +1,19 @@
-// file: app/Games/Snake.tsx
+// app/Games/Snake.tsx
 import React, { useEffect, useRef, Fragment } from 'react';
 import { StyleSheet, Animated, View } from 'react-native';
 import { Coordinate } from './types/types';
 
 interface SnakeProps {
   snake: Coordinate[];
+  theme?: {
+    head: string;
+    body: string;
+    glow?: string;
+  };
 }
 
-const CELL = 10; // matches board arithmetic used in SnakeGame
+const CELL = 10;
 
-// Direction helper can live outside the component
 const dirFromNeighbors = (cur: Coordinate, next?: Coordinate) => {
   if (!next) return 'right';
   if (next.x < cur.x) return 'right';
@@ -24,21 +28,18 @@ const rotForDir: Record<string, string> = {
   left: '270deg',
 };
 
-export default function Snake({ snake }: SnakeProps): JSX.Element {
-  // head breathing
+export default function Snake({
+  snake,
+  theme = { head: '#1e88e5', body: '#43a047', glow: '#1e88e5' },
+}: SnakeProps): JSX.Element {
   const headScale = useRef(new Animated.Value(1)).current;
-
-  // body wobble anims (one per segment)
   const bodyAnimations = useRef<Animated.Value[]>([]).current;
-
-  // sparkle trail puffs
   const puffsRef = useRef<{ x: number; y: number; a: Animated.Value }[]>([]);
 
-  // head breathe loop
   useEffect(() => {
     const loop = Animated.loop(
       Animated.sequence([
-        Animated.timing(headScale, { toValue: 1.2, duration: 500, useNativeDriver: true }),
+        Animated.timing(headScale, { toValue: 1.18, duration: 500, useNativeDriver: true }),
         Animated.timing(headScale, { toValue: 1, duration: 500, useNativeDriver: true }),
       ])
     );
@@ -46,33 +47,31 @@ export default function Snake({ snake }: SnakeProps): JSX.Element {
     return () => loop.stop();
   }, [headScale]);
 
-  // keep body anims array sized to the snake length
   useEffect(() => {
     if (snake.length > bodyAnimations.length) {
       const add = snake.length - bodyAnimations.length;
       for (let i = 0; i < add; i++) {
         const anim = new Animated.Value(1);
-        const loop = Animated.loop(
+        Animated.loop(
           Animated.sequence([
-            Animated.timing(anim, { toValue: 0.85, duration: 800, useNativeDriver: true }),
+            Animated.timing(anim, { toValue: 0.9, duration: 800, useNativeDriver: true }),
             Animated.timing(anim, { toValue: 1, duration: 800, useNativeDriver: true }),
           ])
-        );
-        loop.start();
+        ).start();
         bodyAnimations.push(anim);
       }
     } else if (snake.length < bodyAnimations.length) {
-      bodyAnimations.splice(snake.length); // trim extras when snake shrinks
+      bodyAnimations.splice(snake.length);
     }
   }, [snake.length, bodyAnimations]);
 
-  // spawn a tiny puff at the head position on movement
+  // sparkle trail (subtle)
   useEffect(() => {
     const head = snake[0];
     if (!head) return;
     const puff = { x: head.x * CELL, y: head.y * CELL, a: new Animated.Value(0.7) };
     puffsRef.current.push(puff);
-    Animated.timing(puff.a, { toValue: 0, duration: 480, useNativeDriver: true }).start(() => {
+    Animated.timing(puff.a, { toValue: 0, duration: 420, useNativeDriver: true }).start(() => {
       const idx = puffsRef.current.indexOf(puff);
       if (idx > -1) puffsRef.current.splice(idx, 1);
     });
@@ -93,16 +92,14 @@ export default function Snake({ snake }: SnakeProps): JSX.Element {
             width: 6,
             height: 6,
             borderRadius: 3,
-            backgroundColor: '#b3ecff',
+            backgroundColor: theme.glow || theme.head,
             opacity: p.a,
-            transform: [
-              { scale: p.a.interpolate({ inputRange: [0, 0.7], outputRange: [1.4, 1] }) },
-            ],
+            transform: [{ scale: p.a.interpolate({ inputRange: [0, 0.7], outputRange: [1.3, 1] }) }],
           }}
         />
       ))}
 
-      {/* snake segments */}
+      {/* segments */}
       {snake.map((segment, index) => {
         const isHead = index === 0;
         const dir = isHead ? dirFromNeighbors(segment, snake[1]) : 'right';
@@ -111,20 +108,25 @@ export default function Snake({ snake }: SnakeProps): JSX.Element {
         const segmentStyle = {
           left: segment.x * CELL,
           top: segment.y * CELL,
-          width: isHead ? 18 : 15,
-          height: isHead ? 18 : 15,
-          borderRadius: isHead ? 9 : 7,
+          width: isHead ? 18 : 14,
+          height: isHead ? 18 : 14,
+          borderRadius: isHead ? 6 : 4,
           transform: isHead ? [{ scale: headScale }, { rotate }] : undefined,
-          backgroundColor: isHead ? '#00BFFF' : '#66BB6A',
+          backgroundColor: isHead ? theme.head : theme.body,
           opacity: !isHead ? (bodyAnimations[index] || 1) : 1,
-        };
+          elevation: isHead ? 5 : 3,
+          shadowColor: theme.glow || theme.head,
+          shadowOpacity: isHead ? 0.35 : 0.22,
+          shadowRadius: isHead ? 4 : 3,
+          shadowOffset: { width: 0, height: 0 },
+        } as const;
 
         return (
-          <Animated.View key={index} style={[styles.snakeSegment, segmentStyle]}>
+          <Animated.View key={index} style={[styles.seg, segmentStyle]}>
             {isHead && (
               <View style={styles.face}>
                 <View style={styles.eye} />
-                <View style={[styles.eye, { left: 11 }]} />
+                <View style={[styles.eye, { left: 9 }]} />
               </View>
             )}
           </Animated.View>
@@ -135,16 +137,7 @@ export default function Snake({ snake }: SnakeProps): JSX.Element {
 }
 
 const styles = StyleSheet.create({
-  snakeSegment: {
-    position: 'absolute',
-    shadowColor: '#00BFFF',
-    shadowOpacity: 0.3,
-    shadowRadius: 5,
-    shadowOffset: { width: 0, height: 0 },
-    elevation: 4,
-    borderWidth: 1.2,
-    borderColor: 'rgba(0,0,0,0.1)',
-  },
-  face: { position: 'absolute', top: 4, left: 3, width: 12, height: 6, flexDirection: 'row' },
+  seg: { position: 'absolute' },
+  face: { position: 'absolute', top: 3, left: 3, width: 12, height: 6, flexDirection: 'row' },
   eye: { position: 'absolute', width: 3, height: 3, borderRadius: 1.5, backgroundColor: '#0a2540', left: 2 },
 });

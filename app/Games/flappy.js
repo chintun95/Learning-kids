@@ -376,7 +376,7 @@ export default function StartFlappyGame() {
       {/* Overlays */}
       {showStart && !running && !paused && !showGameOver && (
         <View style={styles.centerOverlay}>
-          <Text style={styles.title}>FLAPPY+</Text>
+          <Text style={styles.title}>FLAPPY BIRD</Text>
           <Text style={[styles.sub, { marginTop: 6 }]}>Tap to flap • Avoid pipes</Text>
           <Text style={[styles.sub, { marginTop: 2 }]}>Combos add bonus points</Text>
           <TouchableOpacity style={[styles.primaryBtn, { marginTop: 10 }]} onPress={handleStartGame}>
