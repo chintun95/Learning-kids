@@ -1,3 +1,4 @@
+//edit-profile.jsx
 import React, { memo, useState, useEffect, useRef } from 'react';
 import {
   StyleSheet,

@@ -13,6 +13,7 @@ import SignInPage from "./signIn-page";
 import EditProfilePage from "./edit-profile"
 import ShopPage from "./shop"
 import CreateQuestionsPage from "./CreateQuestions"
+import QuizScreen from "./QuizScreen";
 
 import { initAnalyticsWeb } from "../firebase";
 
@@ -36,6 +37,7 @@ const App: React.FC = () => {
           <Stack.Screen name="EditProfilePage" component={EditProfilePage} options={{ headerShown: false }} />
           <Stack.Screen name="ShopPage" component={ShopPage} options={{ headerShown: false }} />
           <Stack.Screen name="CreateQuestionsPage" component={CreateQuestionsPage} options={{ headerShown: false }} />
+          <Stack.Screen name="QuizScreen" component={QuizScreen} options={{ headerShown: false }} />
           
           <Stack.Screen name="SnakeGame" component={SnakeGame} />
         </Stack.Navigator>

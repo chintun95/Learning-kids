@@ -18,8 +18,9 @@ import { SNAKE_MODES, SnakeModeKey } from './snakeModes';
 const CELL = 10;
 const SNAKE_INITIAL_POSITION: Coordinate[] = [{ x: 5, y: 5 }];
 const FOOD_INITIAL_POSITION: Coordinate = { x: 5, y: 20 };
-const GAME_BOUNDS = { xMin: 0, xMax: 36, yMin: 0, yMax: 57.2 };
-const SCORE_INCREMENT = 10; // fallback
+const GAME_BOUNDS = { xMin: 0, xMax: 36, yMin: 0, yMax: 58 }; // all integers now
+const BASE_MOVE_INTERVAL = 90;
+const SCORE_INCREMENT = 10;
 
 const primaryColor = '#00BFFF';
 const backgroundColor = '#B2EBF2';
@@ -31,15 +32,34 @@ type ActivePowerUp = { type: PowerUpType; until: number } | null;
 const POWERUP_DURATION_MS = 8000;
 const COMBO_WINDOW_MS = 2000;
 
-type Cell = { x: number; y: number };
+/** Lightweight grid (memoized) */
+const Grid = React.memo(function Grid({
+  cols, rows, cell, radius = 18,
+}: { cols: number; rows: number; cell: number; radius?: number }) {
+  return (
+    <View pointerEvents="none" style={StyleSheet.absoluteFillObject}>
+      {Array.from({ length: rows }).map((_, r) => (
+        <View key={`r${r}`} style={{ flexDirection: 'row', height: cell }}>
+          {Array.from({ length: cols }).map((__, c) => (
+            <View
+              key={`c${c}`}
+              style={{
+                width: cell,
+                height: cell,
+                borderRightWidth: 0.5,
+                borderBottomWidth: 0.5,
+                borderColor: 'rgba(0,0,0,0.08)',
+              }}
+            />
+          ))}
+        </View>
+      ))}
+      <View style={{ ...StyleSheet.absoluteFillObject as any, borderRadius: radius, overflow: 'hidden' }} />
+    </View>
+  );
+});
 
-function SnakeGame(): JSX.Element {
-  // --- mode & settings ---
-  const [modeKey, setModeKey] = useState<SnakeModeKey>('classic');
-  const mode = SNAKE_MODES[modeKey];
-  const [speedOffset, setSpeedOffset] = useState(0);
-  const [showSettings, setShowSettings] = useState(false);
-
+function SnakeGame({ navigation }: { navigation: any }): JSX.Element {
   // --- core game ---
   const [direction, setDirection] = useState<Direction>(Direction.Right);
   const [snake, setSnake] = useState<Coordinate[]>(SNAKE_INITIAL_POSITION);
@@ -51,50 +71,29 @@ function SnakeGame(): JSX.Element {
   const [countdown, setCountdown] = useState<number>(3);
   const [lives, setLives] = useState<number>(2);
 
-  // --- meta / feel-good ---
-  const [combo, setCombo] = useState<number>(1);
-  const lastEatAtRef = useRef<number>(0);
-  const comboAnim = useRef(new Animated.Value(0)).current;
-
-  // overlays & chip animation
-  const eatRipple = useRef(new Animated.Value(0)).current;
-  const hitFlash  = useRef(new Animated.Value(0)).current;
-  const chipPulse = useRef(new Animated.Value(1)).current;
-
-  // food pop wrapper
-  const foodScale = useRef(new Animated.Value(1)).current;
-
-  // --- questions ---
+  // questions
   const [foodEaten, setFoodEaten] = useState<number>(0);
   const [currentQuestion, setCurrentQuestion] = useState<any>(null);
   const [isQuestionVisible, setIsQuestionVisible] = useState<boolean>(false);
-  const [showQuestionIcon, setShowQuestionIcon] = useState<boolean>(false);
-  const [questionIconPos, setQuestionIconPos] = useState<Coordinate | null>(null);
   const [userProfile, setUserProfile] = useState<any>(null);
 
-  // --- power-ups ---
-  const [boardPowerUp, setBoardPowerUp] = useState<SpawnedPowerUp | null>(null);
-  const [activePowerUp, setActivePowerUp] = useState<ActivePowerUp>(null);
-  const [bonusPending, setBonusPending] = useState<boolean>(false);
-
-  // --- walls (for modes with obstacles) ---
-  const [walls, setWalls] = useState<Cell[]>([]);
-
-  // --- refs to avoid stale closures in interval ---
+  // refs
   const directionRef = useRef(direction);
   const snakeRef = useRef(snake);
   const pausedRef = useRef(isPaused);
   const gameOverRef = useRef(isGameOver);
-  const activePowerUpRef = useRef<ActivePowerUp>(null);
 
   useEffect(() => { directionRef.current = direction; }, [direction]);
   useEffect(() => { snakeRef.current = snake; }, [snake]);
   useEffect(() => { pausedRef.current = isPaused; }, [isPaused]);
   useEffect(() => { gameOverRef.current = isGameOver; }, [isGameOver]);
-  useEffect(() => { activePowerUpRef.current = activePowerUp; }, [activePowerUp]);
 
-  // profile + questions
-  useEffect(() => { (async () => { try { setUserProfile(await fetchUserProfile()); } catch {} })(); }, []);
+  // load user + questions
+  useEffect(() => {
+    (async () => {
+      try { setUserProfile(await fetchUserProfile()); } catch {}
+    })();
+  }, []);
   useEffect(() => {
     (async () => {
       if (!userProfile) return;
@@ -105,17 +104,15 @@ function SnakeGame(): JSX.Element {
     })();
   }, [userProfile]);
 
-  // high score
+  // load high score
   useEffect(() => {
-    let cancelled = false;
     (async () => {
       try {
         const mod = await import('@react-native-async-storage/async-storage');
         const raw = await mod.default.getItem('@snake_high_score');
-        if (!cancelled && raw) setHighScore(Number(raw) || 0);
+        if (raw) setHighScore(Number(raw) || 0);
       } catch {}
     })();
-    return () => { cancelled = true; };
   }, []);
   const persistHighScore = async (s: number) => {
     try {
@@ -126,104 +123,34 @@ function SnakeGame(): JSX.Element {
 
   // countdown
   useEffect(() => {
-    let intervalId: ReturnType<typeof setInterval> | null = null;
-    if (countdown > 0) intervalId = setInterval(() => setCountdown((prev) => prev - 1), 1000);
+    let id: any;
+    if (countdown > 0) id = setInterval(() => setCountdown((c) => c - 1), 1000);
     else if (countdown === 0) setIsPaused(false);
-    return () => { if (intervalId) clearInterval(intervalId); };
+    return () => clearInterval(id);
   }, [countdown]);
 
-  // build walls when mode changes
-  const buildWalls = useCallback(() => {
-    if (!mode.hasWalls) { setWalls([]); return; }
-    const inset = 4;
-    const cells: Cell[] = [];
-    for (let x = inset; x <= GAME_BOUNDS.xMax - inset; x++) {
-      cells.push({ x, y: inset }, { x, y: GAME_BOUNDS.yMax - inset });
-    }
-    for (let y = inset; y <= GAME_BOUNDS.yMax - inset; y++) {
-      cells.push({ x: inset, y }, { x: GAME_BOUNDS.xMax - inset, y });
-    }
-    setWalls(cells);
-  }, [mode.hasWalls]);
-  useEffect(() => { buildWalls(); }, [buildWalls]);
-
-  // dynamic speed from mode + offset
-  const level = useMemo(() => 1 + Math.floor(score / 50), [score]);
   const effectiveInterval = useMemo(() => {
-    const speedUp = Math.max(0, level - 1) * 6; // -6ms per level
-    let ms = Math.max(55, mode.baseSpeedMs + speedOffset - speedUp);
-    if (activePowerUp?.type === 'slow') ms = Math.round(ms * 1.6);
-    return ms;
-  }, [level, activePowerUp, mode.baseSpeedMs, speedOffset]);
+    const level = 1 + Math.floor(score / 50);
+    const speedUp = Math.max(0, level - 1) * 6;
+    return Math.max(55, BASE_MOVE_INTERVAL - speedUp);
+  }, [score]);
 
-  // main loop
   useEffect(() => {
     if (isPaused || isGameOver || countdown > 0) return;
     const id = setInterval(() => moveSnake(), effectiveInterval);
     return () => clearInterval(id);
   }, [effectiveInterval, isPaused, isGameOver, countdown]);
 
-  // power-up expiry tick
-  useEffect(() => {
-    if (!activePowerUp) return;
-    const t = setInterval(() => {
-      if (activePowerUpRef.current && Date.now() >= activePowerUpRef.current.until) setActivePowerUp(null);
-    }, 200);
-    return () => clearInterval(t);
-  }, [activePowerUp]);
-
-  // pulse chip while active
-  useEffect(() => {
-    if (!activePowerUp) return;
-    chipPulse.setValue(1);
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(chipPulse, { toValue: 1.06, duration: 400, useNativeDriver: true }),
-        Animated.timing(chipPulse, { toValue: 1, duration: 400, useNativeDriver: true }),
-      ])
-    );
-    loop.start();
-    return () => loop.stop();
-  }, [activePowerUp, chipPulse]);
-
-  // pop food when it appears/moves
-  useEffect(() => {
-    foodScale.setValue(0.6);
-    Animated.spring(foodScale, { toValue: 1, friction: 4, useNativeDriver: true }).start();
-  }, [food.x, food.y, foodScale]);
-
   // helpers
   const equal = (a: Coordinate, b: Coordinate) => a.x === b.x && a.y === b.y;
-  const occupied = (p: Coordinate, extra: Coordinate[] = []) =>
-    snakeRef.current.some((c) => equal(c, p)) || equal(food, p) || extra.some((c) => equal(c, p));
+  const occupied = (p: Coordinate) => snakeRef.current.some((c) => equal(c, p)) || equal(food, p);
 
-  const safeRandomCell = (exclude: Coordinate[] = []) => {
-    let p = randomFoodPosition(GAME_BOUNDS.xMax, GAME_BOUNDS.yMax);
-    let tries = 0;
-    while (occupied(p, exclude) && tries < 200) {
-      p = randomFoodPosition(GAME_BOUNDS.xMax, GAME_BOUNDS.yMax);
-      tries++;
-    }
-    return p;
+  const spawnFood = () => {
+    let pos = randomFoodPosition(GAME_BOUNDS.xMax, GAME_BOUNDS.yMax);
+    while (occupied(pos)) pos = randomFoodPosition(GAME_BOUNDS.xMax, GAME_BOUNDS.yMax);
+    setFood(pos);
   };
 
-  const spawnFood = () => setFood(safeRandomCell(boardPowerUp ? [boardPowerUp.pos] : []));
-
-  const spawnPowerUp = () => {
-    if (boardPowerUp || activePowerUp) return;
-    const r = Math.random();
-    const type: PowerUpType = r < 0.34 ? 'ghost' : r < 0.67 ? 'slow' : 'bonus';
-    setBoardPowerUp({ type, pos: safeRandomCell([food]) });
-  };
-
-  const triggerComboToast = () => {
-    comboAnim.setValue(0);
-    Animated.timing(comboAnim, { toValue: 1, duration: 450, useNativeDriver: true }).start(() => {
-      Animated.timing(comboAnim, { toValue: 0, duration: 250, useNativeDriver: true }).start();
-    });
-  };
-
-  // movement
   const moveSnake = () => {
     if (gameOverRef.current || pausedRef.current) return;
 
@@ -238,8 +165,8 @@ function SnakeGame(): JSX.Element {
       case Direction.Right: newHead.x += 1; break;
     }
 
-    // wrap if mode says so (ghost still stacks as a bonus)
-    if (mode.wrap || activePowerUpRef.current?.type === 'ghost') {
+    // ghost power wrap
+    if (activePowerUpRef.current?.type === 'ghost') {
       const width = GAME_BOUNDS.xMax;
       const height = GAME_BOUNDS.yMax;
       if (newHead.x < GAME_BOUNDS.xMin) newHead.x = width;
@@ -259,10 +186,8 @@ function SnakeGame(): JSX.Element {
       return;
     }
 
-    // self-collision
     if (current.slice(1).some((seg) => equal(seg, newHead))) {
-      consumeLifeOrEnd();
-      return;
+      return consumeLifeOrEnd();
     }
 
     // eats food
@@ -274,56 +199,30 @@ function SnakeGame(): JSX.Element {
       setCombo(nextCombo);
       if (nextCombo >= 3) triggerComboToast();
 
-      // score from mode (fallback to old constant)
-      const base = mode.foods[0]?.points ?? SCORE_INCREMENT;
+      const base = SCORE_INCREMENT;
       const comboBonus = (nextCombo - 1) * 2;
       const bonus = bonusPending ? base : 0; // double this bite
       const gained = base + comboBonus + bonus;
 
       setScore((s) => {
-        const newScore = s + gained;
+        const newScore = s + SCORE_INCREMENT;
         if (newScore > highScore) { setHighScore(newScore); persistHighScore(newScore); }
         return newScore;
       });
 
-      // eat ripple
-      eatRipple.setValue(0);
-      Animated.timing(eatRipple, { toValue: 1, duration: 350, useNativeDriver: true }).start();
-
       setSnake([newHead, ...current]); // grow
+
+      const nextFoodEaten = foodEaten + 1;
+      setFoodEaten(nextFoodEaten);
+
+      // ask a question every 3rd food
+      if (nextFoodEaten % 3 === 0 && currentQuestion) {
+        setIsPaused(true);
+        setIsQuestionVisible(true);
+      }
+
       spawnFood();
-      setFoodEaten((n) => {
-        const v = n + 1;
-        if (v % 3 === 0) {
-          const qPos = safeRandomCell(boardPowerUp ? [boardPowerUp.pos] : []);
-          setQuestionIconPos(qPos);
-          setShowQuestionIcon(true);
-        } else if (v % 4 === 0) {
-          spawnPowerUp();
-        }
-        return v;
-      });
-
-      if (bonusPending) setBonusPending(false);
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-      return;
-    }
-
-    // eats power-up
-    if (boardPowerUp && checkEatsFood(newHead, boardPowerUp.pos, 2)) {
-      activatePowerUp(boardPowerUp.type);
-      setBoardPowerUp(null);
-      setSnake([newHead, ...current.slice(0, -1)]);
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-      return;
-    }
-
-    // eats question icon
-    if (showQuestionIcon && questionIconPos && checkEatsFood(newHead, questionIconPos, 2)) {
-      setShowQuestionIcon(false);
-      setIsPaused(true);
-      setIsQuestionVisible(true);
-      setSnake([newHead, ...current.slice(0, -1)]);
       return;
     }
 
@@ -331,25 +230,16 @@ function SnakeGame(): JSX.Element {
     setSnake([newHead, ...current.slice(0, -1)]);
   };
 
-  const flashHit = () => {
-    hitFlash.setValue(0.7);
-    Animated.timing(hitFlash, { toValue: 0, duration: 250, useNativeDriver: true }).start();
-  };
-
   const consumeLifeOrEnd = () => {
     if (lives > 0) {
       setLives((l) => l - 1);
-      flashHit();
-      // soft reset (keep score/level)
       setSnake(SNAKE_INITIAL_POSITION);
       setDirection(Direction.Right);
       setIsPaused(true);
       setCountdown(3);
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
     } else {
       setIsGameOver(true);
       setIsPaused(true);
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
     }
   };
 
@@ -362,15 +252,12 @@ function SnakeGame(): JSX.Element {
     setActivePowerUp({ type, until: Date.now() + POWERUP_DURATION_MS });
   };
 
+  const askQuestion = () => setIsQuestionVisible(true);
+
   const answerQuestion = (isCorrect: boolean) => {
     setIsQuestionVisible(false);
     if (isCorrect) {
       setScore((s) => s + 25);
-      const types: PowerUpType[] = ['ghost', 'slow', 'bonus'];
-      activatePowerUp(types[Math.floor(Math.random() * types.length)]);
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-    } else {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
     }
     setCountdown(3);
   };
@@ -380,9 +267,10 @@ function SnakeGame(): JSX.Element {
     const { translationX, translationY } = event.nativeEvent;
     const absX = Math.abs(translationX);
     const absY = Math.abs(translationY);
-    const next = absX > absY
-      ? (translationX > 0 ? Direction.Right : Direction.Left)
-      : (translationY > 0 ? Direction.Down : Direction.Up);
+    const next =
+      absX > absY
+        ? (translationX > 0 ? Direction.Right : Direction.Left)
+        : (translationY > 0 ? Direction.Down : Direction.Up);
     const opposite =
       (direction === Direction.Left && next === Direction.Right) ||
       (direction === Direction.Right && next === Direction.Left) ||
@@ -401,8 +289,6 @@ function SnakeGame(): JSX.Element {
     setIsPaused(false);
     setCountdown(3);
     setIsQuestionVisible(false);
-    setShowQuestionIcon(false);
-    setQuestionIconPos(null);
     setLives(2);
     setBoardPowerUp(null);
     setActivePowerUp(null);
@@ -424,44 +310,28 @@ function SnakeGame(): JSX.Element {
     </Animated.View>
   ) : null;
 
-  const theme = { head: '#1e88e5', body: '#43a047', glow: '#1e88e5' };
-
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <PanGestureHandler onGestureEvent={handleGesture}>
         <SafeAreaView style={styles.container}>
-          <Header reloadGame={reloadGame} pauseGame={pauseGame} isPaused={isPaused}>
+          <Header reloadGame={reloadGame} pauseGame={() => setIsPaused((p) => !p)} isPaused={isPaused}>
             <View style={styles.hudRow}>
               <Text style={styles.scoreText}>{score}</Text>
               <Text style={styles.hudPill}>HS {highScore}</Text>
-              <Text style={styles.hudPill}>LV {level}</Text>
               <Text style={styles.hudPill}>♥ {lives}</Text>
               {powerChip}
-
-              {/* Settings button */}
-              <Pressable onPress={() => setShowSettings(true)} style={{ marginLeft: 8 }}>
-                <Text style={[styles.hudPill, { paddingHorizontal: 10 }]}>⚙️</Text>
-              </Pressable>
             </View>
           </Header>
 
           {countdown > 0 ? (
-            <Text style={styles.countdown}>{countdown > 0 ? countdown : 'GO!'}</Text>
+            <Text style={styles.countdown}>{countdown}</Text>
           ) : (
             <View style={styles.boundaries}>
-              {/* simple grid tint removed for cleanliness; re-add if you want */}
-              {/* walls */}
-              {walls.map((w, i) => (
-                <View key={i} style={{
-                  position:'absolute',
-                  left: w.x * CELL, top: w.y * CELL,
-                  width: 10, height: 10,
-                  backgroundColor: '#0a2540', opacity: 0.6, borderRadius: 2
-                }}/>
-              ))}
+              {/* grid */}
+              <Grid cols={Math.ceil(GAME_BOUNDS.xMax)} rows={Math.ceil(GAME_BOUNDS.yMax)} cell={CELL} />
 
               {/* actors */}
-              <Snake snake={snake} theme={theme} />
+              <Snake snake={snake} />
               <Animated.View style={{ transform: [{ scale: foodScale }] }}>
                 <Food x={food.x} y={food.y} />
               </Animated.View>
@@ -515,7 +385,6 @@ function SnakeGame(): JSX.Element {
               <Text style={styles.gameOverTitle}>Game Over</Text>
               <Text style={styles.gameOverStats}>Score: {score}</Text>
               <Text style={styles.gameOverStats}>Best: {highScore}</Text>
-              <Text style={styles.gameOverHint}>Tap the reload to play again</Text>
             </View>
           )}
 
@@ -571,29 +440,6 @@ function SnakeGame(): JSX.Element {
   );
 }
 
-function PowerProgress({ until }: { until: number }) {
-  const [, setT] = useState(0);
-  useEffect(() => {
-    const id = setInterval(() => setT(Date.now()), 120);
-    return () => clearInterval(id);
-  }, []);
-  const pct = Math.max(0, Math.min(1, 1 - (until - Date.now()) / POWERUP_DURATION_MS));
-  return (
-    <View style={styles.powerBar}>
-      <View style={[styles.powerFill, { width: `${pct * 100}%` }]} />
-    </View>
-  );
-}
-
-function PowerUpIcon({ kind, x, y }: { kind: PowerUpType; x: number; y: number }) {
-  const label = kind === 'ghost' ? '👻' : kind === 'slow' ? '🐌' : '⭐️';
-  return (
-    <View style={[styles.powerIcon, { left: x * CELL, top: y * CELL }]}>
-      <Text style={{ fontSize: 14 }}>{label}</Text>
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
   container: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   boundaries: {
@@ -614,12 +460,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 10,
-    overflow: 'hidden',
     fontWeight: '700',
   },
-  scoreText: { fontSize: 22, fontWeight: 'bold', color: primaryColor, textAlign: 'center' },
-
-  // question
+  scoreText: { fontSize: 22, fontWeight: 'bold', color: primaryColor },
   questionContainer: {
     position: 'absolute',
     top: '25%',
@@ -629,14 +472,8 @@ const styles = StyleSheet.create({
     padding: 20,
     borderRadius: 12,
     elevation: 6,
-    shadowColor: '#000',
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 4 },
   },
   questionText: { fontSize: 18, fontWeight: 'bold' },
-
-  // game over
   overlayCenter: {
     position: 'absolute',
     top: '30%',
@@ -698,24 +535,6 @@ const styles = StyleSheet.create({
     borderColor: '#ffd84d',
   },
   comboTxt: { color: '#ffd84d', fontWeight: '900', letterSpacing: 0.4 },
-
-  // settings
-  settingsPanel: {
-    position: 'absolute',
-    top: '22%',
-    left: '8%',
-    right: '8%',
-    backgroundColor: '#fff',
-    padding: 16,
-    borderRadius: 12,
-    elevation: 6,
-    shadowColor: '#000',
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 4 },
-  },
-  settingsTitle: { fontWeight: '900', fontSize: 18, marginBottom: 8 },
-  settingsSection: { fontWeight: '700', marginBottom: 6 },
 });
 
 export default SnakeGame;
