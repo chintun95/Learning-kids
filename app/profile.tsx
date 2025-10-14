@@ -10,11 +10,13 @@ import {
   PixelRatio,
   ImageBackground
 } from 'react-native';
-import { auth } from '../firebase'; // Adjust path to your firebase config
+import { auth } from '../firebase'; 
 import { signOut } from 'firebase/auth';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { widthPercentageToDP as wp, heightPercentageToDP as hp } from 'react-native-responsive-screen';
+import { scheduleLocalNotification, scheduleDailyReminder, cancelDailyReminder, isDailyReminderScheduled } from './utils/notifications';
+import { Switch } from 'react-native';
 
 type ProfileScreenProps = {
   route: any;
@@ -38,6 +40,12 @@ const Profile: React.FC<ProfileScreenProps> = ({ route }) => {
     ]
   });
 
+  const [reminderEnabled, setReminderEnabled] = useState(false);
+  const [reminderTimeLabel, setReminderTimeLabel] = useState<string | null>(null);
+  const [isEditingTime, setIsEditingTime] = useState(false);
+  const [editHour, setEditHour] = useState(9);
+  const [editMinute, setEditMinute] = useState(0);
+
   useEffect(() => {
     if (auth.currentUser) {
       const user = auth.currentUser;
@@ -52,6 +60,23 @@ const Profile: React.FC<ProfileScreenProps> = ({ route }) => {
         joinDate
       }));
     }
+
+ 
+    (async () => {
+      const scheduled = await isDailyReminderScheduled();
+      setReminderEnabled(!!scheduled);
+      if (scheduled) {
+        const time = await (await import("./utils/notifications")).getDailyReminderTime();
+        if (time) {
+          setEditHour(time.hour);
+          setEditMinute(time.minute);
+          const hh = ((time.hour + 11) % 12) + 1; 
+          const mm = time.minute.toString().padStart(2, '0');
+          const ampm = time.hour >= 12 ? 'PM' : 'AM';
+          setReminderTimeLabel(`Daily at ${hh}:${mm} ${ampm}`);
+        }
+      }
+    })();
   }, []);
 
   const handleSignOut = () => {
@@ -135,6 +160,105 @@ const Profile: React.FC<ProfileScreenProps> = ({ route }) => {
           <TouchableOpacity style={styles.signOutButton} onPress={handleSignOut}>
             <Text style={styles.buttonText}>Sign Out</Text>
           </TouchableOpacity>
+
+            <View style={{ marginTop: hp('2%'), alignItems: 'center' }}>
+              <Text style={[styles.sectionTitle, { marginBottom: hp('1%') }]}>Daily Reminder</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <Switch
+                  value={reminderEnabled}
+                  onValueChange={async (value) => {
+                    setReminderEnabled(value);
+                    if (value) {
+                      const id = await scheduleDailyReminder(9, 0);
+                      if (id) {
+                        await scheduleLocalNotification('Reminder enabled', 'You will receive daily reminders at 9:00 AM');
+                        setReminderTimeLabel('Daily at 9:00 AM');
+                      }
+                    } else {
+                      await cancelDailyReminder();
+                      await scheduleLocalNotification('Reminder disabled', 'You will no longer receive daily reminders');
+                      setReminderTimeLabel(null);
+                    }
+                  }}
+                />
+              </View>
+            </View>
+            {reminderTimeLabel ? <Text style={[{ marginTop: hp('1%') }, styles.reminderLabel]}>{reminderTimeLabel}</Text> : null}
+            {/* Development-only test button to quickly verify notifications */}
+            {__DEV__ ? (
+              <TouchableOpacity
+                style={[styles.editButton, { marginTop: hp('1%') }]}
+                onPress={async () => {
+                  try {
+                    const id = await scheduleLocalNotification('Test Notification', 'This should appear in ~5s', 5);
+                    console.log('Scheduled test notification id:', id);
+                  } catch (e) {
+                    console.error('Failed to schedule test notification:', e);
+                  }
+                }}
+              >
+                <Text style={styles.buttonText}>Send test notification (5s)</Text>
+              </TouchableOpacity>
+            ) : null}
+            {!isEditingTime ? (
+              <TouchableOpacity style={[styles.editButton, { marginTop: hp('1%') }]} onPress={() => setIsEditingTime(true)}>
+                <Text style={styles.buttonText}>Edit Time</Text>
+              </TouchableOpacity>
+            ) : (
+              <View style={{ marginTop: hp('1%'), alignItems: 'center' }}>
+                <View style={{ alignItems: 'center', marginBottom: hp('1%') }}>
+                  {/* live preview so user immediately sees the selected time */}
+                  <Text style={{ fontSize: wp('5%'), marginBottom: hp('0.5%') }}>
+                    Editing: {(((editHour + 11) % 12) + 1).toString().padStart(2, '0')}:{editMinute.toString().padStart(2, '0')} {editHour >= 12 ? 'PM' : 'AM'}
+                  </Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <TouchableOpacity onPress={() => setEditHour(h => (h + 23) % 24)} style={[styles.smallButton, { marginRight: 6 }]}>
+                      <Text style={styles.smallButtonText}>-</Text>
+                    </TouchableOpacity>
+                    <Text style={{ fontSize: wp('5%'), marginHorizontal: wp('3%') }}>{editHour.toString().padStart(2, '0')}</Text>
+                    <TouchableOpacity onPress={() => setEditHour(h => (h + 1) % 24)} style={[styles.smallButton, { marginLeft: 6 }]}>
+                      <Text style={styles.smallButtonText}>+</Text>
+                    </TouchableOpacity>
+
+                    <View style={{ width: wp('6%') }} />
+
+                    <TouchableOpacity onPress={() => setEditMinute(m => (m + 59) % 60)} style={[styles.smallButton, { marginRight: 6 }]}>
+                      <Text style={styles.smallButtonText}>-</Text>
+                    </TouchableOpacity>
+                    <Text style={{ fontSize: wp('5%'), marginHorizontal: wp('3%') }}>{editMinute.toString().padStart(2, '0')}</Text>
+                    <TouchableOpacity onPress={() => setEditMinute(m => (m + 1) % 60)} style={[styles.smallButton, { marginLeft: 6 }]}>
+                      <Text style={styles.smallButtonText}>+</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+                <View style={{ flexDirection: 'row' }}>
+                  <TouchableOpacity
+                    style={[styles.editButton, { marginRight: wp('3%') }]}
+                    onPress={async () => {
+                      // Save new time: if already enabled, cancel then reschedule with new time
+                      if (reminderEnabled) {
+                        await cancelDailyReminder();
+                      }
+                      const id = await scheduleDailyReminder(editHour, editMinute);
+                      if (id) {
+                        setReminderEnabled(true);
+                        const hh = ((editHour + 11) % 12) + 1;
+                        const mm = editMinute.toString().padStart(2, '0');
+                        const ampm = editHour >= 12 ? 'PM' : 'AM';
+                        setReminderTimeLabel(`Daily at ${hh}:${mm} ${ampm}`);
+                        await scheduleLocalNotification('Reminder set', `Daily reminder set for ${hh}:${mm} ${ampm}`);
+                      }
+                      setIsEditingTime(false);
+                    }}
+                  >
+                    <Text style={styles.buttonText}>Save</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.signOutButton} onPress={() => { setIsEditingTime(false); }}>
+                    <Text style={styles.buttonText}>Cancel</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )}
         </View>
       </ScrollView>
     </ImageBackground>
@@ -332,6 +456,26 @@ const styles = StyleSheet.create({
     color: '#000',
     fontSize: wp('5%'),
     fontFamily: 'FredokaOne-Regular',
+  },
+  smallButton: {
+    width: wp('10%'),
+    height: hp('5%'),
+    borderRadius: 8,
+    borderWidth: 2,
+    borderColor: '#000',
+    backgroundColor: '#D9D9D9',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  smallButtonText: {
+    color: '#000',
+    fontSize: wp('4%'),
+    fontFamily: 'FredokaOne-Regular',
+  },
+  reminderLabel: {
+    fontSize: wp('4%'),
+    fontFamily: 'FredokaOne-Regular',
+    color: '#1E1E1E',
   },
 });
 

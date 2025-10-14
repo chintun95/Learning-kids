@@ -16,14 +16,37 @@ import CreateQuestionsPage from "./CreateQuestions"
 import QuizScreen from "./QuizScreen";
 
 import { initAnalyticsWeb } from "../firebase";
+import { registerForPushNotificationsAsync, addNotificationReceivedListener, addNotificationResponseReceivedListener, scheduleDailyReminder } from "./utils/notifications";
 
 
 const Stack = createStackNavigator();
 
 const App: React.FC = () => {
   useEffect(() => {
-    // safe on web only; no crash on iOS/Android
+   
     initAnalyticsWeb();
+
+  
+    (async () => {
+      const token = await registerForPushNotificationsAsync();
+      if (token) console.log("Push token:", token);
+      
+      const reminderId = await scheduleDailyReminder(9, 0);
+      if (reminderId) console.log("Daily reminder scheduled, id:", reminderId);
+    })();
+
+    const receivedSub = addNotificationReceivedListener((notification: any) => {
+      console.log("Notification received:", notification);
+    });
+
+    const responseSub = addNotificationResponseReceivedListener((response: any) => {
+      console.log("Notification response:", response);
+    });
+
+    return () => {
+      receivedSub.remove();
+      responseSub.remove();
+    };
   }, []);
 
   return (
