@@ -618,7 +618,7 @@ const styles = StyleSheet.create({
   container: { flex: 1, justifyContent: 'flex-start', alignItems: 'center' },
   boundaries: {
     width: '92%',
-    aspectRatio: 2.8 / 4,
+    aspectRatio: 2.7 / 4,
     backgroundColor,
     borderRadius: 22,
     overflow: 'hidden',
