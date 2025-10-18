@@ -16,10 +16,11 @@ const CELL = 10;
 
 const dirFromNeighbors = (cur: Coordinate, next?: Coordinate) => {
   if (!next) return 'right';
-  if (next.x < cur.x) return 'right';
-  if (next.x > cur.x) return 'left';
-  if (next.y < cur.y) return 'down';
-  return 'up';
+  // FIX: directions were inverted before
+  if (next.x < cur.x) return 'left';
+  if (next.x > cur.x) return 'right';
+  if (next.y < cur.y) return 'up';
+  return 'down';
 };
 const rotForDir: Record<string, string> = {
   up: '0deg',
