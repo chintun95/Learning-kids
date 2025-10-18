@@ -1,36 +1,25 @@
-// app/Games/Snake.tsx
 import React, { useEffect, useRef, Fragment } from 'react';
 import { StyleSheet, Animated, View } from 'react-native';
 import { Coordinate } from './types/types';
 
 interface SnakeProps {
   snake: Coordinate[];
-  theme?: {
-    head: string;
-    body: string;
-    glow?: string;
-  };
+  cell?: number; // dynamic cell size
+  theme?: { head: string; body: string; glow?: string };
 }
-
-const CELL = 10;
 
 const dirFromNeighbors = (cur: Coordinate, next?: Coordinate) => {
   if (!next) return 'right';
-  // FIX: directions were inverted before
   if (next.x < cur.x) return 'left';
   if (next.x > cur.x) return 'right';
   if (next.y < cur.y) return 'up';
   return 'down';
 };
-const rotForDir: Record<string, string> = {
-  up: '0deg',
-  right: '90deg',
-  down: '180deg',
-  left: '270deg',
-};
+const rotForDir: Record<string, string> = { up: '0deg', right: '90deg', down: '180deg', left: '270deg' };
 
 export default function Snake({
   snake,
+  cell = 10,
   theme = { head: '#1e88e5', body: '#43a047', glow: '#1e88e5' },
 }: SnakeProps): JSX.Element {
   const headScale = useRef(new Animated.Value(1)).current;
@@ -66,33 +55,32 @@ export default function Snake({
     }
   }, [snake.length, bodyAnimations]);
 
-  // sparkle trail (subtle)
+  // subtle sparkle trail
   useEffect(() => {
     const head = snake[0];
     if (!head) return;
-    const puff = { x: head.x * CELL, y: head.y * CELL, a: new Animated.Value(0.7) };
+    const puff = { x: head.x * cell, y: head.y * cell, a: new Animated.Value(0.7) };
     puffsRef.current.push(puff);
     Animated.timing(puff.a, { toValue: 0, duration: 420, useNativeDriver: true }).start(() => {
       const idx = puffsRef.current.indexOf(puff);
       if (idx > -1) puffsRef.current.splice(idx, 1);
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [snake[0]?.x, snake[0]?.y]);
+  }, [snake[0]?.x, snake[0]?.y, cell]);
 
   return (
     <Fragment>
-      {/* sparkle trail */}
       {puffsRef.current.map((p, i) => (
         <Animated.View
           key={`p${i}`}
           pointerEvents="none"
           style={{
             position: 'absolute',
-            left: p.x + 4,
-            top: p.y + 4,
-            width: 6,
-            height: 6,
-            borderRadius: 3,
+            left: p.x + Math.max(2, cell * 0.4),
+            top: p.y + Math.max(2, cell * 0.4),
+            width: Math.max(3, cell * 0.6),
+            height: Math.max(3, cell * 0.6),
+            borderRadius: Math.max(1.5, cell * 0.3),
             backgroundColor: theme.glow || theme.head,
             opacity: p.a,
             transform: [{ scale: p.a.interpolate({ inputRange: [0, 0.7], outputRange: [1.3, 1] }) }],
@@ -100,18 +88,20 @@ export default function Snake({
         />
       ))}
 
-      {/* segments */}
       {snake.map((segment, index) => {
         const isHead = index === 0;
         const dir = isHead ? dirFromNeighbors(segment, snake[1]) : 'right';
         const rotate = isHead ? rotForDir[dir] : '0deg';
 
+        const headSize = Math.max(12, Math.floor(cell * 1.8));
+        const bodySize = Math.max(10, Math.floor(cell * 1.4));
+
         const segmentStyle = {
-          left: segment.x * CELL,
-          top: segment.y * CELL,
-          width: isHead ? 18 : 14,
-          height: isHead ? 18 : 14,
-          borderRadius: isHead ? 6 : 4,
+          left: segment.x * cell,
+          top: segment.y * cell,
+          width: isHead ? headSize : bodySize,
+          height: isHead ? headSize : bodySize,
+          borderRadius: isHead ? Math.floor(headSize / 3) : Math.floor(bodySize / 3.5),
           transform: isHead ? [{ scale: headScale }, { rotate }] : undefined,
           backgroundColor: isHead ? theme.head : theme.body,
           opacity: !isHead ? (bodyAnimations[index] || 1) : 1,

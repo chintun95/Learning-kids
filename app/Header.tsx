@@ -1,29 +1,31 @@
 // app/Header.tsx
 import React, { useEffect } from "react";
-import { TouchableOpacity, StyleSheet, View } from "react-native";
+import { TouchableOpacity, StyleSheet, View, Text } from "react-native";
 import { Ionicons, FontAwesome } from "@expo/vector-icons";
 import * as Updates from "expo-updates";
 import { useTheme } from "@react-navigation/native";
 
-interface HeaderProps {
+export interface HeaderProps {
   reloadGame: () => void;
   pauseGame: () => void;
-  children: JSX.Element;
+  openSettings?: () => void;
+  children?: React.ReactNode;     // ← was JSX.Element; make optional & flexible
   isPaused: boolean;
 }
 
 export default function Header({
   children,
   reloadGame,
+  openSettings,
   pauseGame,
   isPaused,
 }: HeaderProps): JSX.Element {
   const { isUpdatePending } = Updates.useUpdates();
-  const { colors } = useTheme(); // colors.primary, colors.background, colors.border, colors.text
+  const { colors } = useTheme();
 
   useEffect(() => {
     if (isUpdatePending) {
-      Updates.reloadAsync();
+      Updates.reloadAsync().catch(() => {});
     }
   }, [isUpdatePending]);
 
@@ -31,44 +33,71 @@ export default function Header({
     <View
       style={[
         styles.container,
-        { borderColor: colors.primary, backgroundColor: colors.background },
+        { backgroundColor: colors.background },
       ]}
     >
-      {/* Left: Reset Button */}
-      <TouchableOpacity onPress={reloadGame}>
-        <Ionicons name="reload-circle" size={35} color={colors.primary} />
+      {/* Left: Reset */}
+      <TouchableOpacity
+        onPress={reloadGame}
+        accessibilityRole="button"
+        accessibilityLabel="Restart"
+      >
+        <Ionicons name="reload-circle" size={28} color={colors.primary} />
       </TouchableOpacity>
 
-      {/* Center: Placeholder Profile Icon */}
-      <View>
-        <FontAwesome name="user-circle" size={35} color={colors.primary} />
+      {/* Middle: Title / HUD slot */}
+      <View style={styles.center}>
+        <Text style={[styles.title, { color: colors.text }]}>Snake</Text>
+        {/* Children HUD (score, lives, mode, etc.) */}
+        {!!children && <View style={styles.hudRow}>{children}</View>}
       </View>
 
-      {/* Right: Pause/Play Button */}
-      <TouchableOpacity onPress={pauseGame}>
-        <FontAwesome
-          name={isPaused ? "play-circle" : "pause-circle"}
-          size={35}
-          color={colors.primary}
-        />
-      </TouchableOpacity>
-
-      {/* Child content if needed */}
-      {children}
+      {/* Right: Pause / Settings */}
+      <View style={styles.right}>
+        {openSettings && (
+          <TouchableOpacity
+            onPress={openSettings}
+            style={styles.iconBtn}
+            accessibilityRole="button"
+            accessibilityLabel="Settings"
+          >
+            <Ionicons name="settings" size={22} color={colors.primary} />
+          </TouchableOpacity>
+        )}
+        <TouchableOpacity
+          onPress={pauseGame}
+          style={styles.iconBtn}
+          accessibilityRole="button"
+          accessibilityLabel={isPaused ? "Resume" : "Pause"}
+        >
+          <FontAwesome
+            name={isPaused ? "play-circle" : "pause-circle"}
+            size={28}
+            color={colors.primary}
+          />
+        </TouchableOpacity>
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    flex: 0.05,
+    width: "100%",
+    paddingHorizontal: 12,
+    paddingVertical: 10,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    borderWidth: 12,
-    borderTopLeftRadius: 30,
-    borderTopRightRadius: 30,
-    borderBottomWidth: 0,
-    padding: 15,
+
+
+    // Optional: subtle bottom divider to separate from board
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: "rgba(0,0,0,0.08)",
   },
+  center: { flex: 1, alignItems: "center" },
+  title: { fontSize: 18, fontWeight: "800", letterSpacing: 0.3 },
+  hudRow: { marginTop: 6, flexDirection: "row", alignItems: "center" },
+  right: { flexDirection: "row", alignItems: "center" },
+  iconBtn: { marginLeft: 8 },
 });

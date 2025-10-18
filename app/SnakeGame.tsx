@@ -1,4 +1,3 @@
-// app/Games/SnakeGame.tsx
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Text, View, SafeAreaView, StyleSheet, Button, Animated } from 'react-native';
 import { PanGestureHandler, GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -15,11 +14,12 @@ import { fetchQuestions } from '../backend/fetchquestions';
 import { fetchUserProfile } from '../backend/fetchUserProfile';
 import { SNAKE_MODES, SnakeModeKey } from './snakeModes';
 
-const CELL = 10;
-const SNAKE_INITIAL_POSITION: Coordinate[] = [{ x: 5, y: 5 }];
 const FOOD_INITIAL_POSITION: Coordinate = { x: 5, y: 20 };
-const GAME_BOUNDS = { xMin: 0, xMax: 36, yMin: 0, yMax: 58 }; // integer grid
-const SCORE_INCREMENT = 10;
+const GAME_BOUNDS = { xMin: 0, xMax: 36, yMin: 0, yMax: 58 }; // grid units
+const SNAKE_INITIAL_POSITION: Coordinate[] = [{ x: 5, y: 5 }];
+
+const COLS = Math.ceil(GAME_BOUNDS.xMax);
+const ROWS = Math.ceil(GAME_BOUNDS.yMax);
 
 const primaryColor = '#00BFFF';
 const backgroundColor = '#B2EBF2';
@@ -27,9 +27,14 @@ const backgroundColor = '#B2EBF2';
 type PowerUpType = 'ghost' | 'slow' | 'bonus';
 type SpawnedPowerUp = { type: PowerUpType; pos: Coordinate };
 type ActivePowerUp = { type: PowerUpType; until: number } | null;
-
 const POWERUP_DURATION_MS = 8000;
 const COMBO_WINDOW_MS = 2000;
+
+type Phase = 'ready' | 'countdown' | 'playing' | 'paused' | 'gameover';
+
+// small helpers
+const clamp = (n: number, min: number, max: number) => Math.max(min, Math.min(max, n));
+const equal = (a: Coordinate, b: Coordinate) => a.x === b.x && a.y === b.y;
 
 /** Lightweight grid (memoized) */
 const Grid = React.memo(function Grid({
@@ -58,11 +63,6 @@ const Grid = React.memo(function Grid({
   );
 });
 
-function clamp(n: number, min: number, max: number) {
-  return Math.max(min, Math.min(max, n));
-}
-
-/** Small inline components */
 function PowerProgress({ until }: { until: number }) {
   const [pct, setPct] = useState(1);
   useEffect(() => {
@@ -79,11 +79,45 @@ function PowerProgress({ until }: { until: number }) {
   );
 }
 
-function PowerUpIcon({ kind, x, y }: { kind: PowerUpType; x: number; y: number }) {
+function PowerUpIcon({ kind, x, y, cell }: { kind: PowerUpType; x: number; y: number; cell: number }) {
   const emoji = kind === 'ghost' ? '👻' : kind === 'slow' ? '🐌' : '⭐';
+  const size = cell * 1.8;
   return (
-    <View style={[styles.powerIcon, { left: x * CELL - 4, top: y * CELL - 4 }]}>
-      <Text style={{ fontSize: 14 }}>{emoji}</Text>
+    <View style={[styles.powerIcon, {
+      left: x * cell - (size - cell) / 2, top: y * cell - (size - cell) / 2,
+      width: size, height: size, borderRadius: size / 2,
+    }]}>
+      <Text style={{ fontSize: Math.max(12, Math.floor(cell)) }}>{emoji}</Text>
+    </View>
+  );
+}
+
+function StartOverlay({ onStart }: { onStart: () => void }) {
+  return (
+    <View style={styles.overlayFill}>
+      <View style={styles.card}>
+        <Text style={styles.title}>Snake</Text>
+        <Text style={styles.subtle}>Swipe to move. Eat food. Don’t crash.</Text>
+        <View style={{ height: 12 }} />
+        <View style={styles.row}>
+          <Text style={styles.hint}>Swipe ◀︎▶︎▲▼</Text>
+          <Text style={styles.dot}>•</Text>
+          <Text style={styles.hint}>Mode controls wrap & walls</Text>
+        </View>
+        <View style={{ height: 16 }} />
+        <View style={styles.primaryBtn} onTouchEnd={onStart}>
+          <Text style={styles.primaryBtnTxt}>Tap to Play</Text>
+        </View>
+      </View>
+    </View>
+  );
+}
+function CountdownOverlay({ n }: { n: number }) {
+  return (
+    <View style={styles.overlayFill}>
+      <View style={styles.countDownBubble}>
+        <Text style={styles.countDownTxt}>{n}</Text>
+      </View>
     </View>
   );
 }
@@ -95,15 +129,21 @@ function SnakeGame({ navigation }: { navigation: any }): JSX.Element {
   const [showSettings, setShowSettings] = useState(false);
   const [speedOffset, setSpeedOffset] = useState(0); // tweak +/- ms
 
+  // --- phase ---
+  const [phase, setPhase] = useState<Phase>('ready');
+
   // --- core game ---
   const [direction, setDirection] = useState<Direction>(Direction.Right);
   const [snake, setSnake] = useState<Coordinate[]>(SNAKE_INITIAL_POSITION);
   const [food, setFood] = useState<Coordinate>(FOOD_INITIAL_POSITION);
+  const foodRef = useRef(food);
+  useEffect(() => { foodRef.current = food; }, [food]);
+
   const [score, setScore] = useState<number>(0);
   const [highScore, setHighScore] = useState<number>(0);
   const [isGameOver, setIsGameOver] = useState<boolean>(false);
-  const [isPaused, setIsPaused] = useState<boolean>(true); // paused until countdown finishes
-  const [countdown, setCountdown] = useState<number>(3);
+  const [isPaused, setIsPaused] = useState<boolean>(true);
+  const [countdown, setCountdown] = useState<number>(0);
   const [lives, setLives] = useState<number>(2);
 
   // questions
@@ -112,12 +152,12 @@ function SnakeGame({ navigation }: { navigation: any }): JSX.Element {
   const [isQuestionVisible, setIsQuestionVisible] = useState<boolean>(false);
   const [userProfile, setUserProfile] = useState<any>(null);
 
-  // optional board goodies (kept simple / off by default)
+  // power-ups (optional)
   const [boardPowerUp, setBoardPowerUp] = useState<SpawnedPowerUp | null>(null);
   const [activePowerUp, setActivePowerUp] = useState<ActivePowerUp>(null);
   const activePowerUpRef = useRef<ActivePowerUp>(null);
 
-  // misc HUD/FX state
+  // HUD/FX / combo
   const [combo, setCombo] = useState(1);
   const lastEatAtRef = useRef<number>(0);
   const [bonusPending, setBonusPending] = useState(false);
@@ -129,21 +169,26 @@ function SnakeGame({ navigation }: { navigation: any }): JSX.Element {
   const snakeRef = useRef(snake);
   const pausedRef = useRef(isPaused);
   const gameOverRef = useRef(isGameOver);
-  const foodRef = useRef(food);
-
   useEffect(() => { directionRef.current = direction; }, [direction]);
   useEffect(() => { snakeRef.current = snake; }, [snake]);
   useEffect(() => { pausedRef.current = isPaused; }, [isPaused]);
   useEffect(() => { gameOverRef.current = isGameOver; }, [isGameOver]);
   useEffect(() => { activePowerUpRef.current = activePowerUp; }, [activePowerUp]);
-  useEffect(() => { foodRef.current = food; }, [food]);
+
+  // sizing (dynamic cell + centered stage)
+  const [boardW, setBoardW] = useState(0);
+  const [boardH, setBoardH] = useState(0);
+  const cell = useMemo(() => {
+    if (!boardW || !boardH) return 10;
+    return Math.floor(Math.min(boardW / COLS, boardH / ROWS) * 1.10);
+  }, [boardW, boardH]);
+  const stageW = cell * COLS;
+  const stageH = cell * ROWS;
+  const stageOffsetX = (boardW - stageW) / 2;
+  const stageOffsetY = (boardH - stageH) / 2;
 
   // load user + questions
-  useEffect(() => {
-    (async () => {
-      try { setUserProfile(await fetchUserProfile()); } catch {}
-    })();
-  }, []);
+  useEffect(() => { (async () => { try { setUserProfile(await fetchUserProfile()); } catch {} })(); }, []);
   useEffect(() => {
     (async () => {
       if (!userProfile) return;
@@ -171,46 +216,20 @@ function SnakeGame({ navigation }: { navigation: any }): JSX.Element {
     } catch {}
   };
 
-  // build walls for "walls" mode (simple box + cross)
+  // build walls for "walls" mode
   const walls = useMemo<Coordinate[]>(() => {
     if (!mode.hasWalls) return [];
     const arr: Coordinate[] = [];
     const w = GAME_BOUNDS.xMax;
     const h = GAME_BOUNDS.yMax;
-    // frame
-    for (let x = 6; x <= w - 6; x++) {
-      arr.push({ x, y: 10 });
-      arr.push({ x, y: h - 10 });
-    }
-    for (let y = 14; y <= h - 14; y++) {
-      arr.push({ x: 8, y });
-      arr.push({ x: w - 8, y });
-    }
-    // cross
-    for (let x = Math.floor(w / 2) - 6; x <= Math.floor(w / 2) + 6; x++) {
-      arr.push({ x, y: Math.floor(h / 2) });
-    }
-    for (let y = Math.floor(h / 2) - 6; y <= Math.floor(h / 2) + 6; y++) {
-      arr.push({ x: Math.floor(w / 2), y });
-    }
+    for (let x = 6; x <= w - 6; x++) { arr.push({ x, y: 10 }); arr.push({ x, y: h - 10 }); }
+    for (let y = 14; y <= h - 14; y++) { arr.push({ x: 8, y }); arr.push({ x: w - 8, y }); }
+    for (let x = Math.floor(w / 2) - 6; x <= Math.floor(w / 2) + 6; x++) arr.push({ x, y: Math.floor(h / 2) });
+    for (let y = Math.floor(h / 2) - 6; y <= Math.floor(h / 2) + 6; y++) arr.push({ x: Math.floor(w / 2), y });
     return arr;
   }, [mode.hasWalls]);
 
-  // countdown start
-  useEffect(() => {
-    let id: any;
-    if (countdown > 0) {
-      setIsPaused(true);
-      id = setInterval(() => setCountdown((c) => c - 1), 1000);
-    } else if (countdown === 0) {
-      hitFlash.stopAnimation();      
-      hitFlash.setValue(0);
-      setIsPaused(false);
-    }
-    return () => clearInterval(id);
-  }, [countdown]);
-
-  // --- animations ---
+  // animations
   const chipPulse = useRef(new Animated.Value(1)).current;
   useEffect(() => {
     const loop = Animated.loop(
@@ -257,22 +276,48 @@ function SnakeGame({ navigation }: { navigation: any }): JSX.Element {
     return clamp(base - speedUp, 45, 200);
   }, [mode.baseSpeedMs, speedOffset, score]);
 
+  // game loop
   useEffect(() => {
-    if (isPaused || isGameOver || countdown > 0) return;
+    if (phase !== 'playing' || isPaused || isGameOver) return;
     const id = setInterval(() => moveSnake(), effectiveInterval);
     return () => clearInterval(id);
-  }, [effectiveInterval, isPaused, isGameOver, countdown]);
+  }, [effectiveInterval, isPaused, isGameOver, phase]);
+
+  // overlays flow: ready -> countdown -> playing
+  const startGame = () => {
+    setPhase('countdown');
+    setCountdown(3);
+    setIsPaused(true);
+  };
+  useEffect(() => {
+    if (phase !== 'countdown') return;
+    const id = setInterval(() => {
+      setCountdown((c) => {
+        if (c <= 1) {
+          clearInterval(id);
+          hitFlash.stopAnimation(); hitFlash.setValue(0);
+          setIsPaused(false);
+          setPhase('playing');
+          return 0;
+        }
+        return c - 1;
+      });
+    }, 1000);
+    return () => clearInterval(id);
+  }, [phase, hitFlash]);
 
   // helpers
-  const equal = (a: Coordinate, b: Coordinate) => a.x === b.x && a.y === b.y;
   const occupied = (p: Coordinate) =>
     snakeRef.current.some((c) => equal(c, p)) || equal(foodRef.current, p) || walls.some(w => equal(w, p));
 
   const spawnFood = () => {
     let pos = randomFoodPosition(GAME_BOUNDS.xMax, GAME_BOUNDS.yMax);
+    // clamp and avoid occupied
+    pos.x = clamp(pos.x, GAME_BOUNDS.xMin, GAME_BOUNDS.xMax - 1);
+    pos.y = clamp(pos.y, GAME_BOUNDS.yMin, GAME_BOUNDS.yMax - 1);
     while (occupied(pos)) pos = randomFoodPosition(GAME_BOUNDS.xMax, GAME_BOUNDS.yMax);
     setFood(pos);
-    foodRef.current = pos; 
+    foodRef.current = pos;
     popFood();
   };
 
@@ -282,62 +327,15 @@ function SnakeGame({ navigation }: { navigation: any }): JSX.Element {
       setLives((l) => l - 1);
       setSnake(SNAKE_INITIAL_POSITION);
       setDirection(Direction.Right);
-      hitFlash.stopAnimation();      
-      hitFlash.setValue(0);   
-      setIsPaused(true);
+      hitFlash.stopAnimation(); hitFlash.setValue(0);
+      setPhase('countdown');
       setCountdown(3);
+      setIsPaused(true);
     } else {
+      setPhase('gameover');
       setIsGameOver(true);
       setIsPaused(true);
     }
-  };
-
-  const activatePowerUp = (type: PowerUpType) => {
-    if (type === 'bonus') {
-      setBonusPending(true);
-      setActivePowerUp({ type, until: Date.now() + 3000 });
-      return;
-    }
-    setActivePowerUp({ type, until: Date.now() + POWERUP_DURATION_MS });
-  };
-
-  // power-up expiry ticker
-  useEffect(() => {
-    if (!activePowerUp) return;
-    const t = setInterval(() => {
-      if (Date.now() >= (activePowerUpRef.current?.until ?? 0)) {
-        setActivePowerUp(null);
-        setBonusPending(false);
-      }
-    }, 200);
-    return () => clearInterval(t);
-  }, [activePowerUp]);
-
-  const askQuestion = () => setIsQuestionVisible(true);
-
-  const answerQuestion = (isCorrect: boolean) => {
-    setIsQuestionVisible(false);
-    if (isCorrect) {
-      setScore((s) => s + 25);
-    }
-    setCountdown(3);
-  };
-
-  const handleGesture = (event: GestureEventType) => {
-    if (isGameOver || isQuestionVisible) return;
-    const { translationX, translationY } = event.nativeEvent;
-    const absX = Math.abs(translationX);
-    const absY = Math.abs(translationY);
-    const next =
-      absX > absY
-        ? (translationX > 0 ? Direction.Right : Direction.Left)
-        : (translationY > 0 ? Direction.Down : Direction.Up);
-    const opposite =
-      (directionRef.current === Direction.Left && next === Direction.Right) ||
-      (directionRef.current === Direction.Right && next === Direction.Left) ||
-      (directionRef.current === Direction.Up && next === Direction.Down) ||
-      (directionRef.current === Direction.Down && next === Direction.Up);
-    if (!opposite) setDirection(next);
   };
 
   const moveSnake = () => {
@@ -364,26 +362,21 @@ function SnakeGame({ navigation }: { navigation: any }): JSX.Element {
       if (newHead.y < GAME_BOUNDS.yMin) newHead.y = height;
       if (newHead.y > height) newHead.y = GAME_BOUNDS.yMin;
     } else {
-      if (checkGameOver(newHead, GAME_BOUNDS)) {
-        consumeLifeOrEnd();
-        return;
-      }
+      if (checkGameOver(newHead, GAME_BOUNDS)) return consumeLifeOrEnd();
     }
 
     // wall collision (only when not wrapping)
     if (!doWrap && walls.some(w => w.x === newHead.x && w.y === newHead.y)) {
-      consumeLifeOrEnd();
-      return;
+      return consumeLifeOrEnd();
     }
 
     // self collision
     if (current.slice(1).some((seg) => equal(seg, newHead))) {
-      consumeLifeOrEnd();
-      return;
+      return consumeLifeOrEnd();
     }
 
-    // eats food
-    if (checkEatsFood(newHead, foodRef.current, 2)) {
+    // eats food (cell-perfect)
+    if (checkEatsFood(newHead, foodRef.current)) {
       const now = Date.now();
       const within = now - (lastEatAtRef.current || 0) <= COMBO_WINDOW_MS;
       const nextCombo = within ? combo + 1 : 1;
@@ -391,14 +384,9 @@ function SnakeGame({ navigation }: { navigation: any }): JSX.Element {
       setCombo(nextCombo);
       if (nextCombo >= 3) triggerComboToast();
 
-      // points from mode foods (single food used)
-      const points = mode.foods[0]?.points ?? SCORE_INCREMENT;
-      const comboBonus = (nextCombo - 1) * 2;
-      const bonus = bonusPending ? points : 0; // double this bite if bonus
-      const gained = points + comboBonus + bonus;
-
+      const points = (mode.foods?.[0]?.points ?? 10) + (nextCombo - 1) * 2 + (bonusPending ? (mode.foods?.[0]?.points ?? 10) : 0);
       setScore((s) => {
-        const newScore = s + gained;
+        const newScore = s + points;
         if (newScore > highScore) { setHighScore(newScore); persistHighScore(newScore); }
         return newScore;
       });
@@ -408,10 +396,7 @@ function SnakeGame({ navigation }: { navigation: any }): JSX.Element {
 
       // ask a question every 3rd food
       const willAsk = (foodEaten + 1) % 3 === 0 && currentQuestion;
-      if (willAsk) {
-        setIsPaused(true);
-        setIsQuestionVisible(true);
-      }
+      if (willAsk) { setIsPaused(true); setIsQuestionVisible(true); }
 
       spawnFood();
       triggerEatRipple();
@@ -423,26 +408,57 @@ function SnakeGame({ navigation }: { navigation: any }): JSX.Element {
     setSnake([newHead, ...current.slice(0, -1)]);
   };
 
+  const answerQuestion = (isCorrect: boolean) => {
+    setIsQuestionVisible(false);
+    if (isCorrect) setScore((s) => s + 25);
+    setPhase('countdown');
+    setCountdown(3);
+    setIsPaused(true);
+  };
+
+  const handleGesture = (event: GestureEventType) => {
+    if (isGameOver || isQuestionVisible) return;
+    const { translationX, translationY } = event.nativeEvent;
+    const absX = Math.abs(translationX);
+    const absY = Math.abs(translationY);
+    const next =
+      absX > absY
+        ? (translationX > 0 ? Direction.Right : Direction.Left)
+        : (translationY > 0 ? Direction.Down : Direction.Up);
+    const opposite =
+      (directionRef.current === Direction.Left && next === Direction.Right) ||
+      (directionRef.current === Direction.Right && next === Direction.Left) ||
+      (directionRef.current === Direction.Up && next === Direction.Down) ||
+      (directionRef.current === Direction.Down && next === Direction.Up);
+    if (!opposite) setDirection(next);
+  };
+
   const reloadGame = () => {
     setSnake(SNAKE_INITIAL_POSITION);
     setFood(FOOD_INITIAL_POSITION);
+    foodRef.current = FOOD_INITIAL_POSITION;
     setScore(0);
     setFoodEaten(0);
     setDirection(Direction.Right);
     setIsGameOver(false);
     setIsPaused(true);
-    setCountdown(3);
-    setIsQuestionVisible(false);
     setLives(2);
     setActivePowerUp(null);
     setBonusPending(false);
     setCombo(1);
-    hitFlash.stopAnimation();
-    hitFlash.setValue(0);
+    hitFlash.stopAnimation(); hitFlash.setValue(0);
     popFood();
+    setPhase('countdown');
+    setCountdown(3);
   };
 
-  const pauseGame = () => setIsPaused((p) => !p);
+  const pauseGame = () => {
+    setIsPaused((p) => {
+      const next = !p;
+      setPhase(next ? 'paused' : 'playing');
+      return next;
+    });
+  };
 
   // --- HUD bits ---
   const chipText =
@@ -460,7 +476,12 @@ function SnakeGame({ navigation }: { navigation: any }): JSX.Element {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <PanGestureHandler onGestureEvent={handleGesture}>
         <SafeAreaView style={styles.container}>
-          <Header reloadGame={reloadGame} pauseGame={pauseGame} isPaused={isPaused} openSettings={() => setShowSettings(true)}>
+          <Header
+            reloadGame={reloadGame}
+            pauseGame={pauseGame}
+            isPaused={isPaused}
+            openSettings={() => setShowSettings(true)}
+          >
             <View style={styles.hudRow}>
               <Text style={styles.scoreText}>{score}</Text>
               <Text style={styles.hudPill}>HS {highScore}</Text>
@@ -470,71 +491,73 @@ function SnakeGame({ navigation }: { navigation: any }): JSX.Element {
             </View>
           </Header>
 
-          {countdown > 0 ? (
-            <Text style={styles.countdown}>{countdown}</Text>
-          ) : (
-            <View style={styles.boundaries}>
-              {/* grid */}
-              <Grid cols={Math.ceil(GAME_BOUNDS.xMax)} rows={Math.ceil(GAME_BOUNDS.yMax)} cell={CELL} />
+          <View
+            style={styles.boundaries}
+            onLayout={e => {
+              const { width, height } = e.nativeEvent.layout;
+              setBoardW(width);
+              setBoardH(height);
+            }}
+          >
+            {/* STAGE: exact pixel area for the grid */}
+            <View style={{ position: 'absolute', left: stageOffsetX, top: stageOffsetY, width: stageW, height: stageH }}>
+              <Grid cols={COLS} rows={ROWS} cell={cell} />
 
               {/* walls */}
               {walls.map((w, i) => (
-                <View key={`w${i}`} style={{
-                  position: 'absolute',
-                  left: w.x * CELL, top: w.y * CELL,
-                  width: CELL, height: CELL, backgroundColor: '#263238'
-                }} />
+                <View key={`w${i}`} style={{ position: 'absolute', left: w.x * cell, top: w.y * cell, width: cell, height: cell, backgroundColor: '#263238' }} />
               ))}
 
               {/* actors */}
-              <Snake snake={snake} />
+              <Snake snake={snake} cell={cell} />
               <Animated.View style={{ transform: [{ scale: foodScale }] }}>
-                <Food x={food.x} y={food.y} />
+                <Food x={food.x} y={food.y} cell={cell} />
               </Animated.View>
-              {boardPowerUp && <PowerUpIcon kind={boardPowerUp.type} x={boardPowerUp.pos.x} y={boardPowerUp.pos.y} />}
+
+              {boardPowerUp && <PowerUpIcon kind={boardPowerUp.type} x={boardPowerUp.pos.x} y={boardPowerUp.pos.y} cell={cell} />}
               {showQuestionIcon && questionIconPos && <QuestionIcon x={questionIconPos.x} y={questionIconPos.y} />}
-
-              {/* combo toast */}
-              <Animated.View
-                pointerEvents="none"
-                style={[
-                  styles.comboToast,
-                  {
-                    opacity: comboAnim,
-                    transform: [
-                      { translateY: comboAnim.interpolate({ inputRange: [0, 1], outputRange: [8, 0] }) },
-                      { scale: comboAnim.interpolate({ inputRange: [0, 1], outputRange: [0.9, 1] }) },
-                    ],
-                  },
-                ]}
-              >
-                <Text style={styles.comboTxt}>Combo x{combo}</Text>
-              </Animated.View>
-
-              {/* eat ripple */}
-              <Animated.View
-                pointerEvents="none"
-                style={[
-                  StyleSheet.absoluteFillObject,
-                  {
-                    opacity: eatRipple.interpolate({ inputRange: [0, 1], outputRange: [0.18, 0] }),
-                    transform: [{ scale: eatRipple.interpolate({ inputRange: [0, 1], outputRange: [0.95, 1.1] }) }],
-                    backgroundColor: '#ffffff',
-                    borderRadius: 16,
-                  },
-                ]}
-              />
-
-              {/* hit flash */}
-              <Animated.View
-                pointerEvents="none"
-                style={[
-                  StyleSheet.absoluteFillObject,
-                  { backgroundColor: '#ff5252', opacity: hitFlash, borderRadius: 16 },
-                ]}
-              />
             </View>
-          )}
+
+            {/* combo toast */}
+            <Animated.View
+              pointerEvents="none"
+              style={[
+                styles.comboToast,
+                {
+                  opacity: comboAnim,
+                  transform: [
+                    { translateY: comboAnim.interpolate({ inputRange: [0, 1], outputRange: [8, 0] }) },
+                    { scale: comboAnim.interpolate({ inputRange: [0, 1], outputRange: [0.9, 1] }) },
+                  ],
+                },
+              ]}
+            >
+              <Text style={styles.comboTxt}>Combo x{combo}</Text>
+            </Animated.View>
+
+            {/* eat ripple */}
+            <Animated.View
+              pointerEvents="none"
+              style={[
+                StyleSheet.absoluteFillObject,
+                {
+                  opacity: eatRipple.interpolate({ inputRange: [0, 1], outputRange: [0.18, 0] }),
+                  transform: [{ scale: eatRipple.interpolate({ inputRange: [0, 1], outputRange: [0.95, 1.1] }) }],
+                  backgroundColor: '#ffffff',
+                  borderRadius: 16,
+                },
+              ]}
+            />
+
+            {/* hit flash */}
+            <Animated.View
+              pointerEvents="none"
+              style={[StyleSheet.absoluteFillObject, { backgroundColor: '#ff5252', opacity: hitFlash, borderRadius: 16 }]}
+            />
+
+            {phase === 'ready' && <StartOverlay onStart={startGame} />}
+            {phase === 'countdown' && <CountdownOverlay n={countdown} />}
+          </View>
 
           {isGameOver && (
             <View style={styles.overlayCenter}>
@@ -551,10 +574,7 @@ function SnakeGame({ navigation }: { navigation: any }): JSX.Element {
               {currentQuestion.options && typeof currentQuestion.options === 'object' ? (
                 Object.entries(currentQuestion.options).map(([key, option]) => (
                   <View key={key} style={{ marginTop: 8 }}>
-                    <Button
-                      title={String(option)}
-                      onPress={() => answerQuestion(key === currentQuestion.correct_answer)}
-                    />
+                    <Button title={String(option)} onPress={() => answerQuestion(key === currentQuestion.correct_answer)} />
                   </View>
                 ))
               ) : (
@@ -571,10 +591,7 @@ function SnakeGame({ navigation }: { navigation: any }): JSX.Element {
               <Text style={styles.settingsSection}>Mode</Text>
               {Object.entries(SNAKE_MODES).map(([k, m]) => (
                 <View key={k} style={{ marginBottom: 6 }}>
-                  <Button
-                    title={`${m.label}${modeKey === k ? ' ✓' : ''}`}
-                    onPress={() => setModeKey(k as SnakeModeKey)}
-                  />
+                  <Button title={`${m.label}${modeKey === k ? ' ✓' : ''}`} onPress={() => setModeKey(k as SnakeModeKey)} />
                 </View>
               ))}
 
@@ -598,16 +615,21 @@ function SnakeGame({ navigation }: { navigation: any }): JSX.Element {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  container: { flex: 1, justifyContent: 'flex-start', alignItems: 'center' },
   boundaries: {
-    flex: 1,
-    width: '100%',
-    height: '100%',
+    width: '92%',
+    aspectRatio: 2.8 / 4,
     backgroundColor,
-    borderBottomLeftRadius: 30,
-    borderBottomRightRadius: 30,
+    borderRadius: 22,
+    overflow: 'hidden',
+    alignSelf: 'center',
+    marginTop: 16,
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOpacity: 0.12,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
   },
-  countdown: { fontSize: 48, fontWeight: 'bold', color: 'orange' },
   hudRow: { flexDirection: 'row', alignItems: 'center' },
   hudPill: {
     marginLeft: 8,
@@ -619,17 +641,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   scoreText: { fontSize: 22, fontWeight: 'bold', color: primaryColor },
-  questionContainer: {
-    position: 'absolute',
-    top: '25%',
-    left: '8%',
-    right: '8%',
-    backgroundColor: 'white',
-    padding: 20,
-    borderRadius: 12,
-    elevation: 6,
-  },
-  questionText: { fontSize: 18, fontWeight: 'bold' },
   overlayCenter: {
     position: 'absolute',
     top: '30%',
@@ -642,6 +653,46 @@ const styles = StyleSheet.create({
   gameOverTitle: { fontSize: 32, fontWeight: 'bold', color: 'red' },
   gameOverStats: { marginTop: 6, fontSize: 18, fontWeight: '700' },
   gameOverHint: { marginTop: 6, opacity: 0.8 },
+
+  // overlays
+  overlayFill: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(10, 18, 33, 0.06)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  card: {
+    width: '78%',
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    paddingVertical: 18,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+    elevation: 6,
+    shadowColor: '#000',
+    shadowOpacity: 0.12,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+  },
+  title: { fontSize: 22, fontWeight: '800', marginBottom: 6 },
+  subtle: { fontSize: 14, opacity: 0.7, textAlign: 'center' },
+  row: { flexDirection: 'row', alignItems: 'center' },
+  hint: { fontSize: 14, fontWeight: '600' },
+  dot: { marginHorizontal: 6, opacity: 0.5 },
+  primaryBtn: {
+    marginTop: 4,
+    backgroundColor: '#0b5cff',
+    borderRadius: 999,
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+  },
+  primaryBtnTxt: { color: 'white', fontWeight: '800', letterSpacing: 0.3 },
+  countDownBubble: {
+    width: 84, height: 84, borderRadius: 42, alignItems: 'center', justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.94)',
+  },
+  countDownTxt: { fontSize: 42, fontWeight: '900', color: '#ff9800' },
+
   // power up HUD chip
   powerChip: {
     marginLeft: 8,
@@ -663,18 +714,17 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   powerFill: { height: '100%', backgroundColor: '#00c853' },
-  // power-up icon on board
+
+  // power-up icon base (sizes overridden at runtime)
   powerIcon: {
     position: 'absolute',
-    width: CELL * 1.8,
-    height: CELL * 1.8,
-    borderRadius: (CELL * 1.8) / 2,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: '#fff',
     borderWidth: 1.5,
     borderColor: '#000',
   },
+
   // combo toast
   comboToast: {
     position: 'absolute',
@@ -688,6 +738,20 @@ const styles = StyleSheet.create({
     borderColor: '#ffd84d',
   },
   comboTxt: { color: '#ffd84d', fontWeight: '900', letterSpacing: 0.4 },
+
+  // question dialog
+  questionContainer: {
+    position: 'absolute',
+    top: '25%',
+    left: '8%',
+    right: '8%',
+    backgroundColor: 'white',
+    padding: 20,
+    borderRadius: 12,
+    elevation: 6,
+  },
+  questionText: { fontSize: 18, fontWeight: 'bold' },
+
   // settings
   settingsPanel: {
     position: 'absolute',
