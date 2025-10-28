@@ -1,6 +1,9 @@
 // file: app/CreateQuestions.jsx
 import React, { memo, useState, useEffect } from 'react';
-import { StyleSheet, Text, TextInput, TouchableOpacity, View, Pressable, ActivityIndicator, FlatList, ScrollView, Alert } from 'react-native';
+import {
+  StyleSheet, Text, TextInput, TouchableOpacity, View, Pressable,
+  ActivityIndicator, FlatList, ScrollView, Alert, Platform
+} from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { supabase } from '../backend/supabase';
 import { getAuth } from 'firebase/auth';
@@ -26,23 +29,44 @@ const CreateQuestions = memo(() => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [questionsList, setQuestionsList] = useState([]);
-  const [activeTab, setActiveTab] = useState('create'); // create | practice
+  const [activeTab, setActiveTab] = useState('create');
   const [questionsAnsweredCount, setQuestionsAnsweredCount] = useState(0);
-
-  // Adjustable number of questions required before redirect
-  const [questionsToComplete, setQuestionsToComplete] = useState(5); // default 5
+  const [questionsToComplete, setQuestionsToComplete] = useState(5);
 
   const navigation = useNavigation();
   const auth = getAuth();
   const uid = auth.currentUser?.uid;
 
   useEffect(() => {
-    if (uid) fetchQuestions();
+    if (uid) {
+      fetchQuestions();
+      fetchQuestionLimit();
+    }
   }, [uid]);
 
+  // Fetch user’s question limit from Supabase
+  const fetchQuestionLimit = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('settings')
+        .select('question_limit')
+        .eq('user_id', uid) // ✅ changed
+        .single();
+
+      if (error && error.code !== 'PGRST116') throw error;
+      if (data?.question_limit) setQuestionsToComplete(data.question_limit);
+    } catch (err) {
+      console.error('Fetch question limit error:', err.message);
+    }
+  };
+
+  // Fetch all created questions
   const fetchQuestions = async () => {
     try {
-      const { data, error } = await supabase.from('questions').select('*').eq('parent_id', uid);
+      const { data, error } = await supabase
+        .from('questions')
+        .select('*')
+        .eq('parent_id', uid); // keep as parent_id for questions table
       if (error) throw error;
       setQuestionsList(data);
     } catch (err) {
@@ -50,13 +74,14 @@ const CreateQuestions = memo(() => {
     }
   };
 
+  // Create new question
   const handleCreateQuestion = async () => {
     if (!question) {
       setError('Please enter a question.');
       return;
     }
 
-    let payload = { question, parent_id: uid, options: null, correct_answer: '' };
+    let payload = { question, user_id: uid, options: null, correct_answer: '' };
 
     if (questionType === 'multiple_choice') {
       if (!optionA || !optionB || !optionC || !optionD || !correctAnswer) {
@@ -123,6 +148,7 @@ const CreateQuestions = memo(() => {
         </>
       );
     }
+
     if (questionType === 'true_false') {
       return (
         <>
@@ -144,6 +170,7 @@ const CreateQuestions = memo(() => {
         </>
       );
     }
+
     return null;
   };
 
@@ -152,7 +179,21 @@ const CreateQuestions = memo(() => {
     setQuestionsAnsweredCount(nextCount);
     if (nextCount >= questionsToComplete) {
       Alert.alert('Practice Complete!', 'Redirecting back to game...');
-      navigation.navigate('GameScreen'); // redirect back to game page
+      navigation.navigate('GameScreen');
+    }
+  };
+
+  // Save question limit to Supabase
+  const handleSetQuestionLimit = async (num) => {
+    setQuestionsToComplete(num);
+    try {
+      await supabase
+        .from('settings')
+        .upsert({ user_id: uid, question_limit: num }, { onConflict: 'user_id' }); // ✅ changed
+      Alert.alert('Saved', `Question limit set to ${num}`);
+    } catch (error) {
+      console.error('Error saving question limit:', error.message);
+      Alert.alert('Error', 'Failed to save question limit');
     }
   };
 
@@ -160,7 +201,8 @@ const CreateQuestions = memo(() => {
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={[styles.backContainer, { top: hp('1%') }]}>
+      {/* iPhone-safe back button */}
+      <View style={[styles.backContainer, { top: Platform.OS === 'ios' ? insets.top + hp('2%') : hp('2.5%') }]}>
         <Pressable style={styles.backButton} onPress={() => navigation.goBack()}>
           <Ionicons name="chevron-back" size={wp('6.2%')} color="#000" />
           <Text style={styles.backLabel}>Back</Text>
@@ -228,9 +270,14 @@ const CreateQuestions = memo(() => {
                       borderRadius: 12,
                       marginHorizontal: 3,
                     }}
-                    onPress={() => setQuestionsToComplete(num)}
+                    onPress={() => handleSetQuestionLimit(num)}
                   >
-                    <Text style={{ color: questionsToComplete === num ? '#fff' : '#000', fontFamily: 'FredokaOne-Regular' }}>
+                    <Text
+                      style={{
+                        color: questionsToComplete === num ? '#fff' : '#000',
+                        fontFamily: 'FredokaOne-Regular',
+                      }}
+                    >
                       {num}
                     </Text>
                   </TouchableOpacity>
@@ -264,7 +311,18 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f0f4f8' },
   scrollContent: { alignItems: 'center', paddingTop: hp('8%'), paddingBottom: hp('5%') },
   title: { fontFamily: 'FredokaOne-Regular', fontSize: wp('9%'), marginBottom: hp('3%'), color: '#1E1E1E' },
-  input: { fontFamily: 'FredokaOne-Regular', fontSize: wp('4.5%'), backgroundColor: '#fff', padding: wp('3.5%'), borderRadius: 10, marginBottom: hp('2%'), color: '#000', width: wp('85%'), borderWidth: 1, borderColor: '#ddd' },
+  input: {
+    fontFamily: 'FredokaOne-Regular',
+    fontSize: wp('4.5%'),
+    backgroundColor: '#fff',
+    padding: wp('3.5%'),
+    borderRadius: 10,
+    marginBottom: hp('2%'),
+    color: '#000',
+    width: wp('85%'),
+    borderWidth: 1,
+    borderColor: '#ddd',
+  },
   label: { fontFamily: 'FredokaOne-Regular', fontSize: wp('4.5%'), color: '#333', marginBottom: hp('1.5%'), alignSelf: 'flex-start', marginLeft: wp('7.5%') },
   optionsRow: { flexDirection: 'row', justifyContent: 'space-around', marginVertical: hp('1%'), width: wp('85%'), flexWrap: 'wrap' },
   typeButton: { backgroundColor: '#ccc', paddingVertical: hp('1.5%'), paddingHorizontal: wp('3%'), borderRadius: 8, margin: 5 },

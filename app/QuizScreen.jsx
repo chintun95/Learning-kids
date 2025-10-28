@@ -1,4 +1,4 @@
-//QuizScreen.jsx
+// file: app/quizscreen.jsx
 import React, { useState, useEffect, useCallback } from 'react';
 import { StyleSheet, Text, View, ActivityIndicator, TextInput, TouchableOpacity, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -14,27 +14,52 @@ const QuizScreen = () => {
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [loading, setLoading] = useState(true);
   const [userAnswer, setUserAnswer] = useState('');
-  const [questionsPerSession, setQuestionsPerSession] = useState(5);
+  const [questionsPerSession, setQuestionsPerSession] = useState(5); // default until fetched
 
   const auth = getAuth();
   const uid = auth.currentUser?.uid;
 
+  // Fetch question limit from settings table
+  const fetchQuestionLimit = useCallback(async () => {
+    if (!uid) return 5;
+    try {
+      const { data, error } = await supabase
+        .from('settings')
+        .select('question_limit')
+        .eq('user_id', uid) // ✅ using user_id
+        .single();
+
+      if (error && error.code !== 'PGRST116') throw error; // ignore "no rows found"
+      return data?.question_limit || 5;
+    } catch (err) {
+      console.error('Error fetching question limit:', err.message);
+      return 5;
+    }
+  }, [uid]);
+
+  // Load quiz with proper question limit
   const loadQuiz = useCallback(async () => {
     if (!uid) {
       Alert.alert("Error", "You must be logged in to play the quiz.");
       navigation.goBack();
       return;
     }
+
     setLoading(true);
     try {
-      const userQuestions = await fetchQuestions(uid);
+      // Get saved limit
+      const limit = await fetchQuestionLimit();
+      setQuestionsPerSession(limit);
+
+      const userQuestions = await fetchQuestions(uid); // fetch questions for this user_id
       if (userQuestions.length === 0) {
         Alert.alert("No Questions", "Please ask your parent to create some questions first!");
         navigation.goBack();
         return;
       }
+
       const shuffled = [...userQuestions].sort(() => 0.5 - Math.random());
-      setQuestions(shuffled.slice(0, Math.min(shuffled.length, questionsPerSession)));
+      setQuestions(shuffled.slice(0, Math.min(shuffled.length, limit)));
       setCurrentQuestionIndex(0);
     } catch (error) {
       console.error("Failed to load quiz", error);
@@ -43,7 +68,7 @@ const QuizScreen = () => {
     } finally {
       setLoading(false);
     }
-  }, [uid, questionsPerSession, navigation]);
+  }, [uid, navigation, fetchQuestionLimit]);
 
   useFocusEffect(
     useCallback(() => {
@@ -64,28 +89,25 @@ const QuizScreen = () => {
   const handleAnswer = async (option) => {
     const currentQuestion = questions[currentQuestionIndex];
     if (currentQuestion.question_type === 'typed_answer') {
-        if (!userAnswer.trim()) {
-            Alert.alert("Empty Answer", "Please type an answer.");
-            return;
-        }
-        // For typed answers, submit for approval
-        const { error } = await supabase.from('submissions').insert([{
-            question_id: currentQuestion.id,
-            child_id: uid, // Assuming child is the one playing
-            parent_id: currentQuestion.parent_id,
-            submitted_answer: userAnswer,
-            status: 'pending'
-        }]);
+      if (!userAnswer.trim()) {
+        Alert.alert("Empty Answer", "Please type an answer.");
+        return;
+      }
+      const { error } = await supabase.from('submissions').insert([{
+        question_id: currentQuestion.id,
+        child_id: uid,
+        user_id: currentQuestion.user_id, // ✅ using user_id now
+        submitted_answer: userAnswer,
+        status: 'pending'
+      }]);
 
-        if (error) {
-            Alert.alert("Error", "Could not submit your answer.");
-        } else {
-            Alert.alert("Submitted!", "Your parent will check your answer soon.");
-            setTimeout(handleNextQuestion, 500);
-        }
-
+      if (error) {
+        Alert.alert("Error", "Could not submit your answer.");
+      } else {
+        Alert.alert("Submitted!", "Your parent will check your answer soon.");
+        setTimeout(handleNextQuestion, 500);
+      }
     } else {
-      // For MC and T/F
       if (option === currentQuestion.correct_answer) {
         Alert.alert('Correct!', 'Great job!');
       } else {
@@ -108,32 +130,33 @@ const QuizScreen = () => {
   const renderInputs = () => {
     if (!currentQuestion) return null;
 
-    // Infer question type for older data that might not have it
     let type = currentQuestion.question_type;
     if (!type) {
-      if (currentQuestion.options && currentQuestion.options.a === 'True' && currentQuestion.options.b === 'False') {
+      if (currentQuestion.options?.a === 'True' && currentQuestion.options?.b === 'False') {
         type = 'true_false';
       } else if (currentQuestion.options && typeof currentQuestion.options === 'object') {
         type = 'multiple_choice';
       } else {
-        type = 'typed_answer'; // Fallback
+        type = 'typed_answer';
       }
     }
 
     if (type === 'multiple_choice' && currentQuestion.options) {
       return Object.entries(currentQuestion.options).map(([key, value]) => (
         <TouchableOpacity key={key} style={styles.button} onPress={() => handleAnswer(key)}>
-            <Text style={styles.buttonText}>{`${key.toUpperCase()}: ${value}`}</Text>
+          <Text style={styles.buttonText}>{`${key.toUpperCase()}: ${value}`}</Text>
         </TouchableOpacity>
       ));
     }
+
     if (type === 'true_false' && currentQuestion.options) {
-        return Object.entries(currentQuestion.options).map(([key, value]) => (
-            <TouchableOpacity key={key} style={styles.button} onPress={() => handleAnswer(key)}>
-                <Text style={styles.buttonText}>{value}</Text>
-            </TouchableOpacity>
+      return Object.entries(currentQuestion.options).map(([key, value]) => (
+        <TouchableOpacity key={key} style={styles.button} onPress={() => handleAnswer(key)}>
+          <Text style={styles.buttonText}>{value}</Text>
+        </TouchableOpacity>
       ));
     }
+
     if (type === 'typed_answer') {
       return (
         <>
@@ -149,12 +172,15 @@ const QuizScreen = () => {
         </>
       );
     }
+
     return null;
   };
 
   return (
     <SafeAreaView style={styles.container}>
-      <Text style={styles.progressText}>Question {currentQuestionIndex + 1} of {questions.length}</Text>
+      <Text style={styles.progressText}>
+        Question {currentQuestionIndex + 1} of {questions.length}
+      </Text>
       <Text style={styles.question}>{currentQuestion.question}</Text>
       {renderInputs()}
     </SafeAreaView>
@@ -163,11 +189,8 @@ const QuizScreen = () => {
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-    backgroundColor: '#f0f4f8',
+    flex: 1, justifyContent: 'center', alignItems: 'center',
+    padding: 20, backgroundColor: '#f0f4f8',
   },
   progressText: {
     fontFamily: 'FredokaOne-Regular',
@@ -210,4 +233,3 @@ const styles = StyleSheet.create({
 });
 
 export default QuizScreen;
-
