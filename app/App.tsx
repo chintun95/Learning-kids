@@ -14,6 +14,7 @@ import EditProfilePage from "./edit-profile"
 import ShopPage from "./shop"
 import CreateQuestionsPage from "./CreateQuestions"
 import QuizScreen from "./QuizScreen";
+import ProgressChart from "./ProgressChart"
 
 import { initAnalyticsWeb } from "../firebase";
 import { registerForPushNotificationsAsync, addNotificationReceivedListener, addNotificationResponseReceivedListener, scheduleDailyReminder } from "./utils/notifications";
@@ -61,8 +62,8 @@ const App: React.FC = () => {
           <Stack.Screen name="ShopPage" component={ShopPage} options={{ headerShown: false }} />
           <Stack.Screen name="CreateQuestionsPage" component={CreateQuestionsPage} options={{ headerShown: false }} />
           <Stack.Screen name="QuizScreen" component={QuizScreen} options={{ headerShown: false }} />
-          
           <Stack.Screen name="SnakeGame" component={SnakeGame} />
+          <Stack.Screen name="ProgressChart" component={ProgressChart} />
         </Stack.Navigator>
       </NavigationContainer>
     </GestureHandlerRootView>

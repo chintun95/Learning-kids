@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Text, View, SafeAreaView, StyleSheet, Button, Animated, ActivityIndicator, Alert, TextInput } from 'react-native'; // Keep TextInput import if needed elsewhere, but logic removed below
+import { Text, View, SafeAreaView, StyleSheet, Button, Animated, ActivityIndicator, Alert, TextInput } from 'react-native';
 import { PanGestureHandler, GestureHandlerRootView } from 'react-native-gesture-handler';
 import * as Haptics from 'expo-haptics';
 import Snake from './Snake';
@@ -9,15 +9,14 @@ import { checkEatsFood } from './utils/checkEatsFood';
 import { randomFoodPosition } from './utils/randomFoodPosition';
 import Header from './Header';
 import { Direction, Coordinate, GestureEventType } from './types/types';
-import { fetchQuestions, Question } from '../backend/fetchquestions'; // Import Question type
+import { fetchQuestions, Question } from '../backend/fetchquestions';
 import { fetchUserProfile } from '../backend/fetchUserProfile';
-import { supabase } from '../backend/supabase'; // Import supabase client
-import { getAuth } from 'firebase/auth'; // Import getAuth
+import { supabase } from '../backend/supabase';
+import { getAuth } from 'firebase/auth';
 import { SNAKE_MODES, SnakeModeKey } from './snakeModes';
 
-// --- Constants ---
 const FOOD_INITIAL_POSITION: Coordinate = { x: 5, y: 20 };
-const GAME_BOUNDS = { xMin: 0, xMax: 36, yMin: 0, yMax: 58 }; // grid units
+const GAME_BOUNDS = { xMin: 0, xMax: 36, yMin: 0, yMax: 58 };
 const SNAKE_INITIAL_POSITION: Coordinate[] = [{ x: 5, y: 5 }];
 const COLS = Math.ceil(GAME_BOUNDS.xMax);
 const ROWS = Math.ceil(GAME_BOUNDS.yMax);
@@ -26,18 +25,14 @@ const backgroundColor = '#B2EBF2';
 const COMBO_WINDOW_MS = 2000;
 const DEFAULT_QUESTION_LIMIT = 5;
 
-// --- Types ---
 type Phase = 'ready' | 'countdown' | 'playing' | 'paused' | 'gameover' | 'quiz_complete';
 
-// --- Small Helpers ---
 const clamp = (n: number, min: number, max: number) => Math.max(min, Math.min(max, n));
 const equal = (a: Coordinate, b: Coordinate) => a.x === b.x && a.y === b.y;
 
-/** Lightweight grid (memoized) */
 const Grid = React.memo(function Grid({
   cols, rows, cell, radius = 18,
 }: { cols: number; rows: number; cell: number; radius?: number }) {
-  // ... (Grid component remains the same)
       return (
     <View pointerEvents="none" style={StyleSheet.absoluteFillObject}>
       {Array.from({ length: rows }).map((_, r) => (
@@ -61,9 +56,7 @@ const Grid = React.memo(function Grid({
   );
 });
 
-// --- Overlays ---
 function StartOverlay({ onStart }: { onStart: () => void }) {
- // ... (StartOverlay component remains the same)
    return (
     <View style={styles.overlayFill}>
       <View style={styles.card}>
@@ -84,7 +77,6 @@ function StartOverlay({ onStart }: { onStart: () => void }) {
   );
 }
 function CountdownOverlay({ n }: { n: number }) {
- // ... (CountdownOverlay component remains the same)
    return (
     <View style={styles.overlayFill}>
       <View style={styles.countDownBubble}>
@@ -94,21 +86,16 @@ function CountdownOverlay({ n }: { n: number }) {
   );
 }
 
-// --- Main Game Component ---
 function SnakeGame({ navigation }: { navigation: any }): JSX.Element {
-  // --- Auth & User ---
   const auth = getAuth();
-  const uid = auth.currentUser?.uid; // Get current user ID
+  const uid = auth.currentUser?.uid;
 
-  // --- Modes/Settings ---
   const [modeKey, setModeKey] = useState<SnakeModeKey>('classic');
   const mode = useMemo(() => SNAKE_MODES[modeKey], [modeKey]);
   const [showSettings, setShowSettings] = useState(false);
 
-  // --- Phase ---
   const [phase, setPhase] = useState<Phase>('ready');
 
-  // --- Core Game ---
   const [direction, setDirection] = useState<Direction>(Direction.Right);
   const [snake, setSnake] = useState<Coordinate[]>(SNAKE_INITIAL_POSITION);
   const [food, setFood] = useState<Coordinate>(FOOD_INITIAL_POSITION);
@@ -118,29 +105,23 @@ function SnakeGame({ navigation }: { navigation: any }): JSX.Element {
   const [score, setScore] = useState<number>(0);
   const [highScore, setHighScore] = useState<number>(0);
   const [isGameOver, setIsGameOver] = useState<boolean>(false);
-  const [isPaused, setIsPaused] = useState<boolean>(true); // Start paused until ready/countdown
+  const [isPaused, setIsPaused] = useState<boolean>(true);
   const [countdown, setCountdown] = useState<number>(0);
-  const [lives, setLives] = useState<number>(2); // Kept for collision logic
+  const [lives, setLives] = useState<number>(2);
 
-  // --- Questions ---
-  const [allQuestions, setAllQuestions] = useState<Question[]>([]); // Store all fetched questions
-  const [availableQuestions, setAvailableQuestions] = useState<Question[]>([]); // Questions remaining in this session
-  // No longer needed: const [nextQuestionIndex, setNextQuestionIndex] = useState<number>(0);
+  const [allQuestions, setAllQuestions] = useState<Question[]>([]);
+  const [availableQuestions, setAvailableQuestions] = useState<Question[]>([]);
   const [currentQuestion, setCurrentQuestion] = useState<Question | null>(null);
   const [isQuestionVisible, setIsQuestionVisible] = useState<boolean>(false);
   const [questionsAnsweredCount, setQuestionsAnsweredCount] = useState<number>(0);
-  const [questionsToComplete, setQuestionsToComplete] = useState<number>(DEFAULT_QUESTION_LIMIT); // Parent-set limit
+  const [questionsToComplete, setQuestionsToComplete] = useState<number>(DEFAULT_QUESTION_LIMIT);
   const [userProfile, setUserProfile] = useState<any>(null);
-  // No longer needed: const [userAnswer, setUserAnswer] = useState('');
 
-  // --- HUD/FX / Combo ---
   const [combo, setCombo] = useState(1);
   const lastEatAtRef = useRef<number>(0);
 
-  // --- Loading State ---
   const [isLoadingData, setIsLoadingData] = useState(true);
 
-  // --- Refs ---
   const directionRef = useRef(direction);
   const snakeRef = useRef(snake);
   const pausedRef = useRef(isPaused);
@@ -150,7 +131,6 @@ function SnakeGame({ navigation }: { navigation: any }): JSX.Element {
   useEffect(() => { pausedRef.current = isPaused; }, [isPaused]);
   useEffect(() => { gameOverRef.current = isGameOver; }, [isGameOver]);
 
-  // --- Sizing ---
   const [boardW, setBoardW] = useState(0);
   const [boardH, setBoardH] = useState(0);
   const cell = useMemo(() => {
@@ -162,7 +142,6 @@ function SnakeGame({ navigation }: { navigation: any }): JSX.Element {
   const stageOffsetX = (boardW - stageW) / 2;
   const stageOffsetY = (boardH - stageH) / 2;
 
-  // --- Fetch User Profile, Questions, and Limit on Mount ---
   useEffect(() => {
     const loadInitialData = async () => {
       if (!uid) {
@@ -194,8 +173,8 @@ function SnakeGame({ navigation }: { navigation: any }): JSX.Element {
            setIsLoadingData(false);
            return;
         }
-        setAllQuestions(fetchedQuestions); // Store the filtered bank
-        setAvailableQuestions([...fetchedQuestions].sort(() => 0.5 - Math.random())); // Initial shuffle
+        setAllQuestions(fetchedQuestions);
+        setAvailableQuestions([...fetchedQuestions].sort(() => 0.5 - Math.random()));
 
       } catch (e) {
         console.error('Error loading initial data:', e);
@@ -208,7 +187,6 @@ function SnakeGame({ navigation }: { navigation: any }): JSX.Element {
     loadInitialData();
   }, [uid, navigation]);
 
-  // --- High Score Persistence ---
    useEffect(() => {
     (async () => {
       try {
@@ -226,9 +204,7 @@ function SnakeGame({ navigation }: { navigation: any }): JSX.Element {
   };
 
 
-  // --- Walls ---
   const walls = useMemo<Coordinate[]>(() => {
-    // ... (walls logic remains the same)
       if (!mode.hasWalls) return [];
     const arr: Coordinate[] = [];
     const w = GAME_BOUNDS.xMax;
@@ -240,7 +216,6 @@ function SnakeGame({ navigation }: { navigation: any }): JSX.Element {
     return arr;
   }, [mode.hasWalls]);
 
-  // --- Animations ---
   const foodScale = useRef(new Animated.Value(1)).current;
   const popFood = useCallback(() => {
     foodScale.setValue(0.6);
@@ -249,7 +224,6 @@ function SnakeGame({ navigation }: { navigation: any }): JSX.Element {
 
   const comboAnim = useRef(new Animated.Value(0)).current;
   const triggerComboToast = useCallback(() => {
-     // ... (combo animation remains the same)
        comboAnim.setValue(0);
     Animated.timing(comboAnim, { toValue: 1, duration: 220, useNativeDriver: true }).start(() => {
       Animated.timing(comboAnim, { toValue: 0, delay: 600, duration: 180, useNativeDriver: true }).start();
@@ -258,20 +232,17 @@ function SnakeGame({ navigation }: { navigation: any }): JSX.Element {
 
   const eatRipple = useRef(new Animated.Value(0)).current;
   const triggerEatRipple = useCallback(() => {
-    // ... (ripple animation remains the same)
       eatRipple.setValue(0);
     Animated.timing(eatRipple, { toValue: 1, duration: 300, useNativeDriver: true }).start();
   }, [eatRipple]);
 
   const hitFlash = useRef(new Animated.Value(0)).current;
   const triggerHitFlash = useCallback(() => {
-    // ... (hit flash animation remains the same)
       hitFlash.setValue(0.9);
     Animated.timing(hitFlash, { toValue: 0, duration: 260, useNativeDriver: true }).start();
   }, [hitFlash]);
 
 
-  // --- Move Interval ---
    const effectiveInterval = useMemo(() => {
     const base = mode.baseSpeedMs;
     const level = 1 + Math.floor(score / 50);
@@ -279,14 +250,12 @@ function SnakeGame({ navigation }: { navigation: any }): JSX.Element {
     return clamp(base - speedUp, 45, 200);
   }, [mode.baseSpeedMs, score]);
 
-  // --- Game Loop ---
   useEffect(() => {
     if (phase !== 'playing' || isPaused || isGameOver) return;
     const id = setInterval(() => moveSnake(), effectiveInterval);
     return () => clearInterval(id);
   }, [effectiveInterval, isPaused, isGameOver, phase]);
 
-  // --- Start Game Flow ---
   const startGame = () => {
      if (isLoadingData || availableQuestions.length === 0) {
         Alert.alert("Cannot Start", isLoadingData ? "Loading data..." : "No suitable questions available. Please ask your parent to add some.");
@@ -314,12 +283,10 @@ function SnakeGame({ navigation }: { navigation: any }): JSX.Element {
   }, [phase, hitFlash]);
 
 
-  // --- Helper Functions ---
   const occupied = (p: Coordinate) =>
     snakeRef.current.some((c) => equal(c, p)) || equal(foodRef.current, p) || walls.some(w => equal(w, p));
 
   const spawnFood = () => {
-    // ... (spawnFood logic remains the same)
       let pos = randomFoodPosition(GAME_BOUNDS.xMax, GAME_BOUNDS.yMax);
     pos.x = clamp(pos.x, GAME_BOUNDS.xMin, GAME_BOUNDS.xMax - 1);
     pos.y = clamp(pos.y, GAME_BOUNDS.yMin, GAME_BOUNDS.yMax - 1);
@@ -348,8 +315,6 @@ function SnakeGame({ navigation }: { navigation: any }): JSX.Element {
     }
   };
 
-
-  // --- Move Snake Logic ---
   const moveSnake = () => {
     if (gameOverRef.current || pausedRef.current || phase === 'quiz_complete') return;
 
@@ -366,7 +331,6 @@ function SnakeGame({ navigation }: { navigation: any }): JSX.Element {
 
     const doWrap = mode.wrap;
     if (doWrap) {
-      // ... (wrapping logic)
         const width = GAME_BOUNDS.xMax;
         const height = GAME_BOUNDS.yMax;
         if (newHead.x < GAME_BOUNDS.xMin) newHead.x = width;
@@ -384,7 +348,6 @@ function SnakeGame({ navigation }: { navigation: any }): JSX.Element {
       return consumeLifeOrEnd();
     }
 
-    // --- Eats Food Logic ---
     if (checkEatsFood(newHead, foodRef.current)) {
       const now = Date.now();
       const within = now - (lastEatAtRef.current || 0) <= COMBO_WINDOW_MS;
@@ -402,15 +365,11 @@ function SnakeGame({ navigation }: { navigation: any }): JSX.Element {
 
       setSnake([newHead, ...current]);
 
-      // --- Trigger Question ---
-      if (questionsAnsweredCount < questionsToComplete && availableQuestions.length > 0) { // Check if questions are still available
-          // Select a random index from the remaining available questions
+      if (questionsAnsweredCount < questionsToComplete && availableQuestions.length > 0) {
           const randomIndex = Math.floor(Math.random() * availableQuestions.length);
           const questionToAsk = availableQuestions[randomIndex];
 
           setCurrentQuestion(questionToAsk);
-
-          // Remove the selected question from the available list for this session
           setAvailableQuestions(prev => prev.filter((q, index) => index !== randomIndex));
 
           setIsQuestionVisible(true);
@@ -426,11 +385,9 @@ function SnakeGame({ navigation }: { navigation: any }): JSX.Element {
       return;
     }
 
-    // Normal move
     setSnake([newHead, ...current.slice(0, -1)]);
   };
 
-  // --- Answer Question Logic ---
   const answerQuestion = async (isCorrect: boolean, selectedOptionKey?: string) => {
     setIsQuestionVisible(false);
     let bonusPoints = 0;
@@ -442,11 +399,22 @@ function SnakeGame({ navigation }: { navigation: any }): JSX.Element {
         Alert.alert('Incorrect', 'Try again next time!');
     }
 
+    if (uid && currentQuestion) {
+      supabase.from('answer_log').insert({
+        user_id: uid,
+        question_id: currentQuestion.id,
+        is_correct: isCorrect
+      }).then(({ error }) => {
+        if (error) {
+          console.error('Error logging answer:', error.message);
+        }
+      });
+    }
+
     setScore(s => s + bonusPoints);
 
     const newAnsweredCount = questionsAnsweredCount + 1;
     setQuestionsAnsweredCount(newAnsweredCount);
-    // No longer need to increment nextQuestionIndex
 
     if (newAnsweredCount >= questionsToComplete) {
         endGame('quiz_complete');
@@ -458,10 +426,8 @@ function SnakeGame({ navigation }: { navigation: any }): JSX.Element {
   };
 
 
-  // --- Handle Gesture ---
   const handleGesture = (event: GestureEventType) => {
     if (isGameOver || isQuestionVisible || phase === 'quiz_complete') return;
-    // ... (rest of gesture handling remains the same)
       const { translationX, translationY } = event.nativeEvent;
     const absX = Math.abs(translationX);
     const absY = Math.abs(translationY);
@@ -477,7 +443,6 @@ function SnakeGame({ navigation }: { navigation: any }): JSX.Element {
     if (!opposite) setDirection(next);
   };
 
-  // --- Reload Game Logic ---
   const reloadGame = () => {
      if (isLoadingData || allQuestions.length === 0) {
         Alert.alert("Cannot Reload", isLoadingData ? "Still loading..." : "No suitable questions available.");
@@ -495,18 +460,14 @@ function SnakeGame({ navigation }: { navigation: any }): JSX.Element {
     hitFlash.stopAnimation(); hitFlash.setValue(0);
     popFood();
 
-    // Reset Questions
     setQuestionsAnsweredCount(0);
-    setAvailableQuestions([...allQuestions].sort(() => 0.5 - Math.random())); // Reshuffle from the full bank
-    // No longer need nextQuestionIndex reset
+    setAvailableQuestions([...allQuestions].sort(() => 0.5 - Math.random()));
     setIsQuestionVisible(false);
     setCurrentQuestion(null);
 
-    // Start Countdown
     setPhase('countdown');
   };
 
-  // --- Pause Game Logic ---
   const pauseGame = () => {
     if (phase === 'playing' || phase === 'paused') {
         setIsPaused((p) => {
@@ -517,7 +478,6 @@ function SnakeGame({ navigation }: { navigation: any }): JSX.Element {
     }
   };
 
-  // --- Render ---
   if (isLoadingData) {
       return (
           <SafeAreaView style={styles.container}>
@@ -543,7 +503,6 @@ function SnakeGame({ navigation }: { navigation: any }): JSX.Element {
               <Text style={styles.hudPill}>♥ {lives}</Text>
               <Text style={styles.hudPill}>Q: {questionsAnsweredCount}/{questionsToComplete}</Text>
               <Text style={styles.hudPill}>{SNAKE_MODES[modeKey].label}</Text>
-
             </View>
           </Header>
 
@@ -555,7 +514,6 @@ function SnakeGame({ navigation }: { navigation: any }): JSX.Element {
               setBoardH(height);
             }}
           >
-            {/* STAGE */}
             <View style={{ position: 'absolute', left: stageOffsetX, top: stageOffsetY, width: stageW, height: stageH }}>
               <Grid cols={COLS} rows={ROWS} cell={cell} />
               {walls.map((w, i) => (
@@ -567,8 +525,7 @@ function SnakeGame({ navigation }: { navigation: any }): JSX.Element {
               </Animated.View>
             </View>
 
-            {/* Effects */}
-             <Animated.View // Combo Toast
+             <Animated.View
               pointerEvents="none"
               style={[
                 styles.comboToast,
@@ -583,21 +540,19 @@ function SnakeGame({ navigation }: { navigation: any }): JSX.Element {
             >
               <Text style={styles.comboTxt}>Combo x{combo}</Text>
             </Animated.View>
-             <Animated.View // Eat Ripple
+             <Animated.View
               pointerEvents="none"
               style={[ StyleSheet.absoluteFillObject, { opacity: eatRipple.interpolate({ inputRange: [0, 1], outputRange: [0.18, 0] }), transform: [{ scale: eatRipple.interpolate({ inputRange: [0, 1], outputRange: [0.95, 1.1] }) }], backgroundColor: '#ffffff', borderRadius: 16, } ]}
             />
-             <Animated.View // Hit Flash
+             <Animated.View
               pointerEvents="none"
               style={[StyleSheet.absoluteFillObject, { backgroundColor: '#ff5252', opacity: hitFlash, borderRadius: 16 }]}
             />
 
-            {/* Overlays */}
             {phase === 'ready' && <StartOverlay onStart={startGame} />}
             {phase === 'countdown' && <CountdownOverlay n={countdown} />}
           </View>
 
-           {/* Game Over / Quiz Complete Overlays */}
            {(isGameOver || phase === 'quiz_complete') && (
             <View style={styles.overlayCenter}>
               <Text style={styles.gameOverTitle}>{phase === 'quiz_complete' ? 'Quiz Complete!' : 'Game Over'}</Text>
@@ -607,7 +562,6 @@ function SnakeGame({ navigation }: { navigation: any }): JSX.Element {
             </View>
           )}
 
-          {/* Question Modal */}
           {isQuestionVisible && currentQuestion && (
             <View style={styles.questionContainer}>
               <Text style={styles.questionText}>{currentQuestion.question}</Text>
@@ -621,7 +575,6 @@ function SnakeGame({ navigation }: { navigation: any }): JSX.Element {
             </View>
           )}
 
-           {/* Settings Panel */}
             {showSettings && (
              <View style={styles.settingsPanel}>
               <Text style={styles.settingsTitle}>Settings</Text>
@@ -641,9 +594,7 @@ function SnakeGame({ navigation }: { navigation: any }): JSX.Element {
   );
 }
 
-// --- Styles ---
 const styles = StyleSheet.create({
-  // ... (Most styles remain the same)
     container: { flex: 1, justifyContent: 'flex-start', alignItems: 'center', backgroundColor: '#e0f7fa' },
     boundaries: {
         width: '92%',
@@ -752,7 +703,6 @@ const styles = StyleSheet.create({
         shadowRadius: 3.84,
     },
     questionText: { fontSize: 18, fontWeight: 'bold', marginBottom: 15, textAlign: 'center' },
-    // Removed answerInput style as it's no longer used
     settingsPanel: {
         position: 'absolute',
         bottom: 20,
@@ -772,4 +722,3 @@ const styles = StyleSheet.create({
 });
 
 export default SnakeGame;
-
