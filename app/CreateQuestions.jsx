@@ -50,7 +50,7 @@ const CreateQuestions = memo(() => {
       const { data, error } = await supabase
         .from('settings')
         .select('question_limit')
-        .eq('user_id', uid) 
+        .eq('user_id', uid) // ✅ changed
         .single();
 
       if (error && error.code !== 'PGRST116') throw error;
@@ -81,7 +81,7 @@ const CreateQuestions = memo(() => {
       return;
     }
 
-    let payload = { question, user_id: uid, options: null, correct_answer: '' };
+    let payload = { question, parent_id: uid, options: null, correct_answer: '', question_type: questionType }; // Fixed: Added question_type, corrected user_id to parent_id
 
     if (questionType === 'multiple_choice') {
       if (!optionA || !optionB || !optionC || !optionD || !correctAnswer) {
@@ -96,7 +96,10 @@ const CreateQuestions = memo(() => {
         return;
       }
       payload.options = { a: 'True', b: 'False' };
-      payload.correct_answer = correctAnswer;
+      payload.correct_answer = correctAnswer; // 'a' for True, 'b' for False
+    } else if (questionType === 'typed_answer') {
+        payload.correct_answer = correctAnswer; // Storing the expected answer
+        payload.options = null; // No options for typed answer
     }
 
     setLoading(true);
@@ -107,7 +110,7 @@ const CreateQuestions = memo(() => {
       if (insertError) throw insertError;
       Alert.alert('Success', 'Question created successfully!');
       clearFields();
-      fetchQuestions();
+      fetchQuestions(); // Refresh the list
     } catch (err) {
       console.error('Create question error:', err);
       setError(err.message || 'Something went wrong');
@@ -115,6 +118,7 @@ const CreateQuestions = memo(() => {
       setLoading(false);
     }
   };
+
 
   const clearFields = () => {
     setQuestion('');
@@ -156,13 +160,13 @@ const CreateQuestions = memo(() => {
           <View style={styles.optionsRow}>
             <TouchableOpacity
               style={[styles.answerButton, correctAnswer === 'a' && styles.selectedAnswerButton]}
-              onPress={() => setCorrectAnswer('a')}
+              onPress={() => setCorrectAnswer('a')} // 'a' corresponds to True in options {a: 'True', b: 'False'}
             >
               <Text style={styles.answerButtonText}>True</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.answerButton, correctAnswer === 'b' && styles.selectedAnswerButton]}
-              onPress={() => setCorrectAnswer('b')}
+              onPress={() => setCorrectAnswer('b')} // 'b' corresponds to False
             >
               <Text style={styles.answerButtonText}>False</Text>
             </TouchableOpacity>
@@ -171,16 +175,33 @@ const CreateQuestions = memo(() => {
       );
     }
 
+    if (questionType === 'typed_answer') {
+        return (
+          <>
+            <Text style={styles.label}>Correct Answer (Optional - Parent review only):</Text>
+             <TextInput
+              placeholder="Enter the expected answer (optional)"
+              value={correctAnswer}
+              onChangeText={setCorrectAnswer}
+              style={styles.input}
+            />
+          </>
+        );
+      }
+
     return null;
   };
 
   const handlePracticeAnswer = () => {
+    // This function seems out of place here - practice likely happens elsewhere.
+    // Keeping logic minimal for now.
     const nextCount = questionsAnsweredCount + 1;
     setQuestionsAnsweredCount(nextCount);
-    if (nextCount >= questionsToComplete) {
-      Alert.alert('Practice Complete!', 'Redirecting back to game...');
-      navigation.navigate('GameScreen');
-    }
+    // Remove navigation logic or adapt if needed
+    // if (nextCount >= questionsToComplete) {
+    //   Alert.alert('Practice Complete!', 'Redirecting back to game...');
+    //   navigation.navigate('GameScreen'); // Ensure 'GameScreen' exists or update target
+    // }
   };
 
   // Save question limit to Supabase
@@ -188,9 +209,8 @@ const CreateQuestions = memo(() => {
     setQuestionsToComplete(num);
     try {
       await supabase
-      await supabase
-      .from('settings')
-      .upsert({ user_id: uid, question_limit: num }, { onConflict: 'user_id' });
+        .from('settings')
+        .upsert({ user_id: uid, question_limit: num }, { onConflict: 'user_id' }); // Uses the UNIQUE constraint
       Alert.alert('Saved', `Question limit set to ${num}`);
     } catch (error) {
       console.error('Error saving question limit:', error.message);
@@ -243,6 +263,13 @@ const CreateQuestions = memo(() => {
             >
               <Text style={styles.answerButtonText}>True/False</Text>
             </TouchableOpacity>
+            {/* Added Typed Answer button */}
+            <TouchableOpacity
+              style={[styles.typeButton, questionType === 'typed_answer' && styles.selectedTypeButton]}
+              onPress={() => setQuestionType('typed_answer')}
+            >
+                <Text style={styles.answerButtonText}>Typed Answer</Text>
+            </TouchableOpacity>
           </View>
 
           {renderQuestionInputs()}
@@ -289,19 +316,23 @@ const CreateQuestions = memo(() => {
         </ScrollView>
       )}
 
-      {/* Practice Tab */}
+      {/* Practice Tab (Review Questions) */}
       {activeTab === 'practice' && (
         <FlatList
+          style={{marginTop: hp('2%')}} // Added margin to clear tab bar
           data={questionsList}
           keyExtractor={(item) => item.id.toString()}
           renderItem={({ item }) => (
-            <TouchableOpacity style={styles.questionCard} onPress={handlePracticeAnswer}>
+            // Changed TouchableOpacity to View as onPress logic was removed/moved
+            <View style={styles.questionCard}>
               <Text style={styles.questionText}>{item.question}</Text>
               <Text style={styles.questionTypeText}>
                 {item.question_type ? item.question_type.replace('_', ' ') : 'N/A'}
               </Text>
-            </TouchableOpacity>
+              {/* Optional: Add a Delete button here */}
+            </View>
           )}
+           contentContainerStyle={{ alignItems: 'center', paddingBottom: hp('5%') }} // Added for centering list items
         />
       )}
     </SafeAreaView>
@@ -310,7 +341,12 @@ const CreateQuestions = memo(() => {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f0f4f8' },
-  scrollContent: { alignItems: 'center', paddingTop: hp('8%'), paddingBottom: hp('5%') },
+  // MODIFIED: Reduced paddingTop to prevent large vertical gap
+  scrollContent: {
+    alignItems: 'center',
+    paddingTop: hp('2%'), // Reduced from hp('8%')
+    paddingBottom: hp('5%')
+   },
   title: { fontFamily: 'FredokaOne-Regular', fontSize: wp('9%'), marginBottom: hp('3%'), color: '#1E1E1E' },
   input: {
     fontFamily: 'FredokaOne-Regular',
@@ -340,10 +376,18 @@ const styles = StyleSheet.create({
   backContainer: { position: 'absolute', left: wp('4%'), zIndex: 10 },
   backButton: { flexDirection: 'row', alignItems: 'center', paddingVertical: 6, paddingHorizontal: 8, minWidth: 48 },
   backLabel: { marginLeft: 2, fontFamily: 'FredokaOne-Regular', fontSize: wp('4.2%'), color: '#000' },
-  tabRow: { flexDirection: 'row', justifyContent: 'space-around', paddingVertical: 10, backgroundColor: '#eee' },
-  tabButton: { padding: 10, borderRadius: 8 },
+  // MODIFIED: Added marginTop to push the tab bar down
+  tabRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    paddingVertical: 10,
+    backgroundColor: '#eee',
+    marginTop: hp('6%'), // Added margin for clearance
+    width: '100%', // Ensure it takes full width
+  },
+  tabButton: { padding: 10, borderRadius: 8, flex: 1, alignItems: 'center' }, // Added flex: 1 and alignItems
   tabButtonActive: { backgroundColor: '#4A90E2' },
-  tabText: { fontFamily: 'FredokaOne-Regular', color: '#000' },
+  tabText: { fontFamily: 'FredokaOne-Regular', color: '#000', fontSize: wp('4%') }, // Adjusted fontSize
 });
 
 export default CreateQuestions;
