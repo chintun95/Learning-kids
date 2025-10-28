@@ -50,7 +50,7 @@ const CreateQuestions = memo(() => {
       const { data, error } = await supabase
         .from('settings')
         .select('question_limit')
-        .eq('user_id', uid) // ✅ changed
+        .eq('user_id', uid) 
         .single();
 
       if (error && error.code !== 'PGRST116') throw error;
@@ -188,8 +188,9 @@ const CreateQuestions = memo(() => {
     setQuestionsToComplete(num);
     try {
       await supabase
-        .from('settings')
-        .upsert({ user_id: uid, question_limit: num }, { onConflict: 'user_id' }); // ✅ changed
+      await supabase
+      .from('settings')
+      .upsert({ user_id: uid, question_limit: num }, { onConflict: 'user_id' });
       Alert.alert('Saved', `Question limit set to ${num}`);
     } catch (error) {
       console.error('Error saving question limit:', error.message);
