@@ -1,110 +1,112 @@
 import React, { useEffect, useState } from "react";
-import { Stack, useRouter } from "expo-router";
+import { Text, View, ActivityIndicator, StyleSheet } from "react-native";
+import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import * as Font from "expo-font";
 import { Asset } from "expo-asset";
-import { View, ActivityIndicator, StyleSheet } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
-import { ClerkLoaded, ClerkProvider } from "@clerk/clerk-expo";
+import { ClerkLoaded, ClerkProvider, useAuth } from "@clerk/clerk-expo";
 import { tokenCache } from "@clerk/clerk-expo/token-cache";
 import { useAuthStore } from "@/lib/store/authStore";
 
-// Catch any errors thrown by the Layout component.
-export { ErrorBoundary } from "expo-router";
-
-SplashScreen.preventAutoHideAsync();
-
+// --- preload assets ---
 const imageAssets = [
-  // Images
+  // images
+  require("../assets/images/app-logo.png"),
+  require("../assets/images/splash-icon.png"),
   require("../assets/images/adaptive-icon.png"),
   require("../assets/images/app-background.png"),
-  require("../assets/images/app-logo.png"),
   require("../assets/images/app-game-page.png"),
   require("../assets/images/favicon.png"),
-  require("../assets/images/splash-icon.png"),
 
-  // Icons
+  // icons
   require("../assets/icons/apple-icon.png"),
   require("../assets/icons/facebook-icon.png"),
   require("../assets/icons/google-icon.png"),
 
-  // Profile Icon
+  // profile-icons
   require("../assets/profile-icons/avatar1.png"),
+  require("../assets/profile-icons/avatar2.png"),
+  require("../assets/profile-icons/avatar3.png"),
+  require("../assets/profile-icons/avatar4.png"),
 ];
-
 const videoAssets = [require("../assets/video/app-welcome-page.mp4")];
-
 const fontAssets = {
-  "Fredoka-Light": require("../assets/fonts/Fredoka_300Light.ttf"),
-  "Fredoka-Regular": require("../assets/fonts/Fredoka_400Regular.ttf"),
-  "Fredoka-Medium": require("../assets/fonts/Fredoka_500Medium.ttf"),
-  "Fredoka-SemiBold": require("../assets/fonts/Fredoka_600SemiBold.ttf"),
   "Fredoka-Bold": require("../assets/fonts/Fredoka_700Bold.ttf"),
+  "Fredoka-SemiBold": require("../assets/fonts/Fredoka_600SemiBold.ttf"),
 };
 
-const InitialLayout = () => {
-  const isOnboarded = useAuthStore((state) => state.isOnboarded);
-  const isLoggedIn = useAuthStore((state) => state.isLoggedIn);
+// Prevent splash screen from hiding until everything is ready
+SplashScreen.preventAutoHideAsync();
 
-  const [assetsLoaded, setAssetsLoaded] = useState(false);
-  const [fontsLoaded, setFontsLoaded] = useState(false);
+function InitialLayout() {
+  const [ready, setReady] = useState(false);
 
-  // Load fonts
+  //  Clerk auth state
+  const { isSignedIn } = useAuth();
+
+  // Zustand store state
+  const onBoardedStatus = useAuthStore((state) => state.onBoardedStatus);
+  const role = useAuthStore((state) => state.role);
+
+  // derived values
+  const isLoggedIn = !!isSignedIn;
+  const isOnboarded = onBoardedStatus === "completed";
+
+  // preload fonts, images, and videos
   useEffect(() => {
-    async function loadFonts() {
-      await Font.loadAsync(fontAssets);
-      setFontsLoaded(true);
-    }
-    loadFonts();
+    const prepare = async () => {
+      try {
+        await Font.loadAsync(fontAssets);
+        const images = imageAssets.map((asset) => Asset.loadAsync(asset));
+        const videos = videoAssets.map((asset) => Asset.loadAsync(asset));
+        await Promise.all([...images, ...videos]);
+      } catch (e) {
+        console.warn("Asset preloading failed:", e);
+      } finally {
+        setReady(true);
+        await SplashScreen.hideAsync();
+      }
+    };
+    prepare();
   }, []);
 
-  // Load images and videos
-  useEffect(() => {
-    async function loadAssets() {
-      const videos = videoAssets.map((asset) => Asset.loadAsync(asset));
-      const images = imageAssets.map((asset) => Asset.loadAsync(asset));
-      await Promise.all([...videos, ...images]);
-      setAssetsLoaded(true);
-    }
-    loadAssets();
-  }, []);
-
-  useEffect(() => {
-    if (assetsLoaded && fontsLoaded) {
-      SplashScreen.hideAsync();
-    }
-  }, [assetsLoaded, fontsLoaded]);
-
-  if (!assetsLoaded || !fontsLoaded) {
+  if (!ready) {
     return (
       <View style={styles.loadingContainer}>
+        <Text>Loading Application...</Text>
         <ActivityIndicator size="large" />
       </View>
     );
   }
 
+  // --- Define navigation stack behavior ---
   return (
     <Stack screenOptions={{ headerShown: false }}>
-      {/* Onboarding */}
+      {/* Public onboarding screen */}
       <Stack.Protected guard={!isOnboarded}>
         <Stack.Screen name="index" />
       </Stack.Protected>
 
-      {/* Authentication */}
-      <Stack.Protected guard={isOnboarded && !isLoggedIn}>
+      {/* Auth Screens */}
+      <Stack.Protected guard={!isLoggedIn && isOnboarded}>
         <Stack.Screen name="(auth)" />
       </Stack.Protected>
 
       {/* Protected Screens */}
-      <Stack.Protected guard={isOnboarded && isLoggedIn}>
+      <Stack.Protected
+        guard={
+          isLoggedIn && isOnboarded && (role === "parent" || role === "child")
+        }
+      >
         <Stack.Screen name="(protected)" />
         <Stack.Screen name="games" />
       </Stack.Protected>
     </Stack>
   );
-};
+}
 
-const RootLayoutNav = () => {
+export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <ClerkProvider tokenCache={tokenCache}>
@@ -114,9 +116,7 @@ const RootLayoutNav = () => {
       </ClerkProvider>
     </GestureHandlerRootView>
   );
-};
-
-export default RootLayoutNav;
+}
 
 const styles = StyleSheet.create({
   loadingContainer: {

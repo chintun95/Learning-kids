@@ -1,4 +1,4 @@
-// app/index.tsx
+import React, { useEffect } from "react";
 import {
   View,
   StyleSheet,
@@ -6,39 +6,48 @@ import {
   Platform,
   Text,
   Image,
-  Linking,
 } from "react-native";
 import { useVideoPlayer, VideoView, VideoSource } from "expo-video";
 import Button from "../components/Button";
 import { useRouter } from "expo-router";
 import { responsive } from "../utils/responsive";
+import * as WebBrowser from "expo-web-browser";
+import { useAuthStore } from "@/lib/store/authStore";
 
 const assetId = require("../assets/video/app-welcome-page.mp4");
 const logo = require("../assets/images/app-logo.png");
-import { useAuthStore } from "@/lib/store/authStore";
-
 const videoSource: VideoSource = { assetId };
 
 export default function Index() {
   const router = useRouter();
-  const { setOnboarded } = useAuthStore();
+  const onBoardedStatus = useAuthStore((state) => state.onBoardedStatus);
+  const setOnBoardedStatus = useAuthStore((state) => state.setOnBoardedStatus);
 
-  const player = useVideoPlayer(videoSource, (player) => {
+  const player = useVideoPlayer(videoSource);
+
+  useEffect(() => {
     player.muted = true;
     player.loop = true;
     player.play();
-  });
+  }, [player]);
 
-  // Open Terms of Service link
-  const onTermsPress = () => {
-    Linking.openURL("https://en.wikipedia.org/wiki/Inigo_Montoya");
+  const onTermsPress = async () => {
+    await WebBrowser.openBrowserAsync(
+      "https://en.wikipedia.org/wiki/Inigo_Montoya"
+    );
   };
 
-  // Navigate to auth index screen
   const onBeginPress = () => {
-    setOnboarded(true);
-    router.push("./(auth)");
+    if (onBoardedStatus === "pending") {
+      setOnBoardedStatus("completed");
+    }
   };
+
+  useEffect(() => {
+    if (onBoardedStatus === "completed") {
+      router.push("/(auth)");
+    }
+  }, [onBoardedStatus, router]);
 
   return (
     <View style={styles.container}>
@@ -65,7 +74,7 @@ export default function Index() {
         <Button
           title="Let's Begin !"
           onPress={onBeginPress}
-          outlined={true}
+          outlined
           borderColor="black"
           borderWidth={3}
           backgroundColor="#93DEFF"
@@ -82,7 +91,6 @@ export default function Index() {
             <Text style={styles.termsLink} onPress={onTermsPress}>
               Terms of Service
             </Text>
-            .
           </Text>
         </View>
       </View>
@@ -92,7 +100,6 @@ export default function Index() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-
   overlay: {
     flex: 1,
     paddingTop:
@@ -104,30 +111,25 @@ const styles = StyleSheet.create({
     paddingHorizontal: responsive.screenWidth * 0.05,
     backgroundColor: "rgba(0,0,0,0.3)",
   },
-
   welcomeText: {
     fontSize: responsive.screenWidth * 0.15,
     fontFamily: "Fredoka-Bold",
     color: "black",
     marginBottom: responsive.screenHeight * 0.015,
   },
-
   logo: {
     width: responsive.screenWidth * 0.9,
     height: responsive.screenWidth * 0.35,
     marginBottom: responsive.screenHeight * 0.004,
   },
-
   tagline: {
     fontSize: responsive.screenWidth * 0.065,
     fontFamily: "Fredoka-SemiBold",
     color: "black",
-    fontWeight: "400",
     textAlign: "center",
     marginTop: responsive.screenHeight * 0.01,
     marginBottom: responsive.screenHeight * 0.05,
   },
-
   termsContainer: {
     position: "absolute",
     bottom:
@@ -137,13 +139,11 @@ const styles = StyleSheet.create({
     alignSelf: "center",
     paddingHorizontal: responsive.screenWidth * 0.05,
   },
-
   termsText: {
     color: "black",
     fontSize: responsive.screenWidth * 0.035,
     textAlign: "center",
   },
-
   termsLink: {
     color: "white",
     textDecorationLine: "underline",

@@ -1,4 +1,4 @@
-package com.anonymous.LearningKids1
+package com.anonymous.LearningKids
 import expo.modules.splashscreen.SplashScreenManager
 
 import android.os.Build

@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "Learning-Kids1",
-    "slug": "Learning-Kids1",
+    "name": "Learning-Kids",
+    "slug": "Learning-Kids",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/app-logo.png",
@@ -9,14 +9,14 @@
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": false
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "package": "com.anonymous.LearningKids1"
+      "package": "com.anonymous.LearningKids"
     },
     "web": {
       "bundler": "metro",
@@ -40,7 +40,8 @@
           "supportsBackgroundPlayback": true,
           "supportsPictureInPicture": true
         }
-      ]
+      ],
+      "expo-web-browser"
     ],
     "experiments": {
       "typedRoutes": true

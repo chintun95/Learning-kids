@@ -22,6 +22,7 @@ import DateTimePickerModal from "react-native-modal-datetime-picker";
 import childData from "@/test/data/child";
 import sessionData from "@/test/data/session";
 import ProfileIcon from "@/components/ProfileIcon";
+import EmergencyContactModal from "@/components/EmergencyContactModal";
 import { responsive } from "@/utils/responsive";
 import { Child, Session } from "@/types/types";
 import Button from "@/components/Button";
@@ -282,81 +283,12 @@ export default function ManageChildIndex() {
         </Modal>
 
         {/* Emergency Contact Modal */}
-        <Modal
+        <EmergencyContactModal
           visible={showEmergencyModal}
-          transparent
-          animationType="slide"
-          onRequestClose={() => setShowEmergencyModal(false)}
-        >
-          <View style={styles.modalOverlay}>
-            <View style={styles.modalContent}>
-              <TouchableOpacity
-                style={styles.modalClose}
-                onPress={() => setShowEmergencyModal(false)}
-              >
-                <Ionicons
-                  name="close"
-                  size={responsive.screenWidth * 0.06}
-                  color="#111827"
-                />
-              </TouchableOpacity>
-              <Text style={styles.modalTitle}>Emergency Contact</Text>
-
-              {/* Editable Fields */}
-              <InputBox
-                label="Name"
-                value={child.emergencyContact.name}
-                onChangeText={(text) => (child.emergencyContact.name = text)}
-              />
-              <InputBox
-                label="Relationship"
-                value={child.emergencyContact.relationship}
-                onChangeText={(text) =>
-                  (child.emergencyContact.relationship = text)
-                }
-              />
-              <InputBox
-                label="Phone Number"
-                value={child.emergencyContact.phoneNumber}
-                keyboardType="phone-pad"
-                onChangeText={(text) =>
-                  (child.emergencyContact.phoneNumber = text)
-                }
-              />
-              <InputBox
-                label="Street Address"
-                value={child.emergencyContact.streetAddress}
-                onChangeText={(text) =>
-                  (child.emergencyContact.streetAddress = text)
-                }
-              />
-              <InputBox
-                label="City"
-                value={child.emergencyContact.city}
-                onChangeText={(text) => (child.emergencyContact.city = text)}
-              />
-              <InputBox
-                label="State"
-                value={child.emergencyContact.state}
-                onChangeText={(text) => (child.emergencyContact.state = text)}
-              />
-
-              {/* Done Button */}
-              <Button
-                title="Done"
-                onPress={() => {
-                  console.log(
-                    "Updated Emergency Contact:",
-                    child.emergencyContact
-                  );
-                  setShowEmergencyModal(false);
-                }}
-                backgroundColor="#000"
-                marginTop={responsive.screenHeight * 0.02}
-              />
-            </View>
-          </View>
-        </Modal>
+          onClose={() => setShowEmergencyModal(false)}
+          contact={child.emergencyContact}
+          onUpdate={(updated) => (child.emergencyContact = updated)}
+        />
 
         {/* Date Pickers */}
         <DateTimePickerModal

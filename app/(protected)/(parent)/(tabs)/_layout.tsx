@@ -1,8 +1,11 @@
-// app/(protected)/(parent)/(tabs)/_layout.tsx
 import { Tabs } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Platform } from "react-native";
 
 export default function ParentTabsLayout() {
+  const insets = useSafeAreaInsets();
+
   return (
     <Tabs
       screenOptions={{
@@ -13,8 +16,17 @@ export default function ParentTabsLayout() {
           backgroundColor: "#fff",
           borderTopWidth: 0.5,
           borderTopColor: "#ccc",
-          height: 60,
-          paddingBottom: 5,
+          height:
+            Platform.OS === "android"
+              ? 60 + (insets.bottom > 0 ? insets.bottom : 8)
+              : 60 + insets.bottom,
+          paddingBottom:
+            Platform.OS === "android"
+              ? insets.bottom > 0
+                ? insets.bottom
+                : 8
+              : insets.bottom,
+          paddingTop: 5,
         },
       }}
     >
@@ -27,7 +39,6 @@ export default function ParentTabsLayout() {
           ),
         }}
       />
-
       <Tabs.Screen
         name="profile"
         options={{

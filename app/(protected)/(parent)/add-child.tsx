@@ -7,10 +7,9 @@ export default function AddChildIndex() {
         flex: 1,
         justifyContent: "center",
         alignItems: "center",
-        
       }}
     >
-      <Text> Add Child Home Screen</Text>
+      <Text> Add Child Screen</Text>
     </View>
   );
 }

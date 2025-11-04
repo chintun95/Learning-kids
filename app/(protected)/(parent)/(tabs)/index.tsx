@@ -13,6 +13,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import ChildCard from "@/components/ChildCard";
+import AddChild from "@/components/AddChild"
 import childData from "@/test/data/child";
 import { Child } from "@/types/types";
 import { responsive } from "@/utils/responsive";
@@ -26,6 +27,8 @@ export default function ProtectedParentIndex() {
 
   const firstName = user?.firstName ?? "";
   const lastName = user?.lastName ?? "";
+
+  const CHILD_THRESHOLD = 12; // max children allowed before hiding AddChild
 
   const renderChild = ({ item }: { item: Child }) => <ChildCard child={item} />;
 
@@ -55,6 +58,9 @@ export default function ProtectedParentIndex() {
             />
           </TouchableOpacity>
         </View>
+
+        {/* AddChild Button: only shows if children are below threshold */}
+        {childData.length < CHILD_THRESHOLD && <AddChild />}
 
         {/* No Children Fallback */}
         {(!childData || childData.length === 0) && (
@@ -95,9 +101,7 @@ export default function ProtectedParentIndex() {
 
               <View style={styles.statusRow}>
                 <View style={[styles.dot, { backgroundColor: "green" }]} />
-                <Text style={styles.statusText}>
-                 - Logged in and Online
-                </Text>
+                <Text style={styles.statusText}>- Logged in and Online</Text>
               </View>
 
               <View style={styles.statusRow}>
@@ -109,9 +113,7 @@ export default function ProtectedParentIndex() {
 
               <View style={styles.statusRow}>
                 <View style={[styles.dot, { backgroundColor: "red" }]} />
-                <Text style={styles.statusText}>
-                  - Logged Out and Offline
-                </Text>
+                <Text style={styles.statusText}>- Logged Out and Offline</Text>
               </View>
             </View>
           </View>

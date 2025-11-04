@@ -77,10 +77,20 @@ const sessionData: Session[] = [
     childId: "child-01",
     date: "2025-10-06",
     startTime: "10:00:00",
-    endTime: "10:30:40",
-    sessionStatus: "Completed",
-    activityType: "Game",
+    endTime: null,
+    sessionStatus: "In Progress",
+    activityType: "Snake Game",
     sessionDetails: "Completed a level in Sanke Game with a score of 210",
+  },
+  {
+    id: "session-007",
+    childId: "child-01",
+    date: "2025-10-14",
+    startTime: "10:00:00",
+    endTime: "10:30:00",
+    sessionStatus: "Completed",
+    activityType: "Jenga",
+    sessionDetails: "High Score 50",
   },
 ];
 

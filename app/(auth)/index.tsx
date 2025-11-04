@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   StyleSheet,
@@ -18,34 +18,57 @@ import InputBox from "@/components/InputBox";
 import Button from "@/components/Button";
 import { responsive } from "@/utils/responsive";
 import { useSignIn } from "@clerk/clerk-expo";
-import { formatSignIn } from "@/utils/formatter";
+import { formatSignIn, signInSchema } from "@/utils/formatter";
 import { useAuthStore } from "@/lib/store/authStore";
-import { SignOutButton } from "@/components/SignOutButton";
+import { z } from "zod";
 
 export default function AuthIndex() {
   const router = useRouter();
-
   const { width: logoWidth, height: logoHeight } = responsive.logoSize();
-
   const { signIn, setActive, isLoaded } = useSignIn();
 
-  const setRole = useAuthStore((state) => state.setRole);
-  const setIsLoggedIn = useAuthStore((state) => state.setIsLoggedIn);
-  const setIsParent = useAuthStore((state) => state.setIsParent);
-  const setIsChild = useAuthStore((state) => state.setIsChild);
+  const setRole = useAuthStore((role) => role.setRole);
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [emailError, setEmailError] = useState("");
+  const [passwordError, setPasswordError] = useState("");
 
+  // Real-time validation
+  useEffect(() => {
+    try {
+      signInSchema.shape.email.parse(email);
+      setEmailError("");
+    } catch (err) {
+      if (err instanceof z.ZodError && email.length > 0) {
+        setEmailError(err.errors[0]?.message || "Invalid email format");
+      } else {
+        setEmailError("");
+      }
+    }
+  }, [email]);
+
+  useEffect(() => {
+    try {
+      signInSchema.shape.password.parse(password);
+      setPasswordError("");
+    } catch (err) {
+      if (err instanceof z.ZodError && password.length > 0) {
+        setPasswordError(err.errors[0]?.message || "Invalid password format");
+      } else {
+        setPasswordError("");
+      }
+    }
+  }, [password]);
+
+  // Secure login handling
   const handleLogin = async (role: "parent" | "child") => {
     if (!isLoaded) return;
 
     try {
-      // Validate inputs
       const parsed = formatSignIn({ email, password });
 
-      // Attempt sign-in with Clerk
       const signInAttempt = await signIn.create({
         identifier: parsed.email,
         password: parsed.password,
@@ -54,45 +77,22 @@ export default function AuthIndex() {
       if (signInAttempt.status === "complete") {
         await setActive({ session: signInAttempt.createdSessionId });
 
-        // Assign role and logged-in state
+        // Set rolre After Authentication
         setRole(role);
-        setIsLoggedIn(true);
 
-        console.log(" Role set:", role);
-
-        // Assign role-specific flags
-        if (role === "parent") {
-          setIsParent(true);
-        } else if (role === "child") {
-          setIsChild(true);
-        }
-
-        // Navigate based on role
         router.replace(
           role === "parent" ? "./(protected)/(parent)" : "./(protected)/(child)"
         );
       } else {
-        console.warn(
-          "Sign-in not complete:",
-          JSON.stringify(signInAttempt, null, 2)
-        );
         Alert.alert(
           "Sign-in Incomplete",
-          "Please complete any additional steps (e.g., email verification)."
+          "Please complete the additional verification steps."
         );
       }
-    } catch (err: any) {
-      console.error("Login failed:", JSON.stringify(err, null, 2));
-
-      let message = "Something went wrong. Please try again.";
-
-      if (err?.errors && Array.isArray(err.errors) && err.errors.length > 0) {
-        message = err.errors.map((e: any) => e.message).join("\n");
-      } else if (err?.message) {
-        message = err.message;
-      }
-
-      Alert.alert("Login Error", message);
+    } catch (err) {
+      console.error("Login failed:", err);
+      // Vague error message for security
+      Alert.alert("Login Failed", "Invalid email or password. Please try again.");
     }
   };
 
@@ -163,6 +163,9 @@ export default function AuthIndex() {
               keyboardType="email-address"
               autoCapitalize="none"
             />
+            {emailError ? (
+              <Text style={styles.errorText}>{emailError}</Text>
+            ) : null}
 
             <InputBox
               label="Password"
@@ -174,6 +177,9 @@ export default function AuthIndex() {
               iconRight={showPassword ? "eye-off" : "eye"}
               onIconRightPress={() => setShowPassword(!showPassword)}
             />
+            {passwordError ? (
+              <Text style={styles.errorText}>{passwordError}</Text>
+            ) : null}
 
             <TouchableOpacity onPress={handleForgotPassword}>
               <Text
@@ -186,7 +192,6 @@ export default function AuthIndex() {
               </Text>
             </TouchableOpacity>
 
-            {/* Role Selection */}
             <Text
               style={[
                 styles.separator,
@@ -214,7 +219,6 @@ export default function AuthIndex() {
               />
             </View>
 
-            {/* Separator */}
             <View style={styles.separatorView}>
               <View style={styles.line} />
               <Text
@@ -228,7 +232,6 @@ export default function AuthIndex() {
               <View style={styles.line} />
             </View>
 
-            {/* Social Icons */}
             <View style={styles.iconRow}>
               <TouchableOpacity onPress={handleGoogleLogin}>
                 <Image
@@ -264,7 +267,6 @@ export default function AuthIndex() {
               </TouchableOpacity>
             </View>
 
-            {/* Sign Up */}
             <TouchableOpacity
               style={styles.signUpPrompt}
               onPress={handleSignUp}
@@ -329,6 +331,13 @@ const styles = StyleSheet.create({
     textDecorationLine: "underline",
     color: "#ffff",
     marginVertical: 8,
+  },
+  errorText: {
+    color: "red",
+    fontSize: responsive.footerFontSize * 0.8,
+    fontFamily: "Fredoka-SemiBold",
+    marginBottom: 4,
+    marginLeft: 8,
   },
   separator: {
     textAlign: "center",
