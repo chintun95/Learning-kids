@@ -8,6 +8,9 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { ClerkLoaded, ClerkProvider, useAuth } from "@clerk/clerk-expo";
 import { tokenCache } from "@clerk/clerk-expo/token-cache";
 import { useAuthStore } from "@/lib/store/authStore";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+
+const queryClinet = new QueryClient();
 
 // --- preload assets ---
 const imageAssets = [
@@ -109,11 +112,13 @@ function InitialLayout() {
 export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <ClerkProvider tokenCache={tokenCache}>
-        <ClerkLoaded>
-          <InitialLayout />
-        </ClerkLoaded>
-      </ClerkProvider>
+      <QueryClientProvider client={queryClinet}>
+        <ClerkProvider tokenCache={tokenCache}>
+          <ClerkLoaded>
+            <InitialLayout />
+          </ClerkLoaded>
+        </ClerkProvider>
+      </QueryClientProvider>
     </GestureHandlerRootView>
   );
 }

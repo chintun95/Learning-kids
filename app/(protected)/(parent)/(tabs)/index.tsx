@@ -1,5 +1,6 @@
+// app/(protected)/(parent)/(tabs)/index.tsx
 import { useUser } from "@clerk/clerk-expo";
-import React, { useState } from "react";
+import React, { useMemo } from "react";
 import {
   Text,
   View,
@@ -9,28 +10,51 @@ import {
   FlatList,
   TouchableOpacity,
   Modal,
+  ActivityIndicator,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
+
 import ChildCard from "@/components/ChildCard";
-import AddChild from "@/components/AddChild"
-import childData from "@/test/data/child";
-import { Child } from "@/types/types";
+import AddChild from "@/components/AddChild";
 import { responsive } from "@/utils/responsive";
+
+import {
+  useChildrenByParentEmail,
+  ChildCardModel,
+} from "@/services/fetchChildren";
 
 const statusBarHeight =
   Platform.OS === "android" ? StatusBar.currentHeight ?? 0 : 40;
 
 export default function ProtectedParentIndex() {
   const { user } = useUser();
-  const [showModal, setShowModal] = useState(false);
+  const [showModal, setShowModal] = React.useState(false);
 
   const firstName = user?.firstName ?? "";
   const lastName = user?.lastName ?? "";
+  // Clerk recommended way to get a stable email:
+  const emailAddress =
+    user?.primaryEmailAddress?.emailAddress ??
+    user?.emailAddresses?.[0]?.emailAddress ??
+    "";
 
-  const CHILD_THRESHOLD = 12; // max children allowed before hiding AddChild
+  const CHILD_THRESHOLD = 12;
 
-  const renderChild = ({ item }: { item: Child }) => <ChildCard child={item} />;
+  // Fetch children by parent's email
+  const {
+    data: children,
+    isLoading,
+    isError,
+    error,
+    refetch,
+  } = useChildrenByParentEmail(emailAddress);
+
+  const childCount = children?.length ?? 0;
+
+  const renderChild = ({ item }: { item: ChildCardModel }) => (
+    <ChildCard child={item as any} />
+  );
 
   const handleCloseModal = () => setShowModal(false);
 
@@ -59,11 +83,25 @@ export default function ProtectedParentIndex() {
           </TouchableOpacity>
         </View>
 
+        {/* Loading / Error states */}
+        {isLoading && (
+          <View style={{ padding: responsive.screenWidth * 0.05 }}>
+            <ActivityIndicator />
+          </View>
+        )}
+        {isError && (
+          <View style={{ padding: responsive.screenWidth * 0.05 }}>
+            <Text style={{ color: "#EF4444" }}>
+              Failed to load children. {String((error as Error)?.message || "")}
+            </Text>
+          </View>
+        )}
+
         {/* AddChild Button: only shows if children are below threshold */}
-        {childData.length < CHILD_THRESHOLD && <AddChild />}
+        {!isLoading && !isError && childCount < CHILD_THRESHOLD && <AddChild />}
 
         {/* No Children Fallback */}
-        {(!childData || childData.length === 0) && (
+        {!isLoading && !isError && childCount === 0 && (
           <View style={styles.noChildContainer}>
             <Text style={styles.noChildText}>
               No Children Registered Under Account
@@ -72,9 +110,9 @@ export default function ProtectedParentIndex() {
         )}
 
         {/* Child List */}
-        {childData && childData.length > 0 && (
+        {!isLoading && !isError && childCount > 0 && (
           <FlatList
-            data={childData as Child[]}
+            data={children as ChildCardModel[]}
             keyExtractor={(item) => item.id}
             renderItem={renderChild}
             contentContainerStyle={{ padding: responsive.screenWidth * 0.04 }}

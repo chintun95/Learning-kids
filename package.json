@@ -9,7 +9,8 @@
     "web": "expo start --web",
     "test": "jest --watchAll",
     "lint": "expo lint",
-    "ios": "expo run:ios"
+    "ios": "expo run:ios",
+    "gen-types": "npx supabase gen types typescript --project-id qsqirkgznjtrrafbgzvj > types/database.types.ts"
   },
   "jest": {
     "preset": "jest-expo"
@@ -24,6 +25,7 @@
     "@react-navigation/native": "^7.1.6",
     "@react-navigation/stack": "^7.2.10",
     "@supabase/supabase-js": "^2.49.4",
+    "@tanstack/react-query": "^5.90.6",
     "axios": "^1.8.4",
     "date-fns": "^4.1.0",
     "expo": "54.0.13",
@@ -33,6 +35,7 @@
     "expo-font": "~14.0.8",
     "expo-haptics": "~15.0.7",
     "expo-image": "~3.0.9",
+    "expo-keep-awake": "~15.0.7",
     "expo-linking": "~8.0.8",
     "expo-router": "~6.0.12",
     "expo-secure-store": "^15.0.7",
