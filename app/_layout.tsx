@@ -35,6 +35,7 @@ export default function RootLayout() {
         <Stack.Screen name="logIn-page" options={{ title: "LogIn Page", headerShown: false}} />
         <Stack.Screen name="signIn-page" options={{ title: "SignIn Page", headerShown: false}} />
         <Stack.Screen name="profile" options={{ title: "Profil Page", headerShown: false}} />
+        <Stack.Screen name="ProgressChart" options={{ title: "Progress Chart", headerShown: false}} />
         <Stack.Screen name="+not-found" />
       </Stack>
       <StatusBar style="auto" />

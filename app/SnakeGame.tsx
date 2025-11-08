@@ -403,13 +403,15 @@ function SnakeGame({ navigation }: { navigation: any }): JSX.Element {
       supabase.from('answer_log').insert({
         user_id: uid,
         question_id: currentQuestion.id,
-        is_correct: isCorrect
+        is_correct: isCorrect,
+        game_name: 'Snake' 
       }).then(({ error }) => {
         if (error) {
           console.error('Error logging answer:', error.message);
         }
       });
     }
+    
 
     setScore(s => s + bonusPoints);
 

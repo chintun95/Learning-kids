@@ -50,7 +50,7 @@ const CreateQuestions = memo(() => {
       const { data, error } = await supabase
         .from('settings')
         .select('question_limit')
-        .eq('user_id', uid) // ✅ changed
+        .eq('user_id', uid) 
         .single();
 
       if (error && error.code !== 'PGRST116') throw error;
@@ -96,10 +96,10 @@ const CreateQuestions = memo(() => {
         return;
       }
       payload.options = { a: 'True', b: 'False' };
-      payload.correct_answer = correctAnswer; // 'a' for True, 'b' for False
+      payload.correct_answer = correctAnswer; 
     } else if (questionType === 'typed_answer') {
-        payload.correct_answer = correctAnswer; // Storing the expected answer
-        payload.options = null; // No options for typed answer
+        payload.correct_answer = correctAnswer; 
+        payload.options = null; 
     }
 
     setLoading(true);
@@ -110,7 +110,7 @@ const CreateQuestions = memo(() => {
       if (insertError) throw insertError;
       Alert.alert('Success', 'Question created successfully!');
       clearFields();
-      fetchQuestions(); // Refresh the list
+      fetchQuestions(); 
     } catch (err) {
       console.error('Create question error:', err);
       setError(err.message || 'Something went wrong');
@@ -193,15 +193,10 @@ const CreateQuestions = memo(() => {
   };
 
   const handlePracticeAnswer = () => {
-    // This function seems out of place here - practice likely happens elsewhere.
-    // Keeping logic minimal for now.
+    
     const nextCount = questionsAnsweredCount + 1;
     setQuestionsAnsweredCount(nextCount);
-    // Remove navigation logic or adapt if needed
-    // if (nextCount >= questionsToComplete) {
-    //   Alert.alert('Practice Complete!', 'Redirecting back to game...');
-    //   navigation.navigate('GameScreen'); // Ensure 'GameScreen' exists or update target
-    // }
+    
   };
 
   // Save question limit to Supabase
@@ -319,17 +314,17 @@ const CreateQuestions = memo(() => {
       {/* Practice Tab (Review Questions) */}
       {activeTab === 'practice' && (
         <FlatList
-          style={{marginTop: hp('2%')}} // Added margin to clear tab bar
+          style={{marginTop: hp('2%')}} 
           data={questionsList}
           keyExtractor={(item) => item.id.toString()}
           renderItem={({ item }) => (
-            // Changed TouchableOpacity to View as onPress logic was removed/moved
+            
             <View style={styles.questionCard}>
               <Text style={styles.questionText}>{item.question}</Text>
               <Text style={styles.questionTypeText}>
                 {item.question_type ? item.question_type.replace('_', ' ') : 'N/A'}
               </Text>
-              {/* Optional: Add a Delete button here */}
+
             </View>
           )}
            contentContainerStyle={{ alignItems: 'center', paddingBottom: hp('5%') }} // Added for centering list items
@@ -341,10 +336,10 @@ const CreateQuestions = memo(() => {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f0f4f8' },
-  // MODIFIED: Reduced paddingTop to prevent large vertical gap
+
   scrollContent: {
     alignItems: 'center',
-    paddingTop: hp('2%'), // Reduced from hp('8%')
+    paddingTop: hp('2%'), 
     paddingBottom: hp('5%')
    },
   title: { fontFamily: 'FredokaOne-Regular', fontSize: wp('9%'), marginBottom: hp('3%'), color: '#1E1E1E' },
@@ -376,14 +371,14 @@ const styles = StyleSheet.create({
   backContainer: { position: 'absolute', left: wp('4%'), zIndex: 10 },
   backButton: { flexDirection: 'row', alignItems: 'center', paddingVertical: 6, paddingHorizontal: 8, minWidth: 48 },
   backLabel: { marginLeft: 2, fontFamily: 'FredokaOne-Regular', fontSize: wp('4.2%'), color: '#000' },
-  // MODIFIED: Added marginTop to push the tab bar down
+  
   tabRow: {
     flexDirection: 'row',
     justifyContent: 'space-around',
     paddingVertical: 10,
     backgroundColor: '#eee',
-    marginTop: hp('6%'), // Added margin for clearance
-    width: '100%', // Ensure it takes full width
+    marginTop: hp('6%'), 
+    width: '100%', 
   },
   tabButton: { padding: 10, borderRadius: 8, flex: 1, alignItems: 'center' }, // Added flex: 1 and alignItems
   tabButtonActive: { backgroundColor: '#4A90E2' },

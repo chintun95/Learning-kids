@@ -10,28 +10,30 @@ import GamePage from "./game-page";
 import LogInPage from "./logIn-page";
 import ProfilePage from "./profile";
 import SignInPage from "./signIn-page";
-import EditProfilePage from "./edit-profile"
-import ShopPage from "./shop"
-import CreateQuestionsPage from "./CreateQuestions"
+import EditProfilePage from "./edit-profile";
+import ShopPage from "./shop";
+import CreateQuestionsPage from "./CreateQuestions";
 import QuizScreen from "./QuizScreen";
-import ProgressChart from "./ProgressChart"
+import ProgressChart from "./ProgressChart"; 
 
 import { initAnalyticsWeb } from "../firebase";
-import { registerForPushNotificationsAsync, addNotificationReceivedListener, addNotificationResponseReceivedListener, scheduleDailyReminder } from "./utils/notifications";
-
+import {
+  registerForPushNotificationsAsync,
+  addNotificationReceivedListener,
+  addNotificationResponseReceivedListener,
+  scheduleDailyReminder,
+} from "./utils/notifications";
 
 const Stack = createStackNavigator();
 
 const App: React.FC = () => {
   useEffect(() => {
-   
     initAnalyticsWeb();
 
-  
     (async () => {
       const token = await registerForPushNotificationsAsync();
       if (token) console.log("Push token:", token);
-      
+
       const reminderId = await scheduleDailyReminder(9, 0);
       if (reminderId) console.log("Daily reminder scheduled, id:", reminderId);
     })();
@@ -62,8 +64,19 @@ const App: React.FC = () => {
           <Stack.Screen name="ShopPage" component={ShopPage} options={{ headerShown: false }} />
           <Stack.Screen name="CreateQuestionsPage" component={CreateQuestionsPage} options={{ headerShown: false }} />
           <Stack.Screen name="QuizScreen" component={QuizScreen} options={{ headerShown: false }} />
-          <Stack.Screen name="SnakeGame" component={SnakeGame} />
-          <Stack.Screen name="ProgressChart" component={ProgressChart} />
+          <Stack.Screen name="SnakeGame" component={SnakeGame} options={{ headerShown: false }} />
+
+          {/* ✅ New Progress Chart Screen */}
+          <Stack.Screen
+            name="ProgressChart"
+            component={ProgressChart}
+            options={{
+              title: "Progress Chart",
+              headerShown: true, // show a small header for context
+              headerStyle: { backgroundColor: "#A2D2FF" },
+              headerTitleStyle: { fontFamily: "FredokaOne-Regular", color: "#000" },
+            }}
+          />
         </Stack.Navigator>
       </NavigationContainer>
     </GestureHandlerRootView>
