@@ -116,14 +116,46 @@ export const childPinSchema = sanitizedZString().pipe(
 // Emergency Contact Schema
 // -----------------------------
 export const emergencyContactSchema = z.object({
-  name: sanitizedZString().pipe(z.string().min(2)),
-  relationship: sanitizedZString().pipe(z.string().min(2)),
-  phoneNumber: sanitizedZString().pipe(
-    z.string().regex(/^\+?[1-9]\d{1,14}$/, "Invalid phone number")
+  name: sanitizedZString().pipe(
+    z.string().min(2, "Name must be at least 2 characters long")
   ),
-  streetAddress: sanitizedZString().pipe(z.string().min(5)),
-  city: sanitizedZString().pipe(z.string().min(2)),
-  state: sanitizedZString().pipe(z.string().min(2)),
+  relationship: sanitizedZString().pipe(
+    z.string().min(2, "Relationship must be at least 2 characters long")
+  ),
+
+  // Phone number: auto-format xxx-xxx-xxxx
+  phoneNumber: sanitizedZString().pipe(
+    z
+      .string()
+      .regex(/^\d{10}$|^\d{3}-\d{3}-\d{4}$/, "Phone number must be 10 digits")
+      .transform((val) => {
+        // Strip non-digits
+        const digits = val.replace(/\D/g, "");
+        // If valid 10 digits, format as xxx-xxx-xxxx
+        if (digits.length === 10) {
+          return `${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(
+            6
+          )}`;
+        }
+        return val; // fallback (let validation handle wrong cases)
+      })
+  ),
+  streetAddress: sanitizedZString().pipe(
+    z.string().min(5, "Street address must be at least 5 characters long")
+  ),
+  city: sanitizedZString().pipe(
+    z.string().min(2, "City must be at least 2 characters long")
+  ),
+  state: sanitizedZString().pipe(
+    z.string().min(2, "State must be at least 2 characters long")
+  ),
+  zipcode: sanitizedZString().pipe(
+    z
+      .string()
+      .min(3, "Zip code must be at least 3 digits")
+      .max(10, "Zip code must be less than 10 digits")
+      .regex(/^[A-Za-z0-9\s-]+$/, "Invalid zip code format")
+  ),
 });
 
 // -----------------------------

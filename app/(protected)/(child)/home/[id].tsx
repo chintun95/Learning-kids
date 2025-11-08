@@ -1,15 +1,54 @@
-import React from "react";
+import React, { useEffect } from "react";
 import { View, Text, StyleSheet, StatusBar } from "react-native";
 import { useLocalSearchParams } from "expo-router";
-import childData from "@/test/data/child";
 import ProfileIcon from "@/components/ProfileIcon";
 import SwitchAccount from "@/components/SwitchAccount";
 import { responsive } from "@/utils/responsive";
-import { Child } from "@/types/types";
+import { useChildAuthStore } from "@/lib/store/childAuthStore";
+import { useSessionStore } from "@/lib/store/sessionStore";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { supabase } from "@/lib/supabase";
+import { Tables } from "@/types/database.types";
 
 export default function ChildHome() {
   const { id } = useLocalSearchParams();
-  const child: Child | undefined = childData.find((c) => c.id === id);
+  const childId = String(id);
+  const { children, getCurrentChild } = useChildAuthStore();
+  const queryClient = useQueryClient();
+  const { startChildSession } = useSessionStore();
+
+  const child = children.find((c) => c.id === childId) ?? getCurrentChild();
+
+  const { mutate: setActiveStatus } = useMutation({
+    mutationFn: async (childId: string) => {
+      const { error } = await supabase
+        .from("Child")
+        .update({ activitystatus: "active" })
+        .eq("id", childId);
+      if (error) throw new Error(error.message);
+    },
+    onSuccess: (_data, childId) => {
+      queryClient.invalidateQueries({ queryKey: ["child-by-id", childId] });
+      queryClient.invalidateQueries({
+        queryKey: ["children-for-parent-email"],
+      });
+      console.log(`✅ Child ${childId} status set to active.`);
+    },
+    onError: (error) => {
+      console.error("❌ Failed to update child status:", error);
+    },
+  });
+
+  useEffect(() => {
+    if (childId) {
+      //  Mark the child as active in Supabase
+      setActiveStatus(childId);
+
+      //  Start a new local session for the child with sessionType "auth"
+      startChildSession(childId, "auth");
+      console.log(`🟢 Started auth session for child ${childId}`);
+    }
+  }, [childId]);
 
   if (!child) {
     return (

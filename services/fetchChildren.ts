@@ -3,10 +3,19 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
 import { Tables } from "@/types/database.types";
 
+// --------------------
+// Type aliases
+// --------------------
 type ChildRow = Tables<"Child">;
 type EmergencyContactRow = Tables<"EmergencyContact">;
 
-// --- Local profile icon mapping ---
+// --- Custom joined type for Supabase query results ---
+interface ChildWithRelations extends ChildRow {
+  Parent?: { emailaddress: string } | null;
+  EmergencyContact?: Partial<EmergencyContactRow> | null;
+}
+
+// --- Local profile icon map ---
 const profileIconMap: Record<string, any> = {
   "avatar1.png": require("@/assets/profile-icons/avatar1.png"),
   "avatar2.png": require("@/assets/profile-icons/avatar2.png"),
@@ -14,6 +23,7 @@ const profileIconMap: Record<string, any> = {
   "avatar4.png": require("@/assets/profile-icons/avatar4.png"),
 };
 
+// --- Resolve local asset ---
 function resolveProfileIcon(path?: string | null): any {
   if (!path) return require("@/assets/profile-icons/avatar1.png");
   const filename = path.split("/").pop()?.trim();
@@ -22,6 +32,9 @@ function resolveProfileIcon(path?: string | null): any {
   return require("@/assets/profile-icons/avatar1.png");
 }
 
+// --------------------
+// Shared model for components
+// --------------------
 export type ChildCardModel = {
   id: string;
   firstName: string;
@@ -37,9 +50,13 @@ export type ChildCardModel = {
     streetAddress: string;
     city: string;
     state: string;
+    zipcode: string;
   };
 };
 
+// --------------------
+// Fetch children by parent email
+// --------------------
 export async function fetchChildrenByParentEmail(
   emailAddress: string
 ): Promise<ChildCardModel[]> {
@@ -57,9 +74,12 @@ export async function fetchChildrenByParentEmail(
       profilepicture,
       dateofbirth,
       parent_id,
+      user_id,
       emergencycontact_id,
       Parent:parent_id ( emailaddress ),
-      EmergencyContact:emergencycontact_id ( name, relationship, phonenumber, streetaddress, city, state )
+      EmergencyContact:emergencycontact_id (
+        name, relationship, phonenumber, streetaddress, city, state, zipcode
+      )
     `
     )
     .eq("Parent.emailaddress", emailAddress)
@@ -69,9 +89,8 @@ export async function fetchChildrenByParentEmail(
   if (error) throw new Error(error.message);
 
   return (
-    data?.map((row: any) => {
-      const c: ChildRow = row;
-      const ec: EmergencyContactRow | null = row?.EmergencyContact ?? null;
+    (data as ChildWithRelations[])?.map((c) => {
+      const ec = c.EmergencyContact ?? {};
 
       return {
         id: c.id,
@@ -82,25 +101,25 @@ export async function fetchChildrenByParentEmail(
         profilePicture: resolveProfileIcon(c.profilepicture),
         dateOfBirth: c.dateofbirth,
         emergencyContact: {
-          name: ec?.name ?? "",
-          relationship: ec?.relationship ?? "",
-          phoneNumber: ec?.phonenumber ?? "",
-          streetAddress: ec?.streetaddress ?? "",
-          city: ec?.city ?? "",
-          state: ec?.state ?? "",
+          name: ec.name ?? "",
+          relationship: ec.relationship ?? "",
+          phoneNumber: ec.phonenumber ?? "",
+          streetAddress: ec.streetaddress ?? "",
+          city: ec.city ?? "",
+          state: ec.state ?? "",
+          zipcode: ec.zipcode ?? "",
         },
       };
     }) ?? []
   );
 }
 
-/**
- * Real-time React Query hook
- */
+// --------------------
+// React Query hook (real-time sync)
+// --------------------
 export function useChildrenByParentEmail(emailAddress?: string) {
   const queryClient = useQueryClient();
 
-  // Primary query
   const query = useQuery({
     queryKey: ["children-for-parent-email", emailAddress],
     queryFn: () => fetchChildrenByParentEmail(emailAddress as string),
@@ -108,22 +127,15 @@ export function useChildrenByParentEmail(emailAddress?: string) {
     staleTime: 1000 * 30,
   });
 
-  // Real-time listener setup
   useEffect(() => {
     if (!emailAddress) return;
 
     const channel = supabase
-      .channel("children-realtime-channel")
+      .channel("children-realtime")
       .on(
         "postgres_changes",
-        {
-          event: "*", // listen for INSERT, UPDATE, DELETE
-          schema: "public",
-          table: "Child",
-        },
-        (payload) => {
-          console.log("🔁 Child table changed:", payload.eventType);
-          // Invalidate and refetch the children list
+        { event: "*", schema: "public", table: "Child" },
+        () => {
           queryClient.invalidateQueries({
             queryKey: ["children-for-parent-email", emailAddress],
           });
@@ -135,6 +147,101 @@ export function useChildrenByParentEmail(emailAddress?: string) {
       supabase.removeChannel(channel);
     };
   }, [emailAddress, queryClient]);
+
+  return query;
+}
+
+// --------------------
+// Fetch a single child by ID (type-safe, real-time compatible)
+// --------------------
+export async function fetchChildById(
+  childId: string
+): Promise<ChildCardModel | null> {
+  if (!childId) return null;
+
+  const { data, error } = await supabase
+    .from("Child")
+    .select(
+      `
+      id,
+      firstname,
+      lastname,
+      activitystatus,
+      profilepin,
+      profilepicture,
+      dateofbirth,
+      parent_id,
+      user_id,
+      emergencycontact_id,
+      EmergencyContact:emergencycontact_id (
+        name, relationship, phonenumber, streetaddress, city, state, zipcode
+      )
+    `
+    )
+    .eq("id", childId)
+    .single();
+
+  if (error) throw new Error(error.message);
+
+  const c = data as ChildWithRelations;
+  const ec = c.EmergencyContact ?? {};
+
+  return {
+    id: c.id,
+    firstName: c.firstname,
+    lastName: c.lastname,
+    activityStatus: c.activitystatus as "active" | "pending" | "inactive",
+    profilePin: c.profilepin,
+    profilePicture: resolveProfileIcon(c.profilepicture),
+    dateOfBirth: c.dateofbirth,
+    emergencyContact: {
+      name: ec.name ?? "",
+      relationship: ec.relationship ?? "",
+      phoneNumber: ec.phonenumber ?? "",
+      streetAddress: ec.streetaddress ?? "",
+      city: ec.city ?? "",
+      state: ec.state ?? "",
+      zipcode: ec.zipcode ?? "",
+    },
+  };
+}
+
+// --------------------
+// React Query hook for one child (real-time)
+// --------------------
+export function useChildById(childId?: string) {
+  const queryClient = useQueryClient();
+
+  const query = useQuery({
+    queryKey: ["child-by-id", childId],
+    queryFn: () => fetchChildById(childId as string),
+    enabled: !!childId,
+    staleTime: 1000 * 60,
+  });
+
+  useEffect(() => {
+    if (!childId) return;
+
+    const channel = supabase
+      .channel(`child-realtime-${childId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "Child",
+          filter: `id=eq.${childId}`,
+        },
+        () => {
+          queryClient.invalidateQueries({ queryKey: ["child-by-id", childId] });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [childId, queryClient]);
 
   return query;
 }

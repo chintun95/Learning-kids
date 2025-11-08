@@ -1,194 +1,303 @@
-import React, { useState } from "react";
-import { View, Text, StyleSheet, TouchableOpacity } from "react-native";
+import React, { useMemo, useState } from "react";
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  LayoutAnimation,
+  Platform,
+  UIManager,
+} from "react-native";
+import DateTimePickerModal from "react-native-modal-datetime-picker";
 import { Ionicons } from "@expo/vector-icons";
 import InputBox from "@/components/InputBox";
-import EmergencyContactModal from "@/components/EmergencyContactModal";
-import DateTimePickerModal from "react-native-modal-datetime-picker";
-import { sanitizeInput } from "@/utils/formatter";
+import Button from "@/components/Button";
 import { responsive } from "@/utils/responsive";
-import { EmergencyContact } from "@/types/types";
+import {
+  americanDateSchema,
+  childPinSchema,
+  sanitizeInput as sanitizeString,
+} from "@/utils/formatter";
+import EmergencyContactModal from "@/components/EmergencyContactModal";
 
-interface AddChildCardProps {
+type EmergencyContact = {
+  name: string;
+  relationship: string;
+  phoneNumber: string;
+  streetAddress: string;
+  city: string;
+  state: string;
+  zipcode: string;
+};
+
+export type ChildDraft = {
+  id: string; // local uuid for list management (not the DB id)
+  firstName: string;
+  lastName: string;
+  dobISO: string | null; // store ISO for DB
+  dobDisplay: string; // store formatted "MM/DD/YYYY" for UI
+  pin: string;
+  emergencyContact: EmergencyContact | null;
+  collapsed: boolean;
+};
+
+type Props = {
   index: number;
-  onRemove: () => void;
-  canRemove: boolean;
-  onUpdate: (data: {
-    firstName: string;
-    lastName: string;
-    dateOfBirth: string;
-    emergencyContact: EmergencyContact;
-  }) => void;
+  canDelete: boolean; // render trash only if true
+  data: ChildDraft;
+  onChange: (updated: ChildDraft) => void;
+  onDelete: (id: string) => void;
+  onCollapseToggle?: (id: string, collapsed: boolean) => void;
+};
+
+if (Platform.OS === "android") {
+  UIManager.setLayoutAnimationEnabledExperimental?.(true);
 }
 
-const AddChildCard: React.FC<AddChildCardProps> = ({
+export default function AddChildCard({
   index,
-  onRemove,
-  canRemove,
-  onUpdate,
-}) => {
-  const [firstName, setFirstName] = useState("");
-  const [lastName, setLastName] = useState("");
-  const [dateOfBirth, setDateOfBirth] = useState("");
-  const [showDatePicker, setShowDatePicker] = useState(false);
-  const [showEmergencyModal, setShowEmergencyModal] = useState(false);
+  canDelete,
+  data,
+  onChange,
+  onDelete,
+  onCollapseToggle,
+}: Props) {
+  const [showPicker, setShowPicker] = useState(false);
+  const [pinError, setPinError] = useState<string>("");
+  const [ageError, setAgeError] = useState<string>("");
+  const [ecVisible, setEcVisible] = useState(false);
 
-  const [emergencyContact, setEmergencyContact] = useState<EmergencyContact>({
-    name: "",
-    relationship: "",
-    phoneNumber: "",
-    streetAddress: "",
-    city: "",
-    state: "",
-  });
-
-  const handleConfirmDate = (date: Date) => {
-    const formatted = date.toISOString().split("T")[0]; // YYYY-MM-DD
-    setDateOfBirth(formatted);
-    setShowDatePicker(false);
-    handleUpdate({ dateOfBirth: formatted });
+  const handleCollapse = () => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    const next = { ...data, collapsed: !data.collapsed };
+    onChange(next);
+    onCollapseToggle?.(data.id, next.collapsed);
   };
 
-  const handleUpdate = (
-    field: Partial<{
-      firstName: string;
-      lastName: string;
-      dateOfBirth: string;
-      emergencyContact: EmergencyContact;
-    }>
-  ) => {
-    const updated = {
-      firstName,
-      lastName,
-      dateOfBirth,
-      emergencyContact,
-      ...field,
-    };
-    onUpdate(updated);
+  const age = useMemo(() => {
+    if (!data.dobISO) return null;
+    const birth = new Date(data.dobISO);
+    if (isNaN(+birth)) return null;
+    const today = new Date();
+    let years = today.getFullYear() - birth.getFullYear();
+    const m = today.getMonth() - birth.getMonth();
+    if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) years--;
+    return years;
+  }, [data.dobISO]);
+
+  const validateAgeInRange = (dateISO: string) => {
+    const y = (() => {
+      const d = new Date(dateISO);
+      const t = new Date();
+      let years = t.getFullYear() - d.getFullYear();
+      const m = t.getMonth() - d.getMonth();
+      if (m < 0 || (m === 0 && t.getDate() < d.getDate())) years--;
+      return years;
+    })();
+    if (y < 6 || y > 18) {
+      setAgeError("Age must be between 6 and 18. Please try again.");
+      return false;
+    }
+    setAgeError("");
+    return true;
   };
 
-  const handleEmergencyUpdate = (contact: EmergencyContact) => {
-    setEmergencyContact(contact);
-    handleUpdate({ emergencyContact: contact });
+  const handleConfirmDate = (picked: Date) => {
+    setShowPicker(false);
+    const iso = picked.toISOString();
+    const display = americanDateSchema.parse(picked.toISOString());
+    if (!validateAgeInRange(iso)) return;
+    onChange({ ...data, dobISO: iso, dobDisplay: display });
+  };
+
+  const openPicker = () => {
+    setAgeError("");
+    setShowPicker(true);
+  };
+
+  const handleFirstName = (txt: string) => {
+    onChange({ ...data, firstName: sanitizeString(txt) });
+  };
+
+  const handleLastName = (txt: string) => {
+    onChange({ ...data, lastName: sanitizeString(txt) });
+  };
+
+  const handlePin = (txt: string) => {
+    const clean = sanitizeString(txt);
+    onChange({ ...data, pin: clean });
+    try {
+      childPinSchema.parse(clean);
+      setPinError("");
+    } catch (e: any) {
+      setPinError(e.errors?.[0]?.message ?? "Invalid PIN");
+    }
+  };
+
+  const setEmergency = (ec: EmergencyContact) => {
+    onChange({ ...data, emergencyContact: ec });
   };
 
   return (
     <View style={styles.card}>
-      {/* Remove icon */}
-      {canRemove && (
-        <TouchableOpacity style={styles.removeIcon} onPress={onRemove}>
-          <Ionicons
-            name="trash-outline"
-            size={responsive.screenWidth * 0.06}
-            color="#000"
-          />
+      {/* Trash (top-right) */}
+      {canDelete && (
+        <TouchableOpacity
+          onPress={() => onDelete(data.id)}
+          accessibilityLabel="Remove this child"
+          style={styles.trash}
+        >
+          <Ionicons name="trash-outline" size={22} color="#EF4444" />
         </TouchableOpacity>
       )}
 
-      <Text style={styles.title}>Child {index + 1}</Text>
+      {/* Content */}
+      {data.collapsed ? (
+        <TouchableOpacity
+          onPress={handleCollapse}
+          style={styles.collapsedRow}
+          accessibilityLabel="Open to edit"
+        >
+          <Text style={styles.collapsedText}>Open to edit</Text>
+          <Text style={styles.chev}>▼</Text>
+        </TouchableOpacity>
+      ) : (
+        <>
+          <View style={styles.row}>
+            <View style={[styles.half, { marginRight: 8 }]}>
+              <InputBox
+                label="First name"
+                value={data.firstName}
+                onChangeText={handleFirstName}
+                placeholder="e.g. Alex"
+              />
+            </View>
+            <View style={[styles.half, { marginLeft: 8 }]}>
+              <InputBox
+                label="Last name"
+                value={data.lastName}
+                onChangeText={handleLastName}
+                placeholder="e.g. Kim"
+              />
+            </View>
+          </View>
 
-      {/* Name row */}
-      <View style={styles.nameRow}>
-        <View style={styles.halfBox}>
           <InputBox
-            label="First Name"
-            value={firstName}
-            onChangeText={(text) => {
-              const sanitized = sanitizeInput(text);
-              setFirstName(sanitized);
-              handleUpdate({ firstName: sanitized });
-            }}
-            placeholder="Enter First Name"
+            label="Date of birth"
+            value={data.dobDisplay}
+            editable={false}
+            placeholder="MM/DD/YYYY"
+            iconRight="calendar-outline"
+            onIconRightPress={openPicker}
+            onFocus={openPicker}
           />
-        </View>
-        <View style={styles.halfBox}>
+          {!!ageError && <Text style={styles.error}>{ageError}</Text>}
+
           <InputBox
-            label="Last Name"
-            value={lastName}
-            onChangeText={(text) => {
-              const sanitized = sanitizeInput(text);
-              setLastName(sanitized);
-              handleUpdate({ lastName: sanitized });
-            }}
-            placeholder="Enter Last Name"
+            label="Child profile PIN"
+            value={data.pin}
+            onChangeText={handlePin}
+            placeholder="4 digits"
+            keyboardType="number-pad"
+            maxLength={4}
+            error={pinError}
           />
-        </View>
-      </View>
 
-      {/* Date of Birth */}
-      <TouchableOpacity onPress={() => setShowDatePicker(true)}>
-        <InputBox
-          label="Age"
-          value={dateOfBirth ? dateOfBirth : ""}
-          placeholder="Select Date of Birth"
-          editable={false}
-          iconRight="calendar-outline"
-        />
-      </TouchableOpacity>
+          <View style={styles.bottomRow}>
+            <TouchableOpacity onPress={() => setEcVisible(true)}>
+              <Text style={styles.emergencyText}>Emergency Contact</Text>
+            </TouchableOpacity>
 
-      {/* Emergency Contact */}
-      <TouchableOpacity
-        style={styles.emergencyContactBtn}
-        onPress={() => setShowEmergencyModal(true)}
-      >
-        <Text style={styles.emergencyContactText}>+ Emergency Contact</Text>
-      </TouchableOpacity>
+            <TouchableOpacity onPress={handleCollapse} style={styles.chevBtn}>
+              <Text style={styles.chev}>{data.collapsed ? "▼" : "▲"}</Text>
+            </TouchableOpacity>
+          </View>
+        </>
+      )}
 
       {/* Date Picker */}
       <DateTimePickerModal
-        isVisible={showDatePicker}
+        isVisible={showPicker}
         mode="date"
         onConfirm={handleConfirmDate}
-        onCancel={() => setShowDatePicker(false)}
+        onCancel={() => setShowPicker(false)}
       />
 
       {/* Emergency Contact Modal */}
       <EmergencyContactModal
-        visible={showEmergencyModal}
-        onClose={() => setShowEmergencyModal(false)}
-        contact={emergencyContact}
-        onUpdate={handleEmergencyUpdate}
+        visible={ecVisible}
+        onClose={() => setEcVisible(false)}
+        contact={
+          data.emergencyContact ?? {
+            name: "",
+            relationship: "",
+            phoneNumber: "",
+            streetAddress: "",
+            city: "",
+            state: "",
+            zipcode: "",
+          }
+        }
+        onUpdate={(c) => {
+          setEmergency(c);
+          setEcVisible(false);
+        }}
+        // No childId yet (new child). We still use modal for validation & capture.
+        childId={""}
       />
     </View>
   );
-};
-
-export default AddChildCard;
+}
 
 const styles = StyleSheet.create({
   card: {
     backgroundColor: "#fff",
-    borderWidth: 2,
-    borderColor: "#000",
-    borderRadius: 15,
+    borderRadius: 14,
     padding: responsive.screenWidth * 0.04,
-    marginBottom: responsive.screenHeight * 0.02,
-    position: "relative",
+    marginVertical: responsive.screenHeight * 0.01,
+    borderWidth: 2,
+    borderColor: "#111",
   },
-  title: {
-    fontFamily: "Fredoka-Bold",
-    fontSize: responsive.signUpFontSize,
-    color: "#000",
-    marginBottom: responsive.screenHeight * 0.01,
-  },
-  nameRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    gap: responsive.screenWidth * 0.03,
-  },
-  halfBox: { flex: 1 },
-  removeIcon: {
+  trash: {
     position: "absolute",
-    right: responsive.screenWidth * 0.04,
-    top: responsive.screenHeight * 0.01,
+    right: 10,
+    top: 10,
     zIndex: 10,
   },
-  emergencyContactBtn: {
-    marginTop: responsive.screenHeight * 0.015,
+  row: { flexDirection: "row" },
+  half: { flex: 1 },
+  bottomRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginTop: responsive.screenHeight * 0.01,
   },
-  emergencyContactText: {
-    fontFamily: "Fredoka-SemiBold",
-    color: "#6C47FF",
+  emergencyText: {
+    color: "#4F46E5",
     textDecorationLine: "underline",
-    textAlign: "center",
+    fontFamily: "Fredoka-SemiBold",
+    fontSize: responsive.buttonFontSize,
+  },
+  chevBtn: { paddingHorizontal: 12, paddingVertical: 6 },
+  chev: {
+    fontSize: responsive.isNarrowScreen ? 16 : 20,
+    color: "#4B5563",
+    fontFamily: "Fredoka-Medium",
+  },
+  collapsedRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: responsive.screenHeight * 0.01,
+  },
+  collapsedText: {
+    fontFamily: "Fredoka-SemiBold",
+    fontSize: responsive.buttonFontSize,
+    color: "#111827",
+  },
+  error: {
+    color: "red",
+    fontSize: responsive.buttonFontSize * 0.75,
+    marginTop: 4,
   },
 });

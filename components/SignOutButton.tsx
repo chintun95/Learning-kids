@@ -5,29 +5,49 @@ import { useRouter } from "expo-router";
 import Button from "../components/Button";
 import { useSessionStore } from "@/lib/store/sessionStore";
 import { useAuthStore } from "@/lib/store/authStore";
+import { useChildAuthStore } from "@/lib/store/childAuthStore";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { supabase } from "@/lib/supabase";
 import { responsive } from "@/utils/responsive";
 
 /**
- * SignOutButton — improved:
- * - correct selector usage
- * - guards and loading state
- * - clearer logging
- * - uses router to navigate within app
+ * SignOutButton — integrated with the new sessionStore
+ * - Ends the current session for a child before sign-out
+ * - Marks the child inactive in Supabase
+ * - Preserves loading state and clean reset
  */
 export const SignOutButton: React.FC = () => {
   const { signOut } = useClerk();
   const router = useRouter();
+  const queryClient = useQueryClient();
   const [loading, setLoading] = useState(false);
 
-  // Session setters (selectors)
-  const setSessionID = useSessionStore((state) => state.setSessionID);
-  const setEndTime = useSessionStore((state) => state.setEndTime);
-
-  // Auth setter (selector)
+  // Zustand selectors
+  const { endSession, resetSession } = useSessionStore();
   const setRole = useAuthStore((state) => state.setRole);
-
-  // Optional: reactive read (if you need to render based on role)
   const role = useAuthStore((state) => state.role);
+  const { getCurrentChild } = useChildAuthStore();
+
+  // Mutation: mark child inactive
+  const { mutateAsync: setInactiveStatus } = useMutation({
+    mutationFn: async (childId: string) => {
+      const { error } = await supabase
+        .from("Child")
+        .update({ activitystatus: "inactive" })
+        .eq("id", childId);
+      if (error) throw new Error(error.message);
+    },
+    onSuccess: (_data, childId) => {
+      queryClient.invalidateQueries({ queryKey: ["child-by-id", childId] });
+      queryClient.invalidateQueries({
+        queryKey: ["children-for-parent-email"],
+      });
+      console.log(`✅ Child ${childId} set to inactive before sign-out.`);
+    },
+    onError: (error) => {
+      console.error("❌ Failed to update child status before sign-out:", error);
+    },
+  });
 
   const logState = (label: string) => {
     const sessionState = useSessionStore.getState();
@@ -36,7 +56,7 @@ export const SignOutButton: React.FC = () => {
     console.log(
       `\n🟢 ${label} Zustand Snapshot:\n` +
         `  Role: ${authState.role}\n` +
-        `  Session ID: ${sessionState.sessionID}\n` +
+        `  Session Type: ${sessionState.sessionType}\n` +
         `  Current Date: ${sessionState.currentDate}\n` +
         `  Start Time: ${sessionState.sessionStartTime}\n` +
         `  End Time: ${sessionState.sessionEndTime}\n` +
@@ -51,22 +71,31 @@ export const SignOutButton: React.FC = () => {
     try {
       logState("Before Sign Out");
 
-      await signOut(); // Clerk sign-out
+      if (role === "child") {
+        const child = getCurrentChild();
+        if (child) {
+          // 1️⃣ End the local session (records endTime + saves to history)
+          endSession();
+          console.log(`🕒 Ended local session for child ${child.id}`);
 
-      // Reset application-specific state
-      if (role === "parent") {
-        setRole("default");
-      } else if (role === "child") {
-        setRole("default");
-        setEndTime();
-        setSessionID(null);
+          // 2️⃣ Mark as inactive in Supabase
+          console.log(
+            `⚙️ Setting activityStatus to inactive for ${child.firstName} ${child.lastName}...`
+          );
+          await setInactiveStatus(child.id);
+        }
       }
+
+      // 3️⃣ Sign out from Clerk
+      await signOut();
+
+      // 4️⃣ Reset local state
+      resetSession();
+      setRole("default");
 
       logState("After Sign Out");
 
-      // Use router to navigate within the app instead of external Linking if desired
-      // router.replace("/"); // uncomment if you want internal navigation
-      // If you intentionally want to open a deep link externally, keep this:
+      // 5️⃣ Redirect to root
       Linking.openURL(Linking.createURL("/"));
     } catch (err) {
       console.error("❌ Sign out error:", err);

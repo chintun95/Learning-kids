@@ -8,7 +8,7 @@ export default function ParentLayout() {
       <Stack.Screen name="add-child" options={{ title: "Add Child Information" }} />
       <Stack.Screen
         name="manage-child/[id]"
-        options={{ title: "Manage Child Data" }}
+        options={{ title: "Information" }}
       />
     </Stack>
   );

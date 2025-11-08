@@ -7,6 +7,7 @@ import {
   Modal,
   ScrollView,
   StatusBar,
+  ActivityIndicator,
 } from "react-native";
 import { useLocalSearchParams } from "expo-router";
 import {
@@ -19,27 +20,42 @@ import {
 } from "date-fns";
 import { Ionicons } from "@expo/vector-icons";
 import DateTimePickerModal from "react-native-modal-datetime-picker";
-import childData from "@/test/data/child";
-import sessionData from "@/test/data/session";
 import ProfileIcon from "@/components/ProfileIcon";
 import EmergencyContactModal from "@/components/EmergencyContactModal";
 import { responsive } from "@/utils/responsive";
-import { Child, Session } from "@/types/types";
 import Button from "@/components/Button";
 import InputBox from "@/components/InputBox";
+import sessionData from "@/test/data/session";
+import { useChildById } from "@/services/fetchChildren";
+import { useUpdateChildByParent } from "@/services/updateChild";
 
 export default function ManageChildIndex() {
-  const { id } = useLocalSearchParams();
-  const child: Child | undefined = childData.find((c) => c.id === id);
+  const { id } = useLocalSearchParams<{ id: string }>();
 
   const [showPinModal, setShowPinModal] = useState(false);
   const [showEditPinModal, setShowEditPinModal] = useState(false);
-  const [pinValue, setPinValue] = useState(child?.profilePin ?? "");
+  const [pinValue, setPinValue] = useState("");
   const [showEmergencyModal, setShowEmergencyModal] = useState(false);
+  const [showEditNameModal, setShowEditNameModal] = useState(false);
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
   const [showStartPicker, setShowStartPicker] = useState(false);
   const [showEndPicker, setShowEndPicker] = useState(false);
   const [startDate, setStartDate] = useState<Date | null>(null);
   const [endDate, setEndDate] = useState<Date | null>(null);
+
+  // Fetch child data (real-time)
+  const { data: child, isLoading } = useChildById(id);
+  const { mutate: updateChildByParent } = useUpdateChildByParent();
+
+  if (isLoading) {
+    return (
+      <View style={styles.centered}>
+        <ActivityIndicator size="large" color="#4F46E5" />
+        <Text style={styles.loadingText}>Loading child data...</Text>
+      </View>
+    );
+  }
 
   if (!child) {
     return (
@@ -49,29 +65,27 @@ export default function ManageChildIndex() {
     );
   }
 
+  // Prepare DOB
   const dob = parseISO(child.dateOfBirth);
   const age = differenceInYears(new Date(), dob);
   const formattedDob = format(dob, "MM/dd/yyyy");
 
-  // Filter sessions for this child
-  let childSessions: Session[] = sessionData.filter(
-    (s) => s.childId === child.id
+  // --- Filter sessions (mock data for now) ---
+  let childSessions = sessionData.filter((s) => s.childId === child.id);
+  if (startDate && endDate) {
+    childSessions = childSessions.filter((s) =>
+      isWithinInterval(parseISO(s.date), { start: startDate, end: endDate })
+    );
+  }
+  childSessions.sort((a, b) =>
+    compareDesc(
+      parseISO(`${a.date}T${a.startTime}`),
+      parseISO(`${b.date}T${b.startTime}`)
+    )
   );
 
-  if (startDate && endDate) {
-    childSessions = childSessions.filter((s) => {
-      const sessionDate = parseISO(s.date);
-      return isWithinInterval(sessionDate, { start: startDate, end: endDate });
-    });
-  }
-
-  childSessions.sort((a, b) => {
-    const dateA = parseISO(`${a.date}T${a.startTime}`);
-    const dateB = parseISO(`${b.date}T${b.startTime}`);
-    return compareDesc(dateA, dateB);
-  });
-
-  const groupedSessions: Record<string, Session[]> = {};
+  // Group sessions
+  const groupedSessions: Record<string, typeof sessionData> = {};
   childSessions.forEach((session) => {
     const sessionDate = parseISO(session.date);
     const groupKey = isToday(sessionDate)
@@ -80,7 +94,6 @@ export default function ManageChildIndex() {
     if (!groupedSessions[groupKey]) groupedSessions[groupKey] = [];
     groupedSessions[groupKey].push(session);
   });
-
   if (!groupedSessions["Today"]) groupedSessions["Today"] = [];
 
   const groupKeys = Object.keys(groupedSessions).sort((a, b) => {
@@ -88,12 +101,33 @@ export default function ManageChildIndex() {
     if (b === "Today") return 1;
     if (groupedSessions[a].length === 0) return 1;
     if (groupedSessions[b].length === 0) return -1;
-    const dateA = parseISO(groupedSessions[a][0].date);
-    const dateB = parseISO(groupedSessions[b][0].date);
-    return compareDesc(dateA, dateB);
+    return compareDesc(
+      parseISO(groupedSessions[a][0].date),
+      parseISO(groupedSessions[b][0].date)
+    );
   });
 
   const hasAnySession = childSessions.length > 0;
+
+  // ------------------------------
+  // Handle Edit Child Name
+  // ------------------------------
+  const handleEditNamePress = () => {
+    setFirstName(child.firstName);
+    setLastName(child.lastName);
+    setShowEditNameModal(true);
+  };
+
+  const handleSaveName = () => {
+    updateChildByParent({
+      childId: child.id,
+      updates: {
+        firstname: firstName.trim(),
+        lastname: lastName.trim(),
+      },
+    });
+    setShowEditNameModal(false);
+  };
 
   return (
     <View style={{ flex: 1 }}>
@@ -102,7 +136,6 @@ export default function ManageChildIndex() {
         backgroundColor="transparent"
         barStyle="dark-content"
       />
-
       <ScrollView style={styles.container}>
         {/* Header Section */}
         <View style={styles.headerSection}>
@@ -111,9 +144,21 @@ export default function ManageChildIndex() {
             size={responsive.screenWidth * 0.25}
           />
           <View style={styles.headerRight}>
-            <Text style={styles.nameText}>
-              {child.firstName} {child.lastName}
-            </Text>
+            <View style={styles.nameRow}>
+              <Text style={styles.nameText}>
+                {child.firstName} {child.lastName}
+              </Text>
+              <TouchableOpacity
+                onPress={handleEditNamePress}
+                style={styles.editIconButton}
+              >
+                <Ionicons
+                  name="pencil"
+                  size={responsive.screenWidth * 0.05}
+                  color="#4F46E5"
+                />
+              </TouchableOpacity>
+            </View>
             <Text style={styles.dobText}>
               Date of Birth: {formattedDob} ({age} yrs)
             </Text>
@@ -134,7 +179,7 @@ export default function ManageChildIndex() {
 
         <View style={styles.separator} />
 
-        {/* Activity Tracker Header */}
+        {/* Activity Section */}
         <View style={styles.activityHeader}>
           <Text style={styles.activityTitle}>Activity Tracker</Text>
           <TouchableOpacity
@@ -151,7 +196,6 @@ export default function ManageChildIndex() {
           </TouchableOpacity>
         </View>
 
-        {/* Grouped Activities */}
         <View style={styles.activityList}>
           {!hasAnySession ? (
             <Text style={styles.noActivityText}>
@@ -179,7 +223,6 @@ export default function ManageChildIndex() {
                       parseISO(session.date),
                       "MM/dd/yyyy"
                     );
-
                     return (
                       <View key={session.id} style={styles.sessionItem}>
                         <View style={styles.sessionHeader}>
@@ -205,13 +248,48 @@ export default function ManageChildIndex() {
           )}
         </View>
 
-        {/* Profile Pin Modal */}
+        {/* Edit Name Modal */}
         <Modal
-          visible={showPinModal}
+          visible={showEditNameModal}
           transparent
           animationType="slide"
-          onRequestClose={() => setShowPinModal(false)}
+          onRequestClose={() => setShowEditNameModal(false)}
         >
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContent}>
+              <TouchableOpacity
+                style={styles.modalClose}
+                onPress={() => setShowEditNameModal(false)}
+              >
+                <Ionicons
+                  name="close"
+                  size={responsive.screenWidth * 0.06}
+                  color="#111827"
+                />
+              </TouchableOpacity>
+              <Text style={styles.modalTitle}>Edit Child Name</Text>
+              <InputBox
+                label="First Name"
+                value={firstName}
+                onChangeText={setFirstName}
+              />
+              <InputBox
+                label="Last Name"
+                value={lastName}
+                onChangeText={setLastName}
+              />
+              <Button
+                title="Save"
+                onPress={handleSaveName}
+                backgroundColor="#000"
+                marginTop={responsive.screenHeight * 0.02}
+              />
+            </View>
+          </View>
+        </Modal>
+
+        {/* Profile Pin Modal */}
+        <Modal visible={showPinModal} transparent animationType="slide">
           <View style={styles.modalOverlay}>
             <View style={styles.modalContent}>
               <TouchableOpacity
@@ -226,55 +304,11 @@ export default function ManageChildIndex() {
               </TouchableOpacity>
               <Text style={styles.modalTitle}>Profile Pin</Text>
               <Text style={styles.modalText}>
-                Current Profile Pin: {child.profilePin ?? "Profile Pin Not set"}
+                Current Profile Pin: {child.profilePin ?? "Not Set"}
               </Text>
-
               <Button
                 title={child.profilePin ? "Change Pin" : "Add Pin"}
                 onPress={() => setShowEditPinModal(true)}
-                backgroundColor="#000"
-                marginTop={responsive.screenHeight * 0.02}
-              />
-            </View>
-          </View>
-        </Modal>
-
-        {/* Change/Add Pin Modal */}
-        <Modal
-          visible={showEditPinModal}
-          transparent
-          animationType="slide"
-          onRequestClose={() => setShowEditPinModal(false)}
-        >
-          <View style={styles.modalOverlay}>
-            <View style={styles.modalContent}>
-              <TouchableOpacity
-                style={styles.modalClose}
-                onPress={() => setShowEditPinModal(false)}
-              >
-                <Ionicons
-                  name="close"
-                  size={responsive.screenWidth * 0.06}
-                  color="#111827"
-                />
-              </TouchableOpacity>
-              <Text style={styles.modalTitle}>
-                {child.profilePin ? "Change Profile Pin" : "Add Profile Pin"}
-              </Text>
-              <InputBox
-                placeholder="Enter PIN"
-                value={pinValue}
-                onChangeText={setPinValue}
-                keyboardType="numeric"
-              />
-              <Button
-                title="Done"
-                onPress={() => {
-                  // Update the child's pin in local state or call API
-                  console.log("New PIN:", pinValue);
-                  setShowEditPinModal(false);
-                  setShowPinModal(false);
-                }}
                 backgroundColor="#000"
                 marginTop={responsive.screenHeight * 0.02}
               />
@@ -287,16 +321,14 @@ export default function ManageChildIndex() {
           visible={showEmergencyModal}
           onClose={() => setShowEmergencyModal(false)}
           contact={child.emergencyContact}
-          onUpdate={(updated) => (child.emergencyContact = updated)}
+          childId={child.id}
+          onUpdate={(updated) => console.log("Updated contact:", updated)}
         />
 
         {/* Date Pickers */}
         <DateTimePickerModal
           isVisible={showStartPicker}
           mode="date"
-          textColor="#111827"
-          confirmTextIOS="Confirm"
-          cancelTextIOS="Cancel"
           onConfirm={(date) => {
             setStartDate(date);
             setShowStartPicker(false);
@@ -307,9 +339,6 @@ export default function ManageChildIndex() {
         <DateTimePickerModal
           isVisible={showEndPicker}
           mode="date"
-          textColor="#111827"
-          confirmTextIOS="Confirm"
-          cancelTextIOS="Cancel"
           onConfirm={(date) => {
             setEndDate(date);
             setShowEndPicker(false);
@@ -324,6 +353,11 @@ export default function ManageChildIndex() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#F9FAFB" },
   centered: { flex: 1, justifyContent: "center", alignItems: "center" },
+  loadingText: {
+    fontFamily: "Fredoka-Regular",
+    color: "#4F46E5",
+    marginTop: 8,
+  },
   notFoundText: {
     fontFamily: "Fredoka-Regular",
     fontSize: responsive.buttonFontSize,
@@ -341,6 +375,14 @@ const styles = StyleSheet.create({
   headerRight: {
     alignItems: "center",
     marginTop: responsive.screenHeight * 0.015,
+  },
+  nameRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  editIconButton: {
+    marginLeft: responsive.screenWidth * 0.001,
   },
   nameText: {
     fontSize: responsive.buttonFontSize * 1.1,

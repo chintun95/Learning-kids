@@ -13,12 +13,16 @@ import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import StatusIndicator from "./StatusIndicator";
 import { responsive } from "@/utils/responsive";
-import { Child, Session } from "@/types/types";
-import sessionData from "@/test/data/session";
 import { parseISO, isToday, compareDesc } from "date-fns";
+import sessionData from "@/test/data/session";
+import { ChildCardModel } from "@/services/fetchChildren";
+import { Tables } from "@/types/database.types";
+import { deleteChildAndAssociations } from "@/services/deleteChild";
+
+type SessionRow = Tables<"answer_log">; 
 
 type ChildCardProps = {
-  child: Child;
+  child: ChildCardModel; 
 };
 
 if (Platform.OS === "android") {
@@ -35,7 +39,7 @@ export default function ChildCard({ child }: ChildCardProps) {
     setExpanded(!expanded);
   };
 
-  const getStatusColor = (status: Child["activityStatus"]) => {
+  const getStatusColor = (status: ChildCardModel["activityStatus"]) => {
     switch (status) {
       case "active":
         return "green";
@@ -51,13 +55,18 @@ export default function ChildCard({ child }: ChildCardProps) {
     router.push(`/manage-child/${child.id}`);
   };
 
-  const handleDeleteChild = () => {
-    console.log(`Child removed: ${child.firstName} ${child.lastName}`);
+const handleDeleteChild = async () => {
+  try {
+    await deleteChildAndAssociations(child.id);
+    console.log(`✅ Child deleted: ${child.firstName} ${child.lastName}`);
     setShowDeleteModal(false);
-  };
+  } catch (err: any) {
+    console.error("❌ Failed to delete child:", err.message);
+  }
+};
 
-  // Filter today's sessions and sort by time descending
-  const todaysSessions: Session[] = sessionData
+  // Filter today's mock sessions (until real DB sessions exist)
+  const todaysSessions = sessionData
     .filter((s) => s.childId === child.id && isToday(parseISO(s.date)))
     .sort((a, b) =>
       compareDesc(
@@ -65,7 +74,7 @@ export default function ChildCard({ child }: ChildCardProps) {
         parseISO(`${b.date}T${b.startTime}`)
       )
     )
-    .slice(0, 3); // top 3 most recent
+    .slice(0, 3);
 
   return (
     <View style={styles.cardWrapper}>
@@ -86,7 +95,7 @@ export default function ChildCard({ child }: ChildCardProps) {
           </TouchableOpacity>
         </View>
 
-        {/* Expand and Delete Buttons */}
+        {/* Expand & Delete Buttons */}
         <View style={styles.buttonsContainer}>
           <TouchableOpacity onPress={toggleExpand} style={styles.expandButton}>
             <Text style={styles.expandButtonText}>{expanded ? "▲" : "▼"}</Text>
@@ -117,7 +126,9 @@ export default function ChildCard({ child }: ChildCardProps) {
             todaysSessions.map((session) => (
               <View key={session.id} style={styles.sessionRow}>
                 <Text style={styles.drawerText}>{session.activityType}</Text>
-                <Text style={[styles.drawerText, { color: "#4F46E5" }]}>{session.sessionStatus}</Text>
+                <Text style={[styles.drawerText, { color: "#4F46E5" }]}>
+                  {session.sessionStatus}
+                </Text>
               </View>
             ))
           )}
@@ -158,6 +169,7 @@ export default function ChildCard({ child }: ChildCardProps) {
   );
 }
 
+// --- Styles ---
 const styles = StyleSheet.create({
   cardWrapper: {
     marginVertical: responsive.screenHeight * 0.01,
