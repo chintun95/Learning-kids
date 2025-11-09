@@ -85,8 +85,8 @@ const styles = StyleSheet.create({
   },
   text: {
     fontSize: responsive.buttonFontSize,
-    fontFamily: "Fredoka-Medium",
-    color: "#4F46E5",
+    fontFamily: "Fredoka-Bold",
+    color: "#000",
     textDecorationLine: "underline",
     textAlign: "center",
   },

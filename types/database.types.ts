@@ -14,9 +14,31 @@ export type Database = {
   }
   public: {
     Tables: {
+      Achievements: {
+        Row: {
+          description: string | null
+          id: string
+          title: string
+          user_id: string | null
+        }
+        Insert: {
+          description?: string | null
+          id?: string
+          title: string
+          user_id?: string | null
+        }
+        Update: {
+          description?: string | null
+          id?: string
+          title?: string
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       answer_log: {
         Row: {
           answered_at: string
+          game_name: string | null
           id: string
           is_correct: boolean
           question_id: string | null
@@ -24,6 +46,7 @@ export type Database = {
         }
         Insert: {
           answered_at?: string
+          game_name?: string | null
           id?: string
           is_correct: boolean
           question_id?: string | null
@@ -31,6 +54,7 @@ export type Database = {
         }
         Update: {
           answered_at?: string
+          game_name?: string | null
           id?: string
           is_correct?: boolean
           question_id?: string | null
@@ -103,6 +127,45 @@ export type Database = {
             columns: ["parent_id"]
             isOneToOne: false
             referencedRelation: "Parent"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ChildAchievement: {
+        Row: {
+          achievementinfo: string
+          childid: string
+          dateearned: string
+          id: string
+          user_id: string | null
+        }
+        Insert: {
+          achievementinfo: string
+          childid: string
+          dateearned?: string
+          id?: string
+          user_id?: string | null
+        }
+        Update: {
+          achievementinfo?: string
+          childid?: string
+          dateearned?: string
+          id?: string
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "childachievement_achievementinfo_fkey"
+            columns: ["achievementinfo"]
+            isOneToOne: false
+            referencedRelation: "Achievements"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "childachievement_childid_fkey"
+            columns: ["childid"]
+            isOneToOne: false
+            referencedRelation: "Child"
             referencedColumns: ["id"]
           },
         ]
@@ -250,6 +313,50 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["user_id"]
+          },
+        ]
+      }
+      Session: {
+        Row: {
+          activitytype: string
+          childid: string
+          date: string
+          endtime: string
+          id: string
+          sessiondetails: string | null
+          sessionstatus: string
+          starttime: string
+          user_id: string | null
+        }
+        Insert: {
+          activitytype: string
+          childid: string
+          date: string
+          endtime: string
+          id?: string
+          sessiondetails?: string | null
+          sessionstatus: string
+          starttime: string
+          user_id?: string | null
+        }
+        Update: {
+          activitytype?: string
+          childid?: string
+          date?: string
+          endtime?: string
+          id?: string
+          sessiondetails?: string | null
+          sessionstatus?: string
+          starttime?: string
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "session_childid_fkey"
+            columns: ["childid"]
+            isOneToOne: false
+            referencedRelation: "Child"
+            referencedColumns: ["id"]
           },
         ]
       }

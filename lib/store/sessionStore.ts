@@ -4,14 +4,17 @@ import { zustandStorage } from "@/lib/mmkv-storage";
 import { formatDate, formatTime } from "@/utils/formatter";
 
 /**
- * Represents a single session record for a child.
+ * Represents a single session record for a child — aligned with the database table.
  */
 export type ChildSessionRecord = {
-  childId: string;
-  sessionType: "auth" | "lesson" | "quiz" | "game";
-  date: string;
-  startTime: string;
-  endTime?: string | null;
+  date: string; // yyyy/mm/dd
+  startTime: string; // hh:mm:ss
+  endTime?: string | null; // hh:mm:ss or null
+  sessionStatus: "In Progress" | "Completed" | "Stalled";
+  activityType: "auth" | "lesson" | "quiz" | "game";
+  sessionDetails: string | null;
+  childID: string; // FK to Child(id)
+  user_id: string | null; // nullable for now
 };
 
 export interface SessionState {
@@ -25,6 +28,8 @@ export interface SessionState {
   currentDate: string | null;
   sessionStartTime: string | null;
   sessionEndTime: string | null;
+  sessionStatus: "In Progress" | "Completed" | "Stalled" | null;
+  sessionDetails: string | null;
 
   /** All locally stored sessions grouped by childId */
   childSessions: Record<string, ChildSessionRecord[]>;
@@ -34,6 +39,10 @@ export interface SessionState {
   setCurrentDate: () => void;
   setStartTime: () => void;
   setEndTime: () => void;
+  setSessionStatus: (
+    status: "In Progress" | "Completed" | "Stalled" | null
+  ) => void;
+  setSessionDetails: (details: string | null) => void;
 
   /** Start a new session tied to a child */
   startChildSession: (
@@ -59,6 +68,8 @@ export const useSessionStore = create<SessionState>()(
       currentDate: null,
       sessionStartTime: null,
       sessionEndTime: null,
+      sessionStatus: null,
+      sessionDetails: null,
       childSessions: {},
 
       setSessionType: (type) => set({ sessionType: type }),
@@ -78,6 +89,10 @@ export const useSessionStore = create<SessionState>()(
         set({ sessionEndTime: formatTime(now) });
       },
 
+      setSessionStatus: (status) => set({ sessionStatus: status }),
+
+      setSessionDetails: (details) => set({ sessionDetails: details }),
+
       startChildSession: (childId, type) => {
         const now = new Date();
         set({
@@ -86,6 +101,8 @@ export const useSessionStore = create<SessionState>()(
           currentDate: formatDate(now),
           sessionStartTime: formatTime(now),
           sessionEndTime: null,
+          sessionStatus: "In Progress",
+          sessionDetails: null,
         });
       },
 
@@ -95,6 +112,7 @@ export const useSessionStore = create<SessionState>()(
           sessionType,
           currentDate,
           sessionStartTime,
+          sessionDetails,
           childSessions,
         } = get();
         if (!childId || !sessionType || !currentDate || !sessionStartTime)
@@ -104,16 +122,20 @@ export const useSessionStore = create<SessionState>()(
         const endTime = formatTime(now);
 
         const newRecord: ChildSessionRecord = {
-          childId,
-          sessionType,
           date: currentDate,
           startTime: sessionStartTime,
           endTime,
+          sessionStatus: "Completed",
+          activityType: sessionType,
+          sessionDetails,
+          childID: childId,
+          user_id: null, // remains NULL for now
         };
 
         const existing = childSessions[childId] ?? [];
         set({
           sessionEndTime: endTime,
+          sessionStatus: "Completed",
           childSessions: {
             ...childSessions,
             [childId]: [...existing, newRecord],
@@ -128,6 +150,8 @@ export const useSessionStore = create<SessionState>()(
           currentDate: null,
           sessionStartTime: null,
           sessionEndTime: null,
+          sessionStatus: null,
+          sessionDetails: null,
         }),
 
       clearAllSessions: () => set({ childSessions: {} }),

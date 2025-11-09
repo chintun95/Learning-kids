@@ -22,7 +22,7 @@ import SignOutButton from "@/components/SignOutButton";
 import InputBox from "@/components/InputBox";
 import Button from "@/components/Button";
 import { sanitizeInput } from "@/utils/formatter";
-
+import { useNetworkMonitor } from "@/utils/networkMonitor";
 const ChildIndexScreen: React.FC = () => {
   const {
     children,
@@ -32,25 +32,22 @@ const ChildIndexScreen: React.FC = () => {
     loading,
     error,
   } = useChildAuthStore();
+
   const { startChildSession } = useSessionStore();
   const queryClient = useQueryClient();
   const currentChild = getCurrentChild();
   const router = useRouter();
 
-  // Local reactive copy for UI re-render
   const [localChildren, setLocalChildren] = useState(children);
+  useEffect(() => setLocalChildren(children), [children]);
 
-  // React to Zustand store updates (real-time synced)
-  useEffect(() => {
-    setLocalChildren(children);
-  }, [children]);
+  // Global network state (persistent across layouts)
+  const { isConnected, isInternetReachable, initialized } = useNetworkMonitor();
 
-  // Log when store updates from realtime channel
+  // Log updates
   useEffect(() => {
     if (loadedForEmail) {
-      console.log(
-        `🟢 Child store listening for real-time updates for ${loadedForEmail}`
-      );
+      console.log(`🟢 Listening for updates for ${loadedForEmail}`);
     }
   }, [loadedForEmail]);
 
@@ -60,7 +57,7 @@ const ChildIndexScreen: React.FC = () => {
   const [enteredPin, setEnteredPin] = useState("");
   const [pinError, setPinError] = useState("");
 
-  // --- Supabase mutation: set activity status to active
+  // --- Online mutation (will fail gracefully when offline)
   const { mutateAsync: setActiveStatus } = useMutation({
     mutationFn: async (childId: string) => {
       const { error: updateError } = await supabase
@@ -74,10 +71,13 @@ const ChildIndexScreen: React.FC = () => {
       queryClient.invalidateQueries({
         queryKey: ["children-for-parent-email"],
       });
-      console.log(`✅ Child ${childId} status set to active.`);
+      console.log(`✅ Child ${childId} marked active online.`);
     },
     onError: (mutationError: Error) => {
-      console.error("❌ Failed to update child status:", mutationError);
+      console.warn(
+        "⚠️ Offline mode: Supabase update skipped.",
+        mutationError.message
+      );
     },
   });
 
@@ -91,13 +91,21 @@ const ChildIndexScreen: React.FC = () => {
         setSelectedChildId(childId);
         setModalVisible(true);
       } else {
-        // No PIN: start session immediately
+        // No PIN: start session immediately (works offline)
         selectChildUnsafe(childId);
-        setActiveStatus(childId);
+        if (isConnected && isInternetReachable) {
+          setActiveStatus(childId).catch(() => {
+            console.warn(
+              "⚠️ Online but failed to update Supabase, continuing locally."
+            );
+          });
+        } else {
+          console.warn(
+            "📴 Offline: skipping Supabase update, continuing locally."
+          );
+        }
         startChildSession(childId, "auth");
-        console.log(
-          `🟢 Session started for ${child.firstName} ${child.lastName}`
-        );
+        console.log(`🟢 Session started (no PIN) for ${child.firstName}`);
         router.push(`/home/${childId}`);
       }
     },
@@ -107,6 +115,8 @@ const ChildIndexScreen: React.FC = () => {
       router,
       setActiveStatus,
       startChildSession,
+      isConnected,
+      isInternetReachable,
     ]
   );
 
@@ -122,11 +132,22 @@ const ChildIndexScreen: React.FC = () => {
       setModalVisible(false);
       selectChildUnsafe(selectedChildId);
 
-      // Start session + update activity status
-      await setActiveStatus(selectedChildId);
+      // Use global connection state (no need for one-time check)
+      if (isConnected && isInternetReachable) {
+        try {
+          await setActiveStatus(selectedChildId);
+          console.log("✅ Online: status updated in Supabase.");
+        } catch (err) {
+          console.warn("⚠️ Online update failed:", err);
+        }
+      } else {
+        console.warn("📴 Offline: using local session only.");
+      }
+
+      // Always start session locally (even offline)
       startChildSession(selectedChildId, "auth");
       console.log(
-        `🟢 Auth session started for ${child.firstName} ${child.lastName}`
+        `🟢 Auth session started locally for ${child.firstName} ${child.lastName}`
       );
 
       setEnteredPin("");
@@ -143,8 +164,8 @@ const ChildIndexScreen: React.FC = () => {
     setModalVisible(false);
   };
 
-  // --- Display loading or error state ---
-  if (loading) {
+  // --- Loading / Error States ---
+  if (loading || !initialized) {
     return (
       <SafeAreaView style={[styles.container, styles.centered]}>
         <StatusBar
@@ -158,19 +179,7 @@ const ChildIndexScreen: React.FC = () => {
   }
 
   if (error) {
-    return (
-      <SafeAreaView style={[styles.container, styles.centered]}>
-        <StatusBar
-          translucent
-          backgroundColor="transparent"
-          barStyle="light-content"
-        />
-        <Text style={styles.emptyText}>Error: {error}</Text>
-        <View style={styles.signOutWrapper}>
-          <SignOutButton />
-        </View>
-      </SafeAreaView>
-    );
+    console.warn("⚠️ Child store error:", error);
   }
 
   if (!localChildren || localChildren.length === 0) {
@@ -189,7 +198,7 @@ const ChildIndexScreen: React.FC = () => {
     );
   }
 
-  // --- Main screen ---
+  // --- Main UI ---
   return (
     <SafeAreaView
       style={styles.container}
@@ -225,7 +234,6 @@ const ChildIndexScreen: React.FC = () => {
         }}
       />
 
-      {/* Sign Out */}
       <View style={styles.signOutWrapper}>
         <SignOutButton />
       </View>
@@ -286,9 +294,7 @@ const ChildIndexScreen: React.FC = () => {
 
 export default ChildIndexScreen;
 
-// -----------------------------
-// Styles
-// -----------------------------
+// --- Styles (unchanged) ---
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -371,7 +377,7 @@ const styles = StyleSheet.create({
   pinInput: {
     textAlign: "center",
     fontSize: responsive.buttonFontSize,
-    color: "#F9FAFB",
+    color: "#000",
   },
   buttonRow: {
     flexDirection: "row",
