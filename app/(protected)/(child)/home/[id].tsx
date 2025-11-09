@@ -1,54 +1,24 @@
-import React, { useEffect } from "react";
-import { View, Text, StyleSheet, StatusBar } from "react-native";
+import React from "react";
+import {
+  View,
+  Text,
+  StyleSheet,
+  StatusBar,
+  ImageBackground,
+  Platform,
+} from "react-native";
 import { useLocalSearchParams } from "expo-router";
 import ProfileIcon from "@/components/ProfileIcon";
 import SwitchAccount from "@/components/SwitchAccount";
 import { responsive } from "@/utils/responsive";
 import { useChildAuthStore } from "@/lib/store/childAuthStore";
-import { useSessionStore } from "@/lib/store/sessionStore";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/lib/supabase";
-import { Tables } from "@/types/database.types";
 
 export default function ChildHome() {
   const { id } = useLocalSearchParams();
   const childId = String(id);
   const { children, getCurrentChild } = useChildAuthStore();
-  const queryClient = useQueryClient();
-  const { startChildSession } = useSessionStore();
 
   const child = children.find((c) => c.id === childId) ?? getCurrentChild();
-
-  const { mutate: setActiveStatus } = useMutation({
-    mutationFn: async (childId: string) => {
-      const { error } = await supabase
-        .from("Child")
-        .update({ activitystatus: "active" })
-        .eq("id", childId);
-      if (error) throw new Error(error.message);
-    },
-    onSuccess: (_data, childId) => {
-      queryClient.invalidateQueries({ queryKey: ["child-by-id", childId] });
-      queryClient.invalidateQueries({
-        queryKey: ["children-for-parent-email"],
-      });
-      console.log(`✅ Child ${childId} status set to active.`);
-    },
-    onError: (error) => {
-      console.error("❌ Failed to update child status:", error);
-    },
-  });
-
-  useEffect(() => {
-    if (childId) {
-      //  Mark the child as active in Supabase
-      setActiveStatus(childId);
-
-      //  Start a new local session for the child with sessionType "auth"
-      startChildSession(childId, "auth");
-      console.log(`🟢 Started auth session for child ${childId}`);
-    }
-  }, [childId]);
 
   if (!child) {
     return (
@@ -59,42 +29,79 @@ export default function ChildHome() {
   }
 
   return (
-    <View style={styles.container}>
+    <ImageBackground
+      source={require("@/assets/images/app-background.png")}
+      style={styles.background}
+      resizeMode="cover"
+    >
       <StatusBar
         translucent
         backgroundColor="transparent"
-        barStyle="dark-content"
+        barStyle="light-content"
       />
-      <View style={styles.header}>
-        <ProfileIcon
-          source={child.profilePicture}
-          size={responsive.screenWidth * 0.25}
-        />
-        <Text style={styles.childName}>
-          {child.firstName} {child.lastName}
-        </Text>
+
+      <View style={styles.overlay}>
+        <View style={styles.profileContainer}>
+          <ProfileIcon
+            source={child.profilePicture}
+            size={responsive.screenWidth * 0.18}
+            style={styles.profileIcon}
+          />
+          <Text style={styles.childName}>
+            {child.firstName} {child.lastName}
+          </Text>
+          <View style={styles.switchWrapper}>
+            <SwitchAccount />
+          </View>
+        </View>
       </View>
-      <SwitchAccount />
-    </View>
+    </ImageBackground>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  background: {
     flex: 1,
-    backgroundColor: "#F9FAFB",
-    justifyContent: "center",
-    alignItems: "center",
+    width: "100%",
+    height: "100%",
   },
-  header: {
+  overlay: {
+    flex: 1,
+    justifyContent: "flex-start",
     alignItems: "center",
+    paddingTop:
+      Platform.OS === "android"
+        ? (StatusBar.currentHeight ?? 0) + responsive.screenHeight * 0.025
+        : responsive.screenHeight * 0.045,
+  },
+  profileContainer: {
+    width: responsive.screenWidth * 0.85,
+    backgroundColor: "#D9D9D9",
+    borderRadius: responsive.screenWidth * 0.04,
+    borderWidth: 2,
+    borderColor: "#999",
+    alignItems: "center",
+    paddingVertical: responsive.screenHeight * 0.02,
+    paddingHorizontal: responsive.screenWidth * 0.04,
+    shadowColor: "#000",
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+    elevation: 5,
+  },
+  profileIcon: {
+    borderRadius: responsive.screenWidth * 0.12,
+    aspectRatio: 1,
   },
   childName: {
-    marginTop: responsive.screenHeight * 0.015,
-    fontSize: responsive.isNarrowScreen ? 20 : 24,
+    marginTop: responsive.screenHeight * 0.01,
+    fontSize: responsive.isNarrowScreen ? 18 : 22,
     fontFamily: "Fredoka-Bold",
     color: "#111827",
     textAlign: "center",
+  },
+  switchWrapper: {
+    marginTop: responsive.screenHeight * 0.008,
+    marginBottom: responsive.screenHeight * 0.005,
   },
   centered: {
     flex: 1,

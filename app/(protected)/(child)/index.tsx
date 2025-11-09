@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useEffect } from "react";
 import {
   View,
   Text,
@@ -13,6 +13,9 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { useChildAuthStore } from "@/lib/store/childAuthStore";
+import { useSessionStore } from "@/lib/store/sessionStore";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { supabase } from "@/lib/supabase";
 import ProfileIcon from "@/components/ProfileIcon";
 import { responsive } from "@/utils/responsive";
 import SignOutButton from "@/components/SignOutButton";
@@ -21,9 +24,35 @@ import Button from "@/components/Button";
 import { sanitizeInput } from "@/utils/formatter";
 
 const ChildIndexScreen: React.FC = () => {
-  const { children, getCurrentChild, selectChildUnsafe } = useChildAuthStore();
+  const {
+    children,
+    getCurrentChild,
+    selectChildUnsafe,
+    loadedForEmail,
+    loading,
+    error,
+  } = useChildAuthStore();
+  const { startChildSession } = useSessionStore();
+  const queryClient = useQueryClient();
   const currentChild = getCurrentChild();
   const router = useRouter();
+
+  // Local reactive copy for UI re-render
+  const [localChildren, setLocalChildren] = useState(children);
+
+  // React to Zustand store updates (real-time synced)
+  useEffect(() => {
+    setLocalChildren(children);
+  }, [children]);
+
+  // Log when store updates from realtime channel
+  useEffect(() => {
+    if (loadedForEmail) {
+      console.log(
+        `🟢 Child store listening for real-time updates for ${loadedForEmail}`
+      );
+    }
+  }, [loadedForEmail]);
 
   // Modal state
   const [modalVisible, setModalVisible] = useState(false);
@@ -31,36 +60,75 @@ const ChildIndexScreen: React.FC = () => {
   const [enteredPin, setEnteredPin] = useState("");
   const [pinError, setPinError] = useState("");
 
+  // --- Supabase mutation: set activity status to active
+  const { mutateAsync: setActiveStatus } = useMutation({
+    mutationFn: async (childId: string) => {
+      const { error: updateError } = await supabase
+        .from("Child")
+        .update({ activitystatus: "active" })
+        .eq("id", childId);
+      if (updateError) throw new Error(updateError.message);
+    },
+    onSuccess: (_data, childId) => {
+      queryClient.invalidateQueries({ queryKey: ["child-by-id", childId] });
+      queryClient.invalidateQueries({
+        queryKey: ["children-for-parent-email"],
+      });
+      console.log(`✅ Child ${childId} status set to active.`);
+    },
+    onError: (mutationError: Error) => {
+      console.error("❌ Failed to update child status:", mutationError);
+    },
+  });
+
+  // --- Handle selecting a child
   const handleSelectChild = useCallback(
     (childId: string) => {
-      const child = children.find((c) => c.id === childId);
+      const child = localChildren.find((c) => c.id === childId);
       if (!child) return;
 
-      // If the child has a stored pin, show modal
       if (child.profilePin) {
         setSelectedChildId(childId);
         setModalVisible(true);
       } else {
-        // No PIN — proceed directly to home
+        // No PIN: start session immediately
         selectChildUnsafe(childId);
+        setActiveStatus(childId);
+        startChildSession(childId, "auth");
+        console.log(
+          `🟢 Session started for ${child.firstName} ${child.lastName}`
+        );
         router.push(`/home/${childId}`);
       }
     },
-    [children, selectChildUnsafe, router]
+    [
+      localChildren,
+      selectChildUnsafe,
+      router,
+      setActiveStatus,
+      startChildSession,
+    ]
   );
 
-  const handlePinSubmit = () => {
+  // --- Handle PIN submission
+  const handlePinSubmit = async () => {
     if (!selectedChildId) return;
-
-    const child = children.find((c) => c.id === selectedChildId);
+    const child = localChildren.find((c) => c.id === selectedChildId);
     if (!child) return;
 
     const sanitizedPin = sanitizeInput(enteredPin);
-
     if (sanitizedPin === child.profilePin) {
       setPinError("");
       setModalVisible(false);
       selectChildUnsafe(selectedChildId);
+
+      // Start session + update activity status
+      await setActiveStatus(selectedChildId);
+      startChildSession(selectedChildId, "auth");
+      console.log(
+        `🟢 Auth session started for ${child.firstName} ${child.lastName}`
+      );
+
       setEnteredPin("");
       router.push(`/home/${selectedChildId}`);
     } else {
@@ -75,13 +143,43 @@ const ChildIndexScreen: React.FC = () => {
     setModalVisible(false);
   };
 
-  if (!children || children.length === 0) {
+  // --- Display loading or error state ---
+  if (loading) {
     return (
       <SafeAreaView style={[styles.container, styles.centered]}>
         <StatusBar
           translucent
           backgroundColor="transparent"
-          barStyle="dark-content"
+          barStyle="light-content"
+        />
+        <Text style={styles.emptyText}>Loading profiles...</Text>
+      </SafeAreaView>
+    );
+  }
+
+  if (error) {
+    return (
+      <SafeAreaView style={[styles.container, styles.centered]}>
+        <StatusBar
+          translucent
+          backgroundColor="transparent"
+          barStyle="light-content"
+        />
+        <Text style={styles.emptyText}>Error: {error}</Text>
+        <View style={styles.signOutWrapper}>
+          <SignOutButton />
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (!localChildren || localChildren.length === 0) {
+    return (
+      <SafeAreaView style={[styles.container, styles.centered]}>
+        <StatusBar
+          translucent
+          backgroundColor="transparent"
+          barStyle="light-content"
         />
         <Text style={styles.emptyText}>No profiles found</Text>
         <View style={styles.signOutWrapper}>
@@ -91,6 +189,7 @@ const ChildIndexScreen: React.FC = () => {
     );
   }
 
+  // --- Main screen ---
   return (
     <SafeAreaView
       style={styles.container}
@@ -99,13 +198,12 @@ const ChildIndexScreen: React.FC = () => {
       <StatusBar
         translucent
         backgroundColor="transparent"
-        barStyle="dark-content"
+        barStyle="light-content"
       />
-
       <Text style={styles.header}>Select Your Profile</Text>
 
       <FlatList
-        data={children}
+        data={localChildren}
         keyExtractor={(item) => item.id}
         numColumns={2}
         columnWrapperStyle={styles.row}
@@ -127,7 +225,7 @@ const ChildIndexScreen: React.FC = () => {
         }}
       />
 
-      {/* --- Sign Out Button at bottom --- */}
+      {/* Sign Out */}
       <View style={styles.signOutWrapper}>
         <SignOutButton />
       </View>
@@ -160,22 +258,22 @@ const ChildIndexScreen: React.FC = () => {
                 <Button
                   title="Back"
                   onPress={handleBack}
-                  backgroundColor="#E5E7EB"
-                  textColor="#111827"
+                  backgroundColor="#374151"
+                  textColor="#F9FAFB"
                   fontSize={responsive.buttonFontSize * 0.8}
-                  paddingVertical={responsive.buttonHeight * 0.25}
-                  paddingHorizontal={responsive.buttonHeight * 0.65}
+                  paddingVertical={responsive.buttonHeight * 0.2}
+                  paddingHorizontal={responsive.buttonHeight * 0.6}
                 />
               </View>
               <View style={styles.modalButtonWrapper}>
                 <Button
                   title="Done"
                   onPress={handlePinSubmit}
-                  backgroundColor="#4F46E5"
-                  textColor="#fff"
+                  backgroundColor="#6366F1"
+                  textColor="#F9FAFB"
                   fontSize={responsive.buttonFontSize * 0.8}
-                  paddingVertical={responsive.buttonHeight * 0.25}
-                  paddingHorizontal={responsive.buttonHeight * 0.65}
+                  paddingVertical={responsive.buttonHeight * 0.2}
+                  paddingHorizontal={responsive.buttonHeight * 0.6}
                 />
               </View>
             </View>
@@ -194,7 +292,7 @@ export default ChildIndexScreen;
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#F9FAFB",
+    backgroundColor: "#111827",
     alignItems: "center",
     paddingTop: Platform.OS === "android" ? StatusBar.currentHeight ?? 0 : 0,
   },
@@ -202,6 +300,7 @@ const styles = StyleSheet.create({
     fontSize: responsive.buttonFontSize * 1.2,
     fontWeight: "600",
     marginVertical: responsive.screenHeight * 0.025,
+    color: "#F9FAFB",
   },
   listContainer: {
     justifyContent: "center",
@@ -218,7 +317,7 @@ const styles = StyleSheet.create({
   },
   activeContainer: {
     borderWidth: 2,
-    borderColor: "#4A90E2",
+    borderColor: "#6366F1",
     borderRadius: responsive.profileIconSize() / 2,
     padding: responsive.screenWidth * 0.01,
   },
@@ -227,6 +326,7 @@ const styles = StyleSheet.create({
     fontSize: responsive.buttonFontSize,
     fontWeight: "500",
     textAlign: "center",
+    color: "#E5E7EB",
   },
   centered: {
     justifyContent: "center",
@@ -234,7 +334,7 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     fontSize: responsive.buttonFontSize,
-    color: "#999",
+    color: "#9CA3AF",
     marginBottom: responsive.screenHeight * 0.02,
   },
   signOutWrapper: {
@@ -244,29 +344,34 @@ const styles = StyleSheet.create({
     paddingHorizontal: responsive.screenWidth * 0.05,
     paddingBottom: Platform.OS === "android" ? 25 : 10,
   },
-  // Modal styles
   modalOverlay: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.5)",
+    backgroundColor: "rgba(0,0,0,0.7)",
     justifyContent: "center",
     alignItems: "center",
     paddingHorizontal: responsive.screenWidth * 0.08,
   },
   modalContainer: {
     width: "100%",
-    backgroundColor: "#fff",
+    backgroundColor: "#1F2937",
     borderRadius: responsive.screenWidth * 0.03,
     padding: responsive.screenHeight * 0.03,
     alignItems: "center",
+    shadowColor: "#000",
+    shadowOpacity: 0.5,
+    shadowRadius: 10,
+    elevation: 5,
   },
   modalTitle: {
     fontSize: responsive.buttonFontSize * 1.2,
     fontWeight: "600",
     marginBottom: responsive.screenHeight * 0.015,
+    color: "#F9FAFB",
   },
   pinInput: {
     textAlign: "center",
     fontSize: responsive.buttonFontSize,
+    color: "#F9FAFB",
   },
   buttonRow: {
     flexDirection: "row",
@@ -279,7 +384,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   errorText: {
-    color: "#EF4444",
+    color: "#F87171",
     marginTop: responsive.screenHeight * 0.01,
     fontSize: responsive.buttonFontSize * 0.85,
   },

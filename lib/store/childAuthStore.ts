@@ -1,11 +1,13 @@
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 import { zustandStorage } from "@/lib/mmkv-storage";
+import { supabase } from "@/lib/supabase";
 import {
   fetchChildrenByParentEmail,
   type ChildCardModel,
 } from "@/services/fetchChildren";
 import { formatChildPin } from "@/utils/formatter";
+import NetInfo from "@react-native-community/netinfo";
 
 /**
  * A compact record for selection & auditing.
@@ -53,6 +55,8 @@ type ChildAuthState = {
   removeChildLocally: (childId: string) => void;
 };
 
+let realtimeSubscription: ReturnType<typeof supabase.channel> | null = null;
+
 export const useChildAuthStore = create<ChildAuthState>()(
   persist(
     (set, get) => ({
@@ -91,6 +95,7 @@ export const useChildAuthStore = create<ChildAuthState>()(
           });
           return;
         }
+
         set({ loading: true, error: null });
         try {
           const children = await fetchChildrenByParentEmail(parentEmail);
@@ -101,7 +106,7 @@ export const useChildAuthStore = create<ChildAuthState>()(
             error: null,
           });
 
-          // If current selection no longer exists, clear it
+          // Clear invalid selection if necessary
           const { currentChildId } = get();
           if (
             currentChildId &&
@@ -109,6 +114,30 @@ export const useChildAuthStore = create<ChildAuthState>()(
           ) {
             set({ currentChildId: null });
           }
+
+          // 🟢 Setup real-time listener if not already subscribed
+          if (realtimeSubscription) {
+            supabase.removeChannel(realtimeSubscription);
+          }
+
+          realtimeSubscription = supabase
+            .channel("child-auth-realtime")
+            .on(
+              "postgres_changes",
+              { event: "*", schema: "public", table: "Child" },
+              async () => {
+                try {
+                  console.log("🔁 Re-fetching children (real-time update)...");
+                  const updated = await fetchChildrenByParentEmail(parentEmail);
+                  set({ children: updated });
+                } catch (err: any) {
+                  console.error("❌ Real-time update failed:", err);
+                }
+              }
+            )
+            .subscribe();
+
+          console.log("✅ Subscribed to real-time updates for Child table.");
         } catch (err: any) {
           set({
             loading: false,
@@ -125,7 +154,6 @@ export const useChildAuthStore = create<ChildAuthState>()(
           return;
         }
 
-        // Save previous child before switching
         if (currentChildId && currentChildId !== childId) {
           set({ previousChildId: currentChildId });
           const prevChild = children.find((c) => c.id === currentChildId);
@@ -152,7 +180,6 @@ export const useChildAuthStore = create<ChildAuthState>()(
           return;
         }
 
-        // If no PIN on the profile, allow selection; otherwise validate.
         const profilePin = child.profilePin?.trim() ?? "";
         if (profilePin.length === 0) {
           get().selectChildUnsafe(childId);

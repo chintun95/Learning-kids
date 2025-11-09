@@ -11,31 +11,36 @@ import {
   Platform,
   Linking,
   Alert,
+  ActivityIndicator,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import InputBox from "@/components/InputBox";
 import Button from "@/components/Button";
 import { responsive } from "@/utils/responsive";
-import { useSignIn } from "@clerk/clerk-expo";
+import { useSignIn, useUser } from "@clerk/clerk-expo";
 import { formatSignIn, signInSchema } from "@/utils/formatter";
 import { useAuthStore } from "@/lib/store/authStore";
+import { useChildAuthStore } from "@/lib/store/childAuthStore";
 import { z } from "zod";
 
 export default function AuthIndex() {
   const router = useRouter();
   const { width: logoWidth, height: logoHeight } = responsive.logoSize();
   const { signIn, setActive, isLoaded } = useSignIn();
+  const { user } = useUser();
 
   const setRole = useAuthStore((role) => role.setRole);
+  const hydrateChildren = useChildAuthStore((state) => state.hydrate);
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [emailError, setEmailError] = useState("");
   const [passwordError, setPasswordError] = useState("");
+  const [loadingChildren, setLoadingChildren] = useState(false);
 
-  // Real-time validation
+  // --- Real-time validation ---
   useEffect(() => {
     try {
       signInSchema.shape.email.parse(email);
@@ -62,7 +67,7 @@ export default function AuthIndex() {
     }
   }, [password]);
 
-  // Secure login handling
+  // --- Secure login handling ---
   const handleLogin = async (role: "parent" | "child") => {
     if (!isLoaded) return;
 
@@ -76,13 +81,34 @@ export default function AuthIndex() {
 
       if (signInAttempt.status === "complete") {
         await setActive({ session: signInAttempt.createdSessionId });
-
-        // Set rolre After Authentication
         setRole(role);
 
-        router.replace(
-          role === "parent" ? "./(protected)/(parent)" : "./(protected)/(child)"
-        );
+        // ✅ If parent, go directly to parent area
+        if (role === "parent") {
+          router.replace("./(protected)/(parent)");
+          return;
+        }
+
+        // ✅ If child, load children linked to parent email before navigation
+        if (role === "child") {
+          setLoadingChildren(true);
+          try {
+            console.log(
+              `🔄 Fetching children for parent email: ${parsed.email}`
+            );
+            await hydrateChildren(parsed.email);
+            console.log("✅ Children loaded into childAuthStore successfully.");
+            router.replace("./(protected)/(child)");
+          } catch (err) {
+            console.error("❌ Failed to load children:", err);
+            Alert.alert(
+              "Error",
+              "Failed to load child profiles. Please try again."
+            );
+          } finally {
+            setLoadingChildren(false);
+          }
+        }
       } else {
         Alert.alert(
           "Sign-in Incomplete",
@@ -91,28 +117,35 @@ export default function AuthIndex() {
       }
     } catch (err) {
       console.error("Login failed:", err);
-      // Vague error message for security
-      Alert.alert("Login Failed", "Invalid email or password. Please try again.");
+      Alert.alert(
+        "Login Failed",
+        "Invalid email or password. Please try again."
+      );
     }
   };
 
   const handleForgotPassword = () => router.push("./(auth)/reset-password");
-  const handleGoogleLogin = () => console.log("Google login pressed");
-  const handleAppleLogin = () => console.log("Apple login pressed");
-  const handleFacebookLogin = () => console.log("Facebook login pressed");
   const handleSignUp = () => router.push("./(auth)/sign-up");
-
   const handleTermsOfService = () => {
     Linking.openURL("https://en.wikipedia.org/wiki/Inigo_Montoya").catch(
       (err) => console.error("Failed to open Terms of Service URL:", err)
     );
   };
-
   const handleTermsOfConduct = () => {
     Linking.openURL("https://en.wikipedia.org/wiki/Oscar_Nunez").catch((err) =>
       console.error("Failed to open Terms of Conduct URL:", err)
     );
   };
+
+  // --- Loading screen while fetching children ---
+  if (loadingChildren) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#fff" />
+        <Text style={styles.loadingText}>Loading child profiles...</Text>
+      </View>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container}>
@@ -233,7 +266,7 @@ export default function AuthIndex() {
             </View>
 
             <View style={styles.iconRow}>
-              <TouchableOpacity onPress={handleGoogleLogin}>
+              <TouchableOpacity>
                 <Image
                   source={require("@/assets/icons/google-icon.png")}
                   style={{
@@ -244,7 +277,7 @@ export default function AuthIndex() {
                 />
               </TouchableOpacity>
 
-              <TouchableOpacity onPress={handleAppleLogin}>
+              <TouchableOpacity>
                 <Image
                   source={require("@/assets/icons/apple-icon.png")}
                   style={{
@@ -255,7 +288,7 @@ export default function AuthIndex() {
                 />
               </TouchableOpacity>
 
-              <TouchableOpacity onPress={handleFacebookLogin}>
+              <TouchableOpacity>
                 <Image
                   source={require("@/assets/icons/facebook-icon.png")}
                   style={{
@@ -316,6 +349,18 @@ export default function AuthIndex() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#fff" },
+  loadingContainer: {
+    flex: 1,
+    backgroundColor: "#111827",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  loadingText: {
+    color: "#fff",
+    marginTop: 16,
+    fontFamily: "Fredoka-SemiBold",
+    fontSize: responsive.buttonFontSize,
+  },
   main: {
     flexGrow: 1,
     justifyContent: "space-between",
@@ -329,7 +374,7 @@ const styles = StyleSheet.create({
     alignSelf: "flex-end",
     fontFamily: "Fredoka-SemiBold",
     textDecorationLine: "underline",
-    color: "#ffff",
+    color: "#000",
     marginVertical: 8,
   },
   errorText: {
@@ -374,7 +419,7 @@ const styles = StyleSheet.create({
   signUpPrompt: { alignItems: "center", marginTop: 15 },
   signUpText: { color: "#000", fontFamily: "Fredoka-SemiBold" },
   signUpLink: {
-    color: "#ffff",
+    color: "#000",
     textDecorationLine: "underline",
     fontFamily: "Fredoka-Bold",
   },
@@ -386,7 +431,7 @@ const styles = StyleSheet.create({
   },
   linkText: {
     fontFamily: "Fredoka-SemiBold",
-    color: "#ffff",
+    color: "#000",
     textDecorationLine: "underline",
   },
   footer2Text: {
@@ -396,7 +441,7 @@ const styles = StyleSheet.create({
   },
   link2Text: {
     fontFamily: "Fredoka-SemiBold",
-    color: "#ffff",
+    color: "#000",
     textDecorationLine: "underline",
   },
 });
