@@ -30,7 +30,6 @@ const CreateQuestions = memo(() => {
   const [error, setError] = useState('');
   const [questionsList, setQuestionsList] = useState([]);
   const [activeTab, setActiveTab] = useState('create');
-  const [questionsAnsweredCount, setQuestionsAnsweredCount] = useState(0);
   const [questionsToComplete, setQuestionsToComplete] = useState(5);
 
   const navigation = useNavigation();
@@ -44,13 +43,13 @@ const CreateQuestions = memo(() => {
     }
   }, [uid]);
 
-  // Fetch user’s question limit from Supabase
+  // Fetch question limit from Supabase
   const fetchQuestionLimit = async () => {
     try {
       const { data, error } = await supabase
         .from('settings')
         .select('question_limit')
-        .eq('user_id', uid) 
+        .eq('user_id', uid)
         .single();
 
       if (error && error.code !== 'PGRST116') throw error;
@@ -60,13 +59,13 @@ const CreateQuestions = memo(() => {
     }
   };
 
-  // Fetch all created questions
+  // Fetch all questions
   const fetchQuestions = async () => {
     try {
       const { data, error } = await supabase
         .from('questions')
         .select('*')
-        .eq('parent_id', uid); // keep as parent_id for questions table
+        .eq('parent_id', uid);
       if (error) throw error;
       setQuestionsList(data);
     } catch (err) {
@@ -81,7 +80,13 @@ const CreateQuestions = memo(() => {
       return;
     }
 
-    let payload = { question, parent_id: uid, options: null, correct_answer: '', question_type: questionType }; // Fixed: Added question_type, corrected user_id to parent_id
+    let payload = {
+      question,
+      parent_id: uid,
+      options: null,
+      correct_answer: '',
+      question_type: questionType,
+    };
 
     if (questionType === 'multiple_choice') {
       if (!optionA || !optionB || !optionC || !optionD || !correctAnswer) {
@@ -96,10 +101,7 @@ const CreateQuestions = memo(() => {
         return;
       }
       payload.options = { a: 'True', b: 'False' };
-      payload.correct_answer = correctAnswer; 
-    } else if (questionType === 'typed_answer') {
-        payload.correct_answer = correctAnswer; 
-        payload.options = null; 
+      payload.correct_answer = correctAnswer;
     }
 
     setLoading(true);
@@ -110,7 +112,7 @@ const CreateQuestions = memo(() => {
       if (insertError) throw insertError;
       Alert.alert('Success', 'Question created successfully!');
       clearFields();
-      fetchQuestions(); 
+      fetchQuestions();
     } catch (err) {
       console.error('Create question error:', err);
       setError(err.message || 'Something went wrong');
@@ -118,7 +120,6 @@ const CreateQuestions = memo(() => {
       setLoading(false);
     }
   };
-
 
   const clearFields = () => {
     setQuestion('');
@@ -160,13 +161,13 @@ const CreateQuestions = memo(() => {
           <View style={styles.optionsRow}>
             <TouchableOpacity
               style={[styles.answerButton, correctAnswer === 'a' && styles.selectedAnswerButton]}
-              onPress={() => setCorrectAnswer('a')} // 'a' corresponds to True in options {a: 'True', b: 'False'}
+              onPress={() => setCorrectAnswer('a')}
             >
               <Text style={styles.answerButtonText}>True</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.answerButton, correctAnswer === 'b' && styles.selectedAnswerButton]}
-              onPress={() => setCorrectAnswer('b')} // 'b' corresponds to False
+              onPress={() => setCorrectAnswer('b')}
             >
               <Text style={styles.answerButtonText}>False</Text>
             </TouchableOpacity>
@@ -175,37 +176,47 @@ const CreateQuestions = memo(() => {
       );
     }
 
-    if (questionType === 'typed_answer') {
-        return (
-          <>
-            <Text style={styles.label}>Correct Answer (Optional - Parent review only):</Text>
-             <TextInput
-              placeholder="Enter the expected answer (optional)"
-              value={correctAnswer}
-              onChangeText={setCorrectAnswer}
-              style={styles.input}
-            />
-          </>
-        );
-      }
-
     return null;
   };
 
-  const handlePracticeAnswer = () => {
-    
-    const nextCount = questionsAnsweredCount + 1;
-    setQuestionsAnsweredCount(nextCount);
-    
+  // Delete question
+  const handleDeleteQuestion = async (questionId) => {
+    Alert.alert(
+      'Delete Question',
+      'Are you sure you want to delete this question?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const { error } = await supabase
+                .from('questions')
+                .delete()
+                .eq('id', questionId)
+                .eq('parent_id', uid);
+
+              if (error) throw error;
+              Alert.alert('Deleted', 'Question removed successfully.');
+              fetchQuestions();
+            } catch (err) {
+              console.error('Delete question error:', err);
+              Alert.alert('Error', 'Failed to delete question.');
+            }
+          },
+        },
+      ]
+    );
   };
 
-  // Save question limit to Supabase
+  // Save question limit
   const handleSetQuestionLimit = async (num) => {
     setQuestionsToComplete(num);
     try {
       await supabase
         .from('settings')
-        .upsert({ user_id: uid, question_limit: num }, { onConflict: 'user_id' }); // Uses the UNIQUE constraint
+        .upsert({ user_id: uid, question_limit: num }, { onConflict: 'user_id' });
       Alert.alert('Saved', `Question limit set to ${num}`);
     } catch (error) {
       console.error('Error saving question limit:', error.message);
@@ -217,7 +228,6 @@ const CreateQuestions = memo(() => {
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* iPhone-safe back button */}
       <View style={[styles.backContainer, { top: Platform.OS === 'ios' ? insets.top + hp('2%') : hp('2.5%') }]}>
         <Pressable style={styles.backButton} onPress={() => navigation.goBack()}>
           <Ionicons name="chevron-back" size={wp('6.2%')} color="#000" />
@@ -227,7 +237,7 @@ const CreateQuestions = memo(() => {
 
       {/* Tab selector */}
       <View style={styles.tabRow}>
-        {['create', 'practice'].map((tab) => (
+        {['create', 'questions'].map((tab) => (
           <TouchableOpacity
             key={tab}
             style={[styles.tabButton, activeTab === tab && styles.tabButtonActive]}
@@ -257,13 +267,6 @@ const CreateQuestions = memo(() => {
               onPress={() => setQuestionType('true_false')}
             >
               <Text style={styles.answerButtonText}>True/False</Text>
-            </TouchableOpacity>
-            {/* Added Typed Answer button */}
-            <TouchableOpacity
-              style={[styles.typeButton, questionType === 'typed_answer' && styles.selectedTypeButton]}
-              onPress={() => setQuestionType('typed_answer')}
-            >
-                <Text style={styles.answerButtonText}>Typed Answer</Text>
             </TouchableOpacity>
           </View>
 
@@ -311,23 +314,42 @@ const CreateQuestions = memo(() => {
         </ScrollView>
       )}
 
-      {/* Practice Tab (Review Questions) */}
-      {activeTab === 'practice' && (
+      {/* Questions Tab */}
+      {activeTab === 'questions' && (
         <FlatList
-          style={{marginTop: hp('2%')}} 
+          style={{ marginTop: hp('2%') }}
           data={questionsList}
           keyExtractor={(item) => item.id.toString()}
-          renderItem={({ item }) => (
-            
-            <View style={styles.questionCard}>
-              <Text style={styles.questionText}>{item.question}</Text>
-              <Text style={styles.questionTypeText}>
-                {item.question_type ? item.question_type.replace('_', ' ') : 'N/A'}
-              </Text>
+          renderItem={({ item }) => {
+            const formattedType =
+              item.question_type === 'multiple_choice'
+                ? 'Multiple Choice'
+                : item.question_type === 'true_false'
+                ? 'True/False'
+                : '';
 
-            </View>
-          )}
-           contentContainerStyle={{ alignItems: 'center', paddingBottom: hp('5%') }} // Added for centering list items
+            return (
+              <View style={styles.questionCard}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.questionText}>{item.question}</Text>
+                  <Text style={styles.questionTypeText}>{formattedType}</Text>
+                </View>
+
+                <TouchableOpacity
+                  onPress={() => handleDeleteQuestion(item.id)}
+                  style={{
+                    backgroundColor: '#FF5C5C',
+                    paddingVertical: hp('1%'),
+                    paddingHorizontal: wp('3%'),
+                    borderRadius: 8,
+                  }}
+                >
+                  <Text style={{ color: '#fff', fontFamily: 'FredokaOne-Regular' }}>Delete</Text>
+                </TouchableOpacity>
+              </View>
+            );
+          }}
+          contentContainerStyle={{ alignItems: 'center', paddingBottom: hp('5%') }}
         />
       )}
     </SafeAreaView>
@@ -336,12 +358,7 @@ const CreateQuestions = memo(() => {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f0f4f8' },
-
-  scrollContent: {
-    alignItems: 'center',
-    paddingTop: hp('2%'), 
-    paddingBottom: hp('5%')
-   },
+  scrollContent: { alignItems: 'center', paddingTop: hp('2%'), paddingBottom: hp('5%') },
   title: { fontFamily: 'FredokaOne-Regular', fontSize: wp('9%'), marginBottom: hp('3%'), color: '#1E1E1E' },
   input: {
     fontFamily: 'FredokaOne-Regular',
@@ -355,8 +372,21 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#ddd',
   },
-  label: { fontFamily: 'FredokaOne-Regular', fontSize: wp('4.5%'), color: '#333', marginBottom: hp('1.5%'), alignSelf: 'flex-start', marginLeft: wp('7.5%') },
-  optionsRow: { flexDirection: 'row', justifyContent: 'space-around', marginVertical: hp('1%'), width: wp('85%'), flexWrap: 'wrap' },
+  label: {
+    fontFamily: 'FredokaOne-Regular',
+    fontSize: wp('4.5%'),
+    color: '#333',
+    marginBottom: hp('1.5%'),
+    alignSelf: 'flex-start',
+    marginLeft: wp('7.5%'),
+  },
+  optionsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginVertical: hp('1%'),
+    width: wp('85%'),
+    flexWrap: 'wrap',
+  },
   typeButton: { backgroundColor: '#ccc', paddingVertical: hp('1.5%'), paddingHorizontal: wp('3%'), borderRadius: 8, margin: 5 },
   selectedTypeButton: { backgroundColor: '#4A90E2' },
   answerButton: { backgroundColor: '#ccc', padding: wp('3%'), borderRadius: 8, margin: 5, minWidth: wp('18%'), alignItems: 'center' },
@@ -365,24 +395,34 @@ const styles = StyleSheet.create({
   error: { fontFamily: 'FredokaOne-Regular', fontSize: wp('4%'), color: 'red', marginTop: hp('1%'), textAlign: 'center' },
   button: { marginTop: hp('2%'), backgroundColor: '#1E90FF', paddingVertical: hp('1.8%'), paddingHorizontal: wp('6%'), borderRadius: 30, width: wp('85%') },
   buttonText: { color: '#fff', fontFamily: 'FredokaOne-Regular', fontSize: wp('5%'), textAlign: 'center' },
-  questionCard: { backgroundColor: '#fff', padding: wp('4%'), marginVertical: hp('1%'), borderRadius: 10, width: wp('85%'), flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderWidth: 1, borderColor: '#eee' },
+  questionCard: {
+    backgroundColor: '#fff',
+    padding: wp('4%'),
+    marginVertical: hp('1%'),
+    borderRadius: 10,
+    width: wp('85%'),
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#eee',
+  },
   questionText: { fontFamily: 'FredokaOne-Regular', fontSize: wp('4%'), color: '#333', flex: 1, marginRight: 10 },
   questionTypeText: { fontFamily: 'FredokaOne-Regular', fontSize: wp('3.5%'), color: '#888', fontStyle: 'italic', marginRight: 10 },
   backContainer: { position: 'absolute', left: wp('4%'), zIndex: 10 },
   backButton: { flexDirection: 'row', alignItems: 'center', paddingVertical: 6, paddingHorizontal: 8, minWidth: 48 },
   backLabel: { marginLeft: 2, fontFamily: 'FredokaOne-Regular', fontSize: wp('4.2%'), color: '#000' },
-  
   tabRow: {
     flexDirection: 'row',
     justifyContent: 'space-around',
     paddingVertical: 10,
     backgroundColor: '#eee',
-    marginTop: hp('6%'), 
-    width: '100%', 
+    marginTop: hp('6%'),
+    width: '100%',
   },
-  tabButton: { padding: 10, borderRadius: 8, flex: 1, alignItems: 'center' }, // Added flex: 1 and alignItems
+  tabButton: { padding: 10, borderRadius: 8, flex: 1, alignItems: 'center' },
   tabButtonActive: { backgroundColor: '#4A90E2' },
-  tabText: { fontFamily: 'FredokaOne-Regular', color: '#000', fontSize: wp('4%') }, // Adjusted fontSize
+  tabText: { fontFamily: 'FredokaOne-Regular', color: '#000', fontSize: wp('4%') },
 });
 
 export default CreateQuestions;
