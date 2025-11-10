@@ -9,13 +9,14 @@ const BIRD_IMG = null; // e.g., require('@/assets/images/bird.png')
 
 /** -------- Bird Renderer (Animated) -------- */
 const Bird = (props) => {
-  const { body, color, onReady, velY = 0, reducedMotion = false } = props;
+  const { body, color, radius: propRadius, onReady, velY = 0, reducedMotion = false } = props;
 
   // sizes/position from your original code
-  const widthBody  = body.bounds.max.x - body.bounds.min.x;
-  const heightBody = body.bounds.max.y - body.bounds.min.y;
-  const xBody = body.position.x - widthBody / 2;
-  const yBody = body.position.y - heightBody / 2;
+  const radius = propRadius || body.circleRadius || 20;
+  const widthBody  = radius * 2;
+  const heightBody = radius * 2;
+  const xBody = body.position.x - radius;
+  const yBody = body.position.y - radius;
 
   // --- animation state ---
   const flapScale = useRef(new Animated.Value(1)).current;    // squash on flap
@@ -128,7 +129,7 @@ const Bird = (props) => {
         style={{
           width: '100%',
           height: '100%',
-          borderRadius: Math.min(widthBody, heightBody) / 2,
+          borderRadius: radius,
           overflow: 'hidden',
           backgroundColor: BIRD_IMG ? 'transparent' : color || '#ffd84d',
           borderWidth: BIRD_IMG ? 0 : 2,
@@ -153,7 +154,14 @@ const styles = StyleSheet.create({
 
 /** -------- Entity Factory (unchanged API, plus velY + onReady) -------- */
 export default (world, color, pos, size) => {
-  const body = Matter.Bodies.rectangle(pos.x, pos.y, size.width, size.height, { label: 'Bird' });
+  const radius = Math.min(size.width, size.height) / 2;
+  const body = Matter.Bodies.circle(pos.x, pos.y, radius, {
+    label: 'Bird',
+    restitution: 0.2,
+    friction: 0.01,
+    frictionAir: 0.01,
+  });
+
   Matter.World.add(world, body);
 
   // We keep a reference to the entity so the renderer can hand back its API (flap)
@@ -161,6 +169,7 @@ export default (world, color, pos, size) => {
     body,
     color,
     pos,
+    radius,
     velY: 0,              // Physics should keep this updated each tick
     reducedMotion: false, // toggle if you like
     api: null,            // will be set by renderer via onReady()
@@ -169,6 +178,7 @@ export default (world, color, pos, size) => {
       <Bird
         body={body}
         color={color}
+        radius={radius}
         velY={0}
         reducedMotion={false}
         onReady={(api) => { entity.api = api; }}

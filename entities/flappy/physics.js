@@ -6,7 +6,7 @@ import { Dimensions } from 'react-native';
 const { width: W, height: H } = Dimensions.get('window');
 
 const TERMINAL_FALL = 12;      // clamp fall speed
-const FLAP_VY = -7.2;          // upward vel on tap
+const FLAP_VY = -6.2;          // upward vel on tap
 const SPEED_STEP_EVERY = 5;    // increase speed every N points
 const SPEED_STEP = 0.25;       // increment amount
 
