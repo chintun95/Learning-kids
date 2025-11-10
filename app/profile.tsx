@@ -14,7 +14,6 @@ import {
 } from 'react-native';
 import { auth } from '../firebase';
 import { signOut } from 'firebase/auth';
-import { supabase } from '../backend/supabase';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { widthPercentageToDP as wp, heightPercentageToDP as hp } from 'react-native-responsive-screen';
@@ -30,14 +29,16 @@ const Profile: React.FC = () => {
   const navigation = useNavigation<NativeStackNavigationProp<any>>();
 
   const [userData, setUserData] = useState({
-    parentName: '',
-    childName: '',
-    childAge: '',
+    name: 'User',
     email: auth.currentUser?.email || 'No email',
     joinDate: 'Loading...',
+    achievements: [
+      { id: 1, title: 'First Login', completed: true },
+      { id: 2, title: 'Complete Profile', completed: false },
+      { id: 3, title: 'Play First Game', completed: true },
+    ],
   });
 
-  const [achievements, setAchievements] = useState([]);
   const [reminderEnabled, setReminderEnabled] = useState(false);
   const [reminderTimeLabel, setReminderTimeLabel] = useState<string | null>(null);
   const [isEditingTime, setIsEditingTime] = useState(false);
@@ -45,48 +46,24 @@ const Profile: React.FC = () => {
   const [editMinute, setEditMinute] = useState(0);
   const [loadingProfile, setLoadingProfile] = useState(true);
 
+  // ✅ Refresh profile when screen focused
   useFocusEffect(
     useCallback(() => {
-      const fetchProfileData = async () => {
-        try {
-          setLoadingProfile(true);
-          const user = auth.currentUser;
-          if (!user) {
-            navigation.navigate('LogInPage');
-            return;
-          }
+      setLoadingProfile(true);
+      const user = auth.currentUser;
+      if (user) {
+        const joinDate = user.metadata.creationTime
+          ? new Date(user.metadata.creationTime).toLocaleDateString()
+          : 'Unknown';
 
-          const joinDate = user.metadata.creationTime
-            ? new Date(user.metadata.creationTime).toLocaleDateString()
-            : 'Unknown';
+        setUserData(prev => ({
+          ...prev,
+          email: user.email || 'No email',
+          name: user.displayName || 'User',
+          joinDate,
+        }));
 
-          const { data: profile, error: profileError } = await supabase
-            .from('profiles')
-            .select('parent_name, child_name, child_age')
-            .eq('user_id', user.uid)
-            .single();
-
-          if (profileError) {
-            console.error('Error fetching profile:', profileError);
-            Alert.alert('Error', 'Unable to load profile information.');
-          } else if (profile) {
-            setUserData({
-              parentName: profile.parent_name,
-              childName: profile.child_name,
-              childAge: profile.child_age,
-              email: user.email || 'No email',
-              joinDate,
-            });
-          }
-
-          const { data: achData, error: achError } = await supabase
-            .from('Achievements')
-            .select('id, title, description')
-            .eq('user_id', user.uid);
-
-          if (achError) console.error('Error fetching achievements:', achError);
-          else setAchievements(achData || []);
-
+        (async () => {
           const scheduled = await isDailyReminderScheduled();
           setReminderEnabled(!!scheduled);
           if (scheduled) {
@@ -100,14 +77,12 @@ const Profile: React.FC = () => {
               setReminderTimeLabel(`Daily at ${hh}:${mm} ${ampm}`);
             }
           }
-        } catch (err) {
-          console.error('Error loading profile data:', err);
-        } finally {
           setLoadingProfile(false);
-        }
-      };
-
-      fetchProfileData();
+        })();
+      } else {
+        navigation.navigate('LogInPage');
+        setLoadingProfile(false);
+      }
     }, [navigation])
   );
 
@@ -117,11 +92,15 @@ const Profile: React.FC = () => {
         Alert.alert('Success', 'You have been signed out');
         navigation.navigate('LogInPage');
       })
-      .catch(error => Alert.alert('Error', error.message));
+      .catch(error => {
+        Alert.alert('Error', error.message);
+      });
   };
 
   const handleEditProfile = () => navigation.navigate('EditProfilePage');
   const handleGames = () => navigation.navigate('GamePage');
+
+  // ✅ Chart navigation
   const handleViewChart = () => navigation.navigate('ProgressChart');
 
   if (loadingProfile) {
@@ -140,19 +119,18 @@ const Profile: React.FC = () => {
       source={require('../assets/images/app-background.png')}
       style={styles.image}>
       <ScrollView contentContainerStyle={styles.scrollContainer}>
+        {/* Header */}
         <View style={styles.header}>
           <Image
-            source={{ uri: 'https://placehold.co/150x150/a2d2ff/333?text=Parent' }}
+            source={{ uri: 'https://placehold.co/150x150/a2d2ff/333?text=User' }}
             style={styles.profileImage}
           />
-          <Text style={styles.name}>Parent: {userData.parentName}</Text>
-          <Text style={styles.childInfo}>
-            Child: {userData.childName} (Age: {userData.childAge})
-          </Text>
+          <Text style={styles.name}>{userData.name}</Text>
           <Text style={styles.email}>{userData.email}</Text>
           <Text style={styles.joinDate}>Member since {userData.joinDate}</Text>
         </View>
 
+        {/* Stats */}
         <View style={styles.statsContainer}>
           <View style={styles.statBox}>
             <Text style={styles.statNumber}>12</Text>
@@ -168,26 +146,30 @@ const Profile: React.FC = () => {
           </View>
         </View>
 
+        {/* Achievements */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Achievements</Text>
-          {achievements.length > 0 ? (
-            achievements.map(a => (
-              <View key={a.id} style={styles.achievementItem}>
-                <View style={[styles.achievementStatus, styles.completed]} />
-                <Text style={styles.achievementTitle}>{a.title}</Text>
-              </View>
-            ))
-          ) : (
-            <Text style={styles.achievementTitle}>No achievements yet</Text>
-          )}
+          {userData.achievements.map(achievement => (
+            <View key={achievement.id} style={styles.achievementItem}>
+              <View
+                style={[
+                  styles.achievementStatus,
+                  achievement.completed ? styles.completed : styles.incomplete,
+                ]}
+              />
+              <Text style={styles.achievementTitle}>{achievement.title}</Text>
+            </View>
+          ))}
         </View>
 
+        {/* Progress Chart */}
         <View style={styles.section}>
           <TouchableOpacity style={styles.chartButton} onPress={handleViewChart}>
             <Text style={styles.chartButtonText}>View Progress Chart</Text>
           </TouchableOpacity>
         </View>
 
+        {/* Games */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Games</Text>
           <TouchableOpacity style={styles.gamesButton} onPress={handleGames}>
@@ -195,6 +177,7 @@ const Profile: React.FC = () => {
           </TouchableOpacity>
         </View>
 
+        {/* 🔔 Daily Reminder Section */}
         <View style={[styles.section, styles.reminderSection]}>
           <View style={styles.reminderHeader}>
             <Text style={styles.sectionTitle}>Daily Reminder</Text>
@@ -233,6 +216,75 @@ const Profile: React.FC = () => {
             </View>
           )}
 
+          {reminderEnabled && isEditingTime && (
+            <View style={styles.timeEditor}>
+              <Text style={styles.editingTimeLabel}>
+                Editing:{' '}
+                {(((editHour + 11) % 12) + 1)
+                  .toString()
+                  .padStart(2, '0')}
+                :
+                {editMinute.toString().padStart(2, '0')}{' '}
+                {editHour >= 12 ? 'PM' : 'AM'}
+              </Text>
+              <View style={styles.timeAdjustRow}>
+                <TouchableOpacity
+                  onPress={() => setEditHour(h => (h + 23) % 24)}
+                  style={styles.smallButton}>
+                  <Text style={styles.smallButtonText}>H-</Text>
+                </TouchableOpacity>
+                <Text style={styles.timeValue}>{editHour.toString().padStart(2, '0')}</Text>
+                <TouchableOpacity
+                  onPress={() => setEditHour(h => (h + 1) % 24)}
+                  style={styles.smallButton}>
+                  <Text style={styles.smallButtonText}>H+</Text>
+                </TouchableOpacity>
+
+                <View style={{ width: wp('4%') }} />
+
+                <TouchableOpacity
+                  onPress={() => setEditMinute(m => (m + 59) % 60)}
+                  style={styles.smallButton}>
+                  <Text style={styles.smallButtonText}>M-</Text>
+                </TouchableOpacity>
+                <Text style={styles.timeValue}>{editMinute.toString().padStart(2, '0')}</Text>
+                <TouchableOpacity
+                  onPress={() => setEditMinute(m => (m + 1) % 60)}
+                  style={styles.smallButton}>
+                  <Text style={styles.smallButtonText}>M+</Text>
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.editorButtons}>
+                <TouchableOpacity
+                  style={[styles.smallActionButton, { backgroundColor: '#4CD964' }]}
+                  onPress={async () => {
+                    await cancelDailyReminder();
+                    const id = await scheduleDailyReminder(editHour, editMinute);
+                    if (id) {
+                      const hh = ((editHour + 11) % 12) + 1;
+                      const mm = editMinute.toString().padStart(2, '0');
+                      const ampm = editHour >= 12 ? 'PM' : 'AM';
+                      setReminderTimeLabel(`Daily at ${hh}:${mm} ${ampm}`);
+                    } else {
+                      Alert.alert('Error', 'Could not save reminder time.');
+                      setReminderEnabled(false);
+                      setReminderTimeLabel(null);
+                    }
+                    setIsEditingTime(false);
+                  }}>
+                  <Text style={styles.smallActionText}>Save</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.smallActionButton, { backgroundColor: '#FF3B30' }]}
+                  onPress={() => setIsEditingTime(false)}>
+                  <Text style={styles.smallActionText}>Cancel</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
+
+          {/* Dev test notification button */}
           {__DEV__ && (
             <TouchableOpacity
               style={styles.testButton}
@@ -249,11 +301,14 @@ const Profile: React.FC = () => {
           )}
         </View>
 
+        {/* Footer Buttons */}
         <View style={styles.bottomButtonContainer}>
           <TouchableOpacity style={styles.actionButton} onPress={handleEditProfile}>
             <Text style={styles.actionButtonText}>Edit Profile</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={[styles.actionButton, styles.signOutButton]} onPress={handleSignOut}>
+          <TouchableOpacity
+            style={[styles.actionButton, styles.signOutButton]}
+            onPress={handleSignOut}>
             <Text style={styles.actionButtonText}>Sign Out</Text>
           </TouchableOpacity>
         </View>
@@ -262,6 +317,7 @@ const Profile: React.FC = () => {
   );
 };
 
+/* ✅ same styles as your previous version */
 const styles = StyleSheet.create({
   image: { flex: 1 },
   loadingContainer: { justifyContent: 'center', alignItems: 'center' },
@@ -275,7 +331,7 @@ const styles = StyleSheet.create({
   header: {
     alignItems: 'center',
     paddingVertical: hp('3%'),
-    backgroundColor: 'rgba(255,255,255,0.8)',
+    backgroundColor: 'rgba(255, 255, 255, 0.8)',
     borderRadius: 30,
     borderWidth: 3,
     borderColor: '#000',
@@ -290,11 +346,11 @@ const styles = StyleSheet.create({
     borderColor: '#000',
     marginBottom: hp('1.5%'),
   },
-  name: { fontSize: wp('7%'), fontFamily: 'FredokaOne-Regular', color: '#1E1E1E' },
-  childInfo: {
-    fontSize: wp('4.5%'),
+  name: {
+    fontSize: wp('7%'),
     fontFamily: 'FredokaOne-Regular',
-    color: '#333',
+    color: '#1E1E1E',
+    marginBottom: hp('0.5%'),
   },
   email: { fontSize: wp('4%'), fontFamily: 'FredokaOne-Regular', color: '#0A0A0A' },
   joinDate: { fontSize: wp('3.5%'), fontFamily: 'FredokaOne-Regular', color: '#555' },
@@ -302,7 +358,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-around',
     paddingVertical: hp('2%'),
-    backgroundColor: 'rgba(255,255,255,0.8)',
+    backgroundColor: 'rgba(255, 255, 255, 0.8)',
     borderRadius: 30,
     borderWidth: 3,
     borderColor: '#000',
@@ -344,18 +400,8 @@ const styles = StyleSheet.create({
     borderColor: '#555',
   },
   completed: { backgroundColor: '#4CD964' },
+  incomplete: { backgroundColor: '#D9D9D9' },
   achievementTitle: { fontSize: wp('4.2%'), fontFamily: 'FredokaOne-Regular' },
-  chartButton: {
-    width: wp('80%'),
-    height: hp('8%'),
-    borderRadius: 25,
-    borderWidth: 3,
-    borderColor: '#000',
-    backgroundColor: '#5bc0de',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  chartButtonText: { color: '#fff', fontSize: wp('5.5%'), fontFamily: 'FredokaOne-Regular' },
   gamesButton: {
     width: wp('80%'),
     height: hp('8%'),
@@ -366,7 +412,26 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  gamesButtonText: { color: '#1E1E1E', fontSize: wp('6%'), fontFamily: 'FredokaOne-Regular' },
+  gamesButtonText: {
+    color: '#1E1E1E',
+    fontSize: wp('6%'),
+    fontFamily: 'FredokaOne-Regular',
+  },
+  chartButton: {
+    width: wp('80%'),
+    height: hp('8%'),
+    borderRadius: 25,
+    borderWidth: 3,
+    borderColor: '#000',
+    backgroundColor: '#5bc0de',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  chartButtonText: {
+    color: '#fff',
+    fontSize: wp('5.5%'),
+    fontFamily: 'FredokaOne-Regular',
+  },
   reminderSection: { paddingBottom: hp('2%') },
   reminderHeader: {
     flexDirection: 'row',
@@ -391,13 +456,25 @@ const styles = StyleSheet.create({
     borderColor: '#ccc',
   },
   editTimeButtonText: { fontSize: wp('3.5%'), color: '#333', fontFamily: 'FredokaOne-Regular' },
-  testButton: {
-    backgroundColor: '#6c757d',
-    paddingVertical: hp('1%'),
-    paddingHorizontal: wp('4%'),
-    borderRadius: 15,
-    marginTop: hp('2%'),
+  timeEditor: { alignItems: 'center', padding: wp('3%'), backgroundColor: '#f8f9fa', borderRadius: 15, width: '100%' },
+  editingTimeLabel: { fontSize: wp('4.5%'), fontFamily: 'FredokaOne-Regular', marginBottom: hp('1.5%') },
+  timeAdjustRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
+  timeValue: { fontSize: wp('5%'), fontFamily: 'FredokaOne-Regular', marginHorizontal: wp('3%') },
+  smallButton: {
+    width: wp('12%'),
+    height: hp('5%'),
+    borderRadius: 8,
+    borderWidth: 1.5,
+    borderColor: '#adb5bd',
+    backgroundColor: '#e9ecef',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
+  smallButtonText: { color: '#495057', fontSize: wp('4.5%'), fontWeight: 'bold' },
+  editorButtons: { flexDirection: 'row', justifyContent: 'space-around', width: '80%', marginTop: hp('1%') },
+  smallActionButton: { paddingVertical: hp('1%'), paddingHorizontal: wp('6%'), borderRadius: 20 },
+  smallActionText: { color: '#fff', fontSize: wp('4%'), fontFamily: 'FredokaOne-Regular' },
+  testButton: { backgroundColor: '#6c757d', paddingVertical: hp('1%'), paddingHorizontal: wp('4%'), borderRadius: 15, marginTop: hp('2%') },
   testButtonText: { color: '#fff', fontSize: wp('3.5%'), fontFamily: 'FredokaOne-Regular' },
   bottomButtonContainer: { width: wp('90%'), alignItems: 'center', marginTop: hp('2%'), marginBottom: hp('3%') },
   actionButton: {
