@@ -1,30 +1,26 @@
 import React, { useState } from "react";
-import {
-  View,
-  Text,
-  StyleSheet,
-  Image,
-  StatusBar,
-} from "react-native";
+import { View, Text, StyleSheet, Image, StatusBar } from "react-native";
 import Button from "@/components/Button";
 import { responsive } from "@/utils/responsive";
 import { checkNetworkOnce } from "@/utils/networkMonitor";
 
 interface NetworkLostProps {
+  /** Optional callback to retry network-dependent actions */
   onRetry?: () => Promise<void> | void;
 }
 
 const NetworkLost: React.FC<NetworkLostProps> = ({ onRetry }) => {
   const [loading, setLoading] = useState(false);
 
-  const handleRetry = async () => {
+  const handleRetry = async (): Promise<void> => {
     if (loading) return;
     setLoading(true);
+
     try {
       const connected = await checkNetworkOnce();
       if (connected) {
         console.log("✅ Connection restored. Retrying sync...");
-        if (onRetry) await onRetry();
+        await onRetry?.();
       } else {
         console.warn("📴 Still offline. Retry failed.");
       }
@@ -62,6 +58,7 @@ const NetworkLost: React.FC<NetworkLostProps> = ({ onRetry }) => {
         paddingHorizontal={responsive.buttonHeight * 0.8}
         marginTop={responsive.screenHeight * 0.03}
         loading={loading}
+        disabled={loading}
       />
     </View>
   );

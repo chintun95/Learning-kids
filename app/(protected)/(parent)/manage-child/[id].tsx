@@ -4,12 +4,16 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
-  Modal,
   ScrollView,
   StatusBar,
   ActivityIndicator,
+  Platform,
 } from "react-native";
-import { useLocalSearchParams } from "expo-router";
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import {
   format,
   differenceInYears,
@@ -19,69 +23,84 @@ import {
   isWithinInterval,
 } from "date-fns";
 import { Ionicons } from "@expo/vector-icons";
-import DateTimePickerModal from "react-native-modal-datetime-picker";
 import ProfileIcon from "@/components/ProfileIcon";
 import EmergencyContactModal from "@/components/EmergencyContactModal";
 import { responsive } from "@/utils/responsive";
-import Button from "@/components/Button";
 import InputBox from "@/components/InputBox";
 import { useChildById } from "@/services/fetchChildren";
 import { useUpdateChildByParent } from "@/services/updateChild";
-import { useSessionsByChildId } from "@/services/fetchSession"; // ✅ NEW
+import { useSessionsByChildId } from "@/services/fetchSession";
 
 export default function ManageChildIndex() {
+  const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
+  const insets = useSafeAreaInsets();
 
-  const [showPinModal, setShowPinModal] = useState(false);
-  const [showEditPinModal, setShowEditPinModal] = useState(false);
-  const [pinValue, setPinValue] = useState("");
+  // State management
   const [showEmergencyModal, setShowEmergencyModal] = useState(false);
   const [showEditNameModal, setShowEditNameModal] = useState(false);
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
-  const [showStartPicker, setShowStartPicker] = useState(false);
-  const [showEndPicker, setShowEndPicker] = useState(false);
   const [startDate, setStartDate] = useState<Date | null>(null);
   const [endDate, setEndDate] = useState<Date | null>(null);
 
-  // Fetch child data
-  const { data: child, isLoading } = useChildById(id);
+  // Data fetching
+  const { data: child, isLoading: isLoadingChild } = useChildById(id);
   const { mutate: updateChildByParent } = useUpdateChildByParent();
+  const {
+    data: sessions = [],
+    isLoading: isLoadingSessions,
+    isError: isSessionError,
+    error: sessionError,
+  } = useSessionsByChildId(id ?? null);
 
-  // ✅ Fetch session data from Supabase
-  const { data: sessions = [], isLoading: isLoadingSessions } =
-    useSessionsByChildId(id);
-
-  if (isLoading || isLoadingSessions) {
+  // Loading & Error
+  if (isLoadingChild || isLoadingSessions) {
     return (
-      <View style={styles.centered}>
-        <ActivityIndicator size="large" color="#4F46E5" />
-        <Text style={styles.loadingText}>Loading child data...</Text>
-      </View>
+      <SafeAreaView style={styles.safeContainer} edges={["top", "bottom"]}>
+        <View style={styles.centered}>
+          <ActivityIndicator size="large" color="#4F46E5" />
+          <Text style={styles.loadingText}>Loading child data...</Text>
+        </View>
+      </SafeAreaView>
     );
   }
 
   if (!child) {
     return (
-      <View style={styles.centered}>
-        <Text style={styles.notFoundText}>Child not found</Text>
-      </View>
+      <SafeAreaView style={styles.safeContainer} edges={["top", "bottom"]}>
+        <View style={styles.centered}>
+          <Text style={styles.notFoundText}>Child not found</Text>
+        </View>
+      </SafeAreaView>
     );
   }
 
-  // Prepare DOB
+  if (isSessionError) {
+    return (
+      <SafeAreaView style={styles.safeContainer} edges={["top", "bottom"]}>
+        <View style={styles.centered}>
+          <Text style={styles.notFoundText}>
+            Failed to load session data: {(sessionError as Error)?.message}
+          </Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  // --- Data prep ---
   const dob = parseISO(child.dateOfBirth);
   const age = differenceInYears(new Date(), dob);
   const formattedDob = format(dob, "MM/dd/yyyy");
 
   // --- Filter sessions ---
-  let childSessions = sessions.filter((s) => s.childid === child.id);
+  let filteredSessions = sessions.filter((s) => s.childid === child.id);
   if (startDate && endDate) {
-    childSessions = childSessions.filter((s) =>
+    filteredSessions = filteredSessions.filter((s) =>
       isWithinInterval(parseISO(s.date), { start: startDate, end: endDate })
     );
   }
-  childSessions.sort((a, b) =>
+  filteredSessions.sort((a, b) =>
     compareDesc(
       parseISO(`${a.date}T${a.starttime}`),
       parseISO(`${b.date}T${b.starttime}`)
@@ -89,33 +108,29 @@ export default function ManageChildIndex() {
   );
 
   // --- Group sessions ---
-  const groupedSessions: Record<string, typeof childSessions> = {};
-  childSessions.forEach((session) => {
+  const groupedSessions: Record<string, typeof filteredSessions> = {};
+  filteredSessions.forEach((session) => {
     const sessionDate = parseISO(session.date);
-    const groupKey = isToday(sessionDate)
+    const key = isToday(sessionDate)
       ? "Today"
       : format(sessionDate, "MMMM yyyy");
-    if (!groupedSessions[groupKey]) groupedSessions[groupKey] = [];
-    groupedSessions[groupKey].push(session);
+    if (!groupedSessions[key]) groupedSessions[key] = [];
+    groupedSessions[key].push(session);
   });
   if (!groupedSessions["Today"]) groupedSessions["Today"] = [];
 
   const groupKeys = Object.keys(groupedSessions).sort((a, b) => {
     if (a === "Today") return -1;
     if (b === "Today") return 1;
-    if (groupedSessions[a].length === 0) return 1;
-    if (groupedSessions[b].length === 0) return -1;
     return compareDesc(
       parseISO(groupedSessions[a][0].date),
       parseISO(groupedSessions[b][0].date)
     );
   });
 
-  const hasAnySession = childSessions.length > 0;
+  const hasAnySession = filteredSessions.length > 0;
 
-  // ------------------------------
-  // Handle Edit Child Name
-  // ------------------------------
+  // --- Edit Name ---
   const handleEditNamePress = () => {
     setFirstName(child.firstName);
     setLastName(child.lastName);
@@ -125,23 +140,54 @@ export default function ManageChildIndex() {
   const handleSaveName = () => {
     updateChildByParent({
       childId: child.id,
-      updates: {
-        firstname: firstName.trim(),
-        lastname: lastName.trim(),
-      },
+      updates: { firstname: firstName.trim(), lastname: lastName.trim() },
     });
     setShowEditNameModal(false);
   };
 
+  // --- Navigate back ---
+  const handleGoBack = () => {
+    router.push("/(protected)/(parent)/(tabs)");
+  };
+
   return (
-    <View style={{ flex: 1 }}>
+    <SafeAreaView style={styles.safeContainer} edges={["top", "bottom"]}>
       <StatusBar
         translucent
         backgroundColor="transparent"
         barStyle="dark-content"
       />
-      <ScrollView style={styles.container}>
-        {/* Header Section */}
+
+      {/* Header */}
+      <View
+        style={[
+          styles.topHeader,
+          {
+            paddingTop: Platform.OS === "android" ? insets.top + 4 : insets.top,
+          },
+        ]}
+      >
+        <Text style={styles.headerTitle}>
+          Manage {child.firstName} {child.lastName} Data
+        </Text>
+        <TouchableOpacity onPress={handleGoBack} style={styles.closeButton}>
+          <Ionicons
+            name="close"
+            size={responsive.screenWidth * 0.06}
+            color="#111827"
+          />
+        </TouchableOpacity>
+      </View>
+
+      {/* ScrollView */}
+      <ScrollView
+        style={styles.scrollContainer}
+        contentContainerStyle={{
+          paddingBottom: insets.bottom + responsive.screenHeight * 0.05,
+        }}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Child Info */}
         <View style={styles.headerSection}>
           <ProfileIcon
             source={child.profilePicture}
@@ -167,12 +213,6 @@ export default function ManageChildIndex() {
               Date of Birth: {formattedDob} ({age} yrs)
             </Text>
             <TouchableOpacity
-              onPress={() => setShowPinModal(true)}
-              style={styles.linkButton}
-            >
-              <Text style={styles.linkText}>Manage Profile Pin</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
               onPress={() => setShowEmergencyModal(true)}
               style={styles.linkButton}
             >
@@ -183,21 +223,9 @@ export default function ManageChildIndex() {
 
         <View style={styles.separator} />
 
-        {/* Activity Section */}
+        {/* Activity Tracker */}
         <View style={styles.activityHeader}>
           <Text style={styles.activityTitle}>Activity Tracker</Text>
-          <TouchableOpacity
-            style={styles.filterButton}
-            onPress={() => setShowStartPicker(true)}
-          >
-            <Text style={styles.filterText}>Filter by Date</Text>
-            <Ionicons
-              name="filter"
-              size={responsive.screenWidth * 0.045}
-              color="#4F46E5"
-              style={{ marginLeft: responsive.screenWidth * 0.015 }}
-            />
-          </TouchableOpacity>
         </View>
 
         <View style={styles.activityList}>
@@ -206,61 +234,54 @@ export default function ManageChildIndex() {
               No Activity Logged for {child.firstName}
             </Text>
           ) : (
-            groupKeys.map((groupKey) => (
-              <View key={groupKey} style={styles.group}>
+            groupKeys.map((key) => (
+              <View key={key} style={styles.group}>
                 <View style={{ flexDirection: "row", alignItems: "center" }}>
-                  <Text style={styles.groupTitle}>{groupKey}</Text>
-                  {groupKey === "Today" && (
+                  <Text style={styles.groupTitle}>{key}</Text>
+                  {key === "Today" && (
                     <Text style={styles.todayNote}> (Always included)</Text>
                   )}
                 </View>
 
-                {groupedSessions[groupKey].length === 0 ? (
-                  <Text style={styles.noActivityText}>
-                    No Activity Logged for {child.firstName}
-                  </Text>
-                ) : (
-                  groupedSessions[groupKey].map((session) => {
-                    const startTime = session.starttime;
-                    const endTime = session.endtime ?? "__";
-                    const sessionDate = format(
-                      parseISO(session.date),
-                      "MM/dd/yyyy"
-                    );
-                    return (
-                      <View key={session.id} style={styles.sessionItem}>
-                        <View style={styles.sessionHeader}>
-                          <Text style={styles.activityType}>
-                            {session.activitytype}
-                          </Text>
-                          <Text style={styles.sessionStatus}>
-                            {session.sessionstatus}
-                          </Text>
-                        </View>
-                        <Text style={styles.sessionDate}>
-                          {sessionDate} | {startTime} - {endTime}
+                {groupedSessions[key].map((session) => {
+                  const startTime = session.starttime;
+                  const endTime = session.endtime ?? "__";
+                  const sessionDate = format(
+                    parseISO(session.date),
+                    "MM/dd/yyyy"
+                  );
+
+                  return (
+                    <View key={session.id} style={styles.sessionItem}>
+                      <View style={styles.sessionHeader}>
+                        <Text style={styles.activityType}>
+                          {session.activitytype}
                         </Text>
-                        <Text style={styles.sessionDetails}>
-                          {session.sessiondetails || "No details"}
+                        <Text style={styles.sessionStatus}>
+                          {session.sessionstatus}
                         </Text>
                       </View>
-                    );
-                  })
-                )}
+                      <Text style={styles.sessionDate}>
+                        {sessionDate} | {startTime} - {endTime}
+                      </Text>
+                      <Text style={styles.sessionDetails}>
+                        {session.sessiondetails || "No details"}
+                      </Text>
+                    </View>
+                  );
+                })}
               </View>
             ))
           )}
         </View>
-
-        {/* Modals remain unchanged */}
-        {/* ... (Edit Name, Pin, EmergencyContactModal, Date Pickers) */}
       </ScrollView>
-    </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#F9FAFB" },
+  safeContainer: { flex: 1, backgroundColor: "#F9FAFB" },
+  scrollContainer: { flex: 1, backgroundColor: "#F9FAFB" },
   centered: { flex: 1, justifyContent: "center", alignItems: "center" },
   loadingText: {
     fontFamily: "Fredoka-Regular",
@@ -271,6 +292,28 @@ const styles = StyleSheet.create({
     fontFamily: "Fredoka-Regular",
     fontSize: responsive.buttonFontSize,
     color: "#6B7280",
+  },
+  topHeader: {
+    backgroundColor: "#F3F4F6",
+    paddingVertical: responsive.screenHeight * 0.015,
+    paddingHorizontal: responsive.screenWidth * 0.05,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    borderBottomWidth: 1,
+    borderBottomColor: "#E5E7EB",
+  },
+  headerTitle: {
+    fontSize: responsive.buttonFontSize * 1.05,
+    fontFamily: "Fredoka-SemiBold",
+    color: "#111827",
+    textAlign: "center",
+  },
+  closeButton: {
+    position: "absolute",
+    right: responsive.screenWidth * 0.05,
+    top: responsive.screenHeight * 0.018,
+    padding: 4,
   },
   headerSection: {
     flexDirection: "column",
@@ -290,9 +333,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  editIconButton: {
-    marginLeft: responsive.screenWidth * 0.001,
-  },
+  editIconButton: { marginLeft: responsive.screenWidth * 0.01 },
   nameText: {
     fontSize: responsive.buttonFontSize * 1.1,
     fontFamily: "Fredoka-Bold",
@@ -330,13 +371,6 @@ const styles = StyleSheet.create({
     fontSize: responsive.buttonFontSize,
     fontFamily: "Fredoka-SemiBold",
     color: "#111827",
-  },
-  filterButton: { flexDirection: "row", alignItems: "center" },
-  filterText: {
-    fontSize: responsive.buttonFontSize * 0.8,
-    fontFamily: "Fredoka-Medium",
-    color: "#4F46E5",
-    textDecorationLine: "underline",
   },
   activityList: { paddingHorizontal: responsive.screenWidth * 0.05 },
   group: { marginBottom: responsive.screenHeight * 0.03 },
@@ -394,33 +428,5 @@ const styles = StyleSheet.create({
     color: "#6B7280",
     textAlign: "center",
     marginTop: responsive.screenHeight * 0.02,
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.4)",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  modalContent: {
-    width: "90%",
-    backgroundColor: "#ffffff",
-    borderRadius: 16,
-    padding: responsive.screenWidth * 0.04,
-  },
-  modalClose: {
-    position: "absolute",
-    top: responsive.screenHeight * 0.01,
-    right: responsive.screenWidth * 0.03,
-  },
-  modalTitle: {
-    fontSize: responsive.buttonFontSize,
-    fontFamily: "Fredoka-Bold",
-    marginBottom: responsive.screenHeight * 0.015,
-  },
-  modalText: {
-    fontSize: responsive.buttonFontSize * 0.8,
-    fontFamily: "Fredoka-Medium",
-    marginBottom: responsive.screenHeight * 0.01,
-    color: "#111827",
   },
 });

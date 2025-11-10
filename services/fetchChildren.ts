@@ -9,7 +9,7 @@ import { Tables } from "@/types/database.types";
 type ChildRow = Tables<"Child">;
 type EmergencyContactRow = Tables<"EmergencyContact">;
 
-// --- Custom joined type for Supabase query results ---
+// --- Joined type for Supabase query results ---
 interface ChildWithRelations extends ChildRow {
   Parent?: { emailaddress: string } | null;
   EmergencyContact?: Partial<EmergencyContactRow> | null;
@@ -23,7 +23,7 @@ const profileIconMap: Record<string, any> = {
   "avatar4.png": require("@/assets/profile-icons/avatar4.png"),
 };
 
-// --- Resolve local asset ---
+// --- Resolve local asset safely ---
 function resolveProfileIcon(path?: string | null): any {
   if (!path) return require("@/assets/profile-icons/avatar1.png");
   const filename = path.split("/").pop()?.trim();
@@ -55,13 +55,30 @@ export type ChildCardModel = {
 };
 
 // --------------------
-// Fetch children by parent email
+// Core data fetcher
 // --------------------
 export async function fetchChildrenByParentEmail(
   emailAddress: string
 ): Promise<ChildCardModel[]> {
   if (!emailAddress) return [];
 
+  // Step 1: Lookup parent ID using email (guaranteed unique)
+  const { data: parent, error: parentError } = await supabase
+    .from("Parent")
+    .select("id")
+    .eq("emailaddress", emailAddress.trim().toLowerCase())
+    .maybeSingle();
+
+  if (parentError) {
+    console.error("❌ fetchChildren: failed to find parent:", parentError);
+    throw new Error(parentError.message);
+  }
+  if (!parent) {
+    console.warn("⚠️ No parent record found for:", emailAddress);
+    return [];
+  }
+
+  // Step 2: Fetch children linked to parent_id
   const { data, error } = await supabase
     .from("Child")
     .select(
@@ -76,46 +93,51 @@ export async function fetchChildrenByParentEmail(
       parent_id,
       user_id,
       emergencycontact_id,
-      Parent:parent_id ( emailaddress ),
       EmergencyContact:emergencycontact_id (
         name, relationship, phonenumber, streetaddress, city, state, zipcode
       )
     `
     )
-    .eq("Parent.emailaddress", emailAddress)
+    .eq("parent_id", parent.id)
     .order("firstname", { ascending: true })
     .order("lastname", { ascending: true });
 
-  if (error) throw new Error(error.message);
+  if (error) {
+    console.error("❌ fetchChildren: failed to load children:", error);
+    throw new Error(error.message);
+  }
 
-  return (
-    (data as ChildWithRelations[])?.map((c) => {
-      const ec = c.EmergencyContact ?? {};
+  if (!data || data.length === 0) {
+    console.log("ℹ️ No children linked to parent:", emailAddress);
+    return [];
+  }
 
-      return {
-        id: c.id,
-        firstName: c.firstname,
-        lastName: c.lastname,
-        activityStatus: c.activitystatus as "active" | "pending" | "inactive",
-        profilePin: c.profilepin,
-        profilePicture: resolveProfileIcon(c.profilepicture),
-        dateOfBirth: c.dateofbirth,
-        emergencyContact: {
-          name: ec.name ?? "",
-          relationship: ec.relationship ?? "",
-          phoneNumber: ec.phonenumber ?? "",
-          streetAddress: ec.streetaddress ?? "",
-          city: ec.city ?? "",
-          state: ec.state ?? "",
-          zipcode: ec.zipcode ?? "",
-        },
-      };
-    }) ?? []
-  );
+  return data.map((c: ChildWithRelations) => {
+    const ec = c.EmergencyContact ?? {};
+    return {
+      id: c.id,
+      firstName: c.firstname,
+      lastName: c.lastname,
+      activityStatus:
+        (c.activitystatus as "active" | "pending" | "inactive") ?? "inactive",
+      profilePin: c.profilepin,
+      profilePicture: resolveProfileIcon(c.profilepicture),
+      dateOfBirth: c.dateofbirth,
+      emergencyContact: {
+        name: ec.name ?? "",
+        relationship: ec.relationship ?? "",
+        phoneNumber: ec.phonenumber ?? "",
+        streetAddress: ec.streetaddress ?? "",
+        city: ec.city ?? "",
+        state: ec.state ?? "",
+        zipcode: ec.zipcode ?? "",
+      },
+    };
+  });
 }
 
 // --------------------
-// React Query hook (real-time sync)
+// React Query hook
 // --------------------
 export function useChildrenByParentEmail(emailAddress?: string) {
   const queryClient = useQueryClient();
@@ -127,6 +149,7 @@ export function useChildrenByParentEmail(emailAddress?: string) {
     staleTime: 1000 * 30,
   });
 
+  // Live updates
   useEffect(() => {
     if (!emailAddress) return;
 
@@ -152,7 +175,7 @@ export function useChildrenByParentEmail(emailAddress?: string) {
 }
 
 // --------------------
-// Fetch a single child by ID (type-safe, real-time compatible)
+// Fetch a single child by ID
 // --------------------
 export async function fetchChildById(
   childId: string
@@ -170,8 +193,6 @@ export async function fetchChildById(
       profilepin,
       profilepicture,
       dateofbirth,
-      parent_id,
-      user_id,
       emergencycontact_id,
       EmergencyContact:emergencycontact_id (
         name, relationship, phonenumber, streetaddress, city, state, zipcode
@@ -181,19 +202,20 @@ export async function fetchChildById(
     .eq("id", childId)
     .single();
 
-  if (error) throw new Error(error.message);
+  if (error) {
+    console.error("❌ fetchChildById error:", error);
+    throw new Error(error.message);
+  }
 
-  const c = data as ChildWithRelations;
-  const ec = c.EmergencyContact ?? {};
-
+  const ec = (data as ChildWithRelations)?.EmergencyContact ?? {};
   return {
-    id: c.id,
-    firstName: c.firstname,
-    lastName: c.lastname,
-    activityStatus: c.activitystatus as "active" | "pending" | "inactive",
-    profilePin: c.profilepin,
-    profilePicture: resolveProfileIcon(c.profilepicture),
-    dateOfBirth: c.dateofbirth,
+    id: data.id,
+    firstName: data.firstname,
+    lastName: data.lastname,
+    activityStatus: data.activitystatus as "active" | "pending" | "inactive",
+    profilePin: data.profilepin,
+    profilePicture: resolveProfileIcon(data.profilepicture),
+    dateOfBirth: data.dateofbirth,
     emergencyContact: {
       name: ec.name ?? "",
       relationship: ec.relationship ?? "",
@@ -207,7 +229,7 @@ export async function fetchChildById(
 }
 
 // --------------------
-// React Query hook for one child (real-time)
+// Real-time child-by-id hook
 // --------------------
 export function useChildById(childId?: string) {
   const queryClient = useQueryClient();

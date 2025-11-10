@@ -26,6 +26,7 @@ export const SignOutButton: React.FC = () => {
   const { endSession, resetSession } = useSessionStore();
   const setRole = useAuthStore((state) => state.setRole);
   const role = useAuthStore((state) => state.role);
+   const setParentSynced = useAuthStore((state) => state.setParentSynced);
   const { getCurrentChild } = useChildAuthStore();
 
   // Mutation: mark child inactive
@@ -92,6 +93,7 @@ export const SignOutButton: React.FC = () => {
       // 4️⃣ Reset local state
       resetSession();
       setRole("default");
+      setParentSynced(false);
 
       logState("After Sign Out");
 

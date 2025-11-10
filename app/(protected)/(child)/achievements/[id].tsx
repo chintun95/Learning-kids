@@ -6,8 +6,7 @@ import {
   StatusBar,
   Platform,
   TouchableOpacity,
-  SectionList,
-  ScrollView,
+  FlatList,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -26,7 +25,6 @@ export default function ChildAchievementsScreen() {
   const [earnedCollapsed, setEarnedCollapsed] = useState(false);
   const [notEarnedCollapsed, setNotEarnedCollapsed] = useState(false);
 
-  // Fetch data on mount
   useEffect(() => {
     if (childId) fetchChildAchievements(childId);
   }, [childId, fetchChildAchievements]);
@@ -50,8 +48,8 @@ export default function ChildAchievementsScreen() {
     [allAchievements]
   );
 
-  // Group earned by month-year for SectionList
-  const groupedEarned = useMemo(() => {
+  // Group earned achievements by month-year
+  const groupedEarnedData = useMemo(() => {
     const groups: Record<string, typeof earnedAchievements> = {};
     earnedAchievements.forEach((a) => {
       const date = new Date(a.dateearned);
@@ -62,8 +60,135 @@ export default function ChildAchievementsScreen() {
       if (!groups[key]) groups[key] = [];
       groups[key].push(a);
     });
-    return Object.entries(groups).map(([title, data]) => ({ title, data }));
+
+    // Flatten into array for FlatList rendering
+    return Object.entries(groups).flatMap(([monthYear, items]) => [
+      { type: "header", id: monthYear, title: monthYear },
+      ...items.map((a) => ({ type: "item", ...a })),
+    ]);
   }, [earnedAchievements]);
+
+  // Combined list for "All" toggle
+  const allData = useMemo(() => {
+    const data: any[] = [];
+
+    data.push({ type: "header", id: "earned-header", title: "Earned" });
+    if (!earnedCollapsed) {
+      if (earnedAchievements.length > 0) {
+        data.push(
+          ...earnedAchievements.map((a) => ({
+            type: "item",
+            ...a,
+            earned: true,
+          }))
+        );
+      } else {
+        data.push({ type: "empty-earned", id: "no-earned" });
+      }
+    }
+
+    data.push({ type: "header", id: "not-earned-header", title: "Not Earned" });
+    if (!notEarnedCollapsed) {
+      if (notEarnedAchievements.length > 0) {
+        data.push(
+          ...notEarnedAchievements.map((a) => ({
+            type: "item",
+            ...a,
+            earned: false,
+          }))
+        );
+      } else {
+        data.push({ type: "all-earned", id: "all-earned" });
+      }
+    }
+
+    return data;
+  }, [
+    earnedAchievements,
+    notEarnedAchievements,
+    earnedCollapsed,
+    notEarnedCollapsed,
+  ]);
+
+  // Render function for FlatList
+  const renderItem = ({ item }: any) => {
+    if (item.type === "header") {
+      const isEarned = item.id === "earned-header";
+      const isNotEarned = item.id === "not-earned-header";
+      return (
+        <TouchableOpacity
+          style={styles.collapsibleHeader}
+          onPress={() => {
+            if (isEarned) setEarnedCollapsed(!earnedCollapsed);
+            if (isNotEarned) setNotEarnedCollapsed(!notEarnedCollapsed);
+          }}
+        >
+          <Text style={styles.sectionHeaderText}>{item.title}</Text>
+          {isEarned || isNotEarned ? (
+            <Ionicons
+              name={
+                (isEarned && earnedCollapsed) ||
+                (isNotEarned && notEarnedCollapsed)
+                  ? "chevron-down"
+                  : "chevron-up"
+              }
+              size={responsive.screenWidth * 0.05}
+              color="#111827"
+            />
+          ) : null}
+        </TouchableOpacity>
+      );
+    }
+
+    if (item.type === "empty-earned") {
+      return (
+        <Text style={styles.noAchievementsText}>
+          No earned achievements yet.
+        </Text>
+      );
+    }
+
+    if (item.type === "all-earned") {
+      return (
+        <Text style={styles.congratsText}>
+          All Achievements Earned. Congrats 🎉!!
+        </Text>
+      );
+    }
+
+    if (item.type === "item") {
+      return (
+        <View style={styles.achievementCard}>
+          <View style={styles.row}>
+            <Text style={styles.achievementTitle}>
+              {item.achievement?.title ?? "Untitled Achievement"}
+            </Text>
+            {showEarnedOnly ? (
+              <Text style={styles.achievementDate}>
+                {new Date(item.dateearned).toLocaleDateString()}
+              </Text>
+            ) : (
+              <Text
+                style={[
+                  styles.statusText,
+                  item.earned ? styles.statusEarned : styles.statusNotEarned,
+                ]}
+              >
+                {item.earned ? "Earned" : "Not Earned"}
+              </Text>
+            )}
+          </View>
+          {item.achievement?.description ? (
+            <Text style={styles.achievementDescription}>
+              {item.achievement.description}
+            </Text>
+          ) : null}
+        </View>
+      );
+    }
+
+    return null;
+  };
 
   return (
     <View style={styles.container}>
@@ -125,124 +250,20 @@ export default function ChildAchievementsScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* --- Earned Only Section --- */}
       {loading ? (
         <Text style={styles.loadingText}>Loading achievements...</Text>
       ) : allAchievements.length === 0 ? (
         <Text style={styles.noAchievementsText}>No achievements found.</Text>
-      ) : showEarnedOnly ? (
-        <ScrollView
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={styles.scrollContent}
-        >
-          <SectionList
-            sections={groupedEarned}
-            keyExtractor={(item) => item.id}
-            scrollEnabled={false}
-            renderSectionHeader={({ section: { title } }) => (
-              <Text style={styles.sectionHeader}>{title}</Text>
-            )}
-            renderItem={({ item }) => (
-              <View style={styles.achievementCard}>
-                <View style={styles.row}>
-                  <Text style={styles.achievementTitle}>
-                    {item.achievement?.title ?? "Untitled Achievement"}
-                  </Text>
-                  <Text style={styles.achievementDate}>
-                    {new Date(item.dateearned).toLocaleDateString()}
-                  </Text>
-                </View>
-                {item.achievement?.description ? (
-                  <Text style={styles.achievementDescription}>
-                    {item.achievement.description}
-                  </Text>
-                ) : null}
-              </View>
-            )}
-          />
-        </ScrollView>
       ) : (
-        // --- All Section ---
-        <ScrollView
+        <FlatList
+          data={showEarnedOnly ? groupedEarnedData : allData}
+          keyExtractor={(item) => item.id ?? Math.random().toString()}
+          renderItem={renderItem}
           showsVerticalScrollIndicator={false}
-          contentContainerStyle={styles.scrollContent}
-        >
-          {/* EARNED SECTION */}
-          <TouchableOpacity
-            onPress={() => setEarnedCollapsed(!earnedCollapsed)}
-            style={styles.collapsibleHeader}
-          >
-            <Text style={styles.sectionHeaderText}>Earned</Text>
-            <Ionicons
-              name={earnedCollapsed ? "chevron-down" : "chevron-up"}
-              size={responsive.screenWidth * 0.05}
-              color="#111827"
-            />
-          </TouchableOpacity>
-
-          {!earnedCollapsed &&
-            (earnedAchievements.length > 0 ? (
-              earnedAchievements.map((item) => (
-                <View key={item.id} style={styles.achievementCard}>
-                  <View style={styles.row}>
-                    <Text style={styles.achievementTitle}>
-                      {item.achievement?.title ?? "Untitled Achievement"}
-                    </Text>
-                    <Text style={[styles.statusText, styles.statusEarned]}>
-                      Earned
-                    </Text>
-                  </View>
-                  {item.achievement?.description ? (
-                    <Text style={styles.achievementDescription}>
-                      {item.achievement.description}
-                    </Text>
-                  ) : null}
-                </View>
-              ))
-            ) : (
-              <Text style={styles.noAchievementsText}>
-                No earned achievements yet.
-              </Text>
-            ))}
-
-          {/* NOT EARNED SECTION */}
-          <TouchableOpacity
-            onPress={() => setNotEarnedCollapsed(!notEarnedCollapsed)}
-            style={styles.collapsibleHeader}
-          >
-            <Text style={styles.sectionHeaderText}>Not Earned</Text>
-            <Ionicons
-              name={notEarnedCollapsed ? "chevron-down" : "chevron-up"}
-              size={responsive.screenWidth * 0.05}
-              color="#111827"
-            />
-          </TouchableOpacity>
-
-          {!notEarnedCollapsed &&
-            (notEarnedAchievements.length > 0 ? (
-              notEarnedAchievements.map((item) => (
-                <View key={item.id} style={styles.achievementCard}>
-                  <View style={styles.row}>
-                    <Text style={styles.achievementTitle}>
-                      {item.achievement?.title ?? "Untitled Achievement"}
-                    </Text>
-                    <Text style={[styles.statusText, styles.statusNotEarned]}>
-                      Not Earned
-                    </Text>
-                  </View>
-                  {item.achievement?.description ? (
-                    <Text style={styles.achievementDescription}>
-                      {item.achievement.description}
-                    </Text>
-                  ) : null}
-                </View>
-              ))
-            ) : (
-              <Text style={styles.congratsText}>
-                All Achievements Earned. Congrats 🎉!!
-              </Text>
-            ))}
-        </ScrollView>
+          contentContainerStyle={{
+            paddingBottom: responsive.screenHeight * 0.05,
+          }}
+        />
       )}
     </View>
   );
@@ -258,7 +279,6 @@ const styles = StyleSheet.create({
         ? (StatusBar.currentHeight ?? 0) + responsive.screenHeight * 0.025
         : responsive.screenHeight * 0.045,
   },
-
   /** Header Title Row **/
   titleRow: {
     flexDirection: "row",
@@ -278,7 +298,6 @@ const styles = StyleSheet.create({
     right: 0,
     padding: 6,
   },
-
   toggleContainer: {
     flexDirection: "row",
     justifyContent: "center",
@@ -304,11 +323,6 @@ const styles = StyleSheet.create({
   toggleTextActive: {
     color: "#FFFFFF",
   },
-
-  scrollContent: {
-    paddingBottom: responsive.screenHeight * 0.05,
-  },
-
   collapsibleHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -324,15 +338,6 @@ const styles = StyleSheet.create({
     fontSize: responsive.buttonFontSize * 1.1,
     color: "#111827",
   },
-
-  sectionHeader: {
-    fontFamily: "Fredoka-SemiBold",
-    fontSize: responsive.buttonFontSize * 1.05,
-    color: "#1F2937",
-    marginTop: responsive.screenHeight * 0.02,
-    marginBottom: responsive.screenHeight * 0.01,
-  },
-
   achievementCard: {
     backgroundColor: "#FFFFFF",
     borderRadius: 12,
@@ -354,14 +359,12 @@ const styles = StyleSheet.create({
     fontFamily: "Fredoka-Bold",
     fontSize: responsive.buttonFontSize,
     color: "#111827",
-    textAlign: "left",
   },
   achievementDate: {
     flexShrink: 0,
     fontFamily: "Fredoka-Medium",
     fontSize: responsive.buttonFontSize * 0.85,
     color: "#6B7280",
-    textAlign: "right",
   },
   achievementDescription: {
     fontFamily: "Fredoka-Regular",
@@ -373,12 +376,8 @@ const styles = StyleSheet.create({
     fontFamily: "Fredoka-Medium",
     fontSize: responsive.buttonFontSize * 0.9,
   },
-  statusEarned: {
-    color: "#16A34A",
-  },
-  statusNotEarned: {
-    color: "#DC2626",
-  },
+  statusEarned: { color: "#16A34A" },
+  statusNotEarned: { color: "#DC2626" },
   congratsText: {
     fontFamily: "Fredoka-SemiBold",
     fontSize: responsive.buttonFontSize,

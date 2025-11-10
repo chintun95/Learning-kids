@@ -11,7 +11,7 @@ import {
   Keyboard,
   TouchableWithoutFeedback,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import InputBox from "@/components/InputBox";
 import Button from "@/components/Button";
@@ -25,6 +25,7 @@ import {
 import { z } from "zod";
 
 export default function ResetPassword() {
+  const insets = useSafeAreaInsets();
   const router = useRouter();
   const { width: logoWidth, height: logoHeight } = responsive.logoSize();
   const { signIn, setActive } = useSignIn();
@@ -152,21 +153,30 @@ export default function ResetPassword() {
     WebBrowser.openBrowserAsync("https://www.youtube.com/@caseoh_");
 
   return (
-    <SafeAreaView style={styles.container}>
-      <ImageBackground
-        source={require("@/assets/images/app-background.png")}
-        resizeMode="cover"
-        style={StyleSheet.absoluteFillObject}
-      />
+    <ImageBackground
+      source={require("@/assets/images/app-background.png")}
+      resizeMode="cover"
+      imageStyle={{ transform: [{ scale: 1.22 }] }} // same zoom as sign-up
+      style={[
+        styles.background,
+        {
+          paddingTop: insets.top + 8,
+          paddingBottom: insets.bottom + 8,
+        },
+      ]}
+    >
       <KeyboardAvoidingView
         style={{ flex: 1 }}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
-        keyboardVerticalOffset={Platform.OS === "ios" ? 80 : 0}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
       >
         <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
           <ScrollView
             keyboardShouldPersistTaps="handled"
-            contentContainerStyle={styles.scrollContainer}
+            contentContainerStyle={[
+              styles.scrollContainer,
+              { paddingBottom: insets.bottom + responsive.screenHeight * 0.05 },
+            ]}
+            showsVerticalScrollIndicator={false}
           >
             <View style={styles.innerContainer}>
               {/* Logo & header */}
@@ -214,10 +224,9 @@ export default function ResetPassword() {
                       onChangeText={setEmail}
                       keyboardType="email-address"
                       autoCapitalize="none"
+                      error={errors.email}
                     />
-                    {errors.email && (
-                      <Text style={styles.errorText}>{errors.email}</Text>
-                    )}
+
                     <Button
                       title="Send Reset Email"
                       onPress={handleRequestReset}
@@ -236,10 +245,9 @@ export default function ResetPassword() {
                       value={code}
                       iconLeft="key-outline"
                       onChangeText={setCode}
+                      error={errors.code}
                     />
-                    {errors.code && (
-                      <Text style={styles.errorText}>{errors.code}</Text>
-                    )}
+
                     <InputBox
                       label="New Password"
                       placeholder="Enter new password"
@@ -248,10 +256,9 @@ export default function ResetPassword() {
                       iconLeft="lock-closed-outline"
                       iconRight={showPassword ? "eye-off" : "eye"}
                       onIconRightPress={() => setShowPassword(!showPassword)}
+                      error={errors.password}
                     />
-                    {errors.password && (
-                      <Text style={styles.errorText}>{errors.password}</Text>
-                    )}
+
                     <InputBox
                       label="Confirm Password"
                       placeholder="Confirm new password"
@@ -262,12 +269,9 @@ export default function ResetPassword() {
                       onIconRightPress={() =>
                         setShowConfirmPassword(!showConfirmPassword)
                       }
+                      error={errors.confirmPassword}
                     />
-                    {errors.confirmPassword && (
-                      <Text style={styles.errorText}>
-                        {errors.confirmPassword}
-                      </Text>
-                    )}
+
                     {errors.general && (
                       <Text style={styles.errorText}>{errors.general}</Text>
                     )}
@@ -313,36 +317,44 @@ export default function ResetPassword() {
           </ScrollView>
         </TouchableWithoutFeedback>
       </KeyboardAvoidingView>
-    </SafeAreaView>
+    </ImageBackground>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#fff" },
-  scrollContainer: { flexGrow: 1, justifyContent: "space-between" },
-  innerContainer: {
+  background: {
+    flex: 1,
+  },
+  scrollContainer: {
     flexGrow: 1,
     justifyContent: "space-between",
     paddingHorizontal: responsive.screenWidth * 0.05,
-    paddingVertical: responsive.screenHeight * 0.02,
   },
-  logoWrapper: { alignItems: "center", marginBottom: -20 },
+  innerContainer: {
+    flexGrow: 1,
+    justifyContent: "space-between",
+  },
+  logoWrapper: {
+    alignItems: "center",
+    marginTop: responsive.screenHeight * 0.02,
+  },
   headerText: {
     fontFamily: "Fredoka-Bold",
     color: "#000",
-    marginBottom: responsive.screenHeight * 0.003,
     textAlign: "center",
+    marginBottom: responsive.screenHeight * 0.003,
   },
   subText: {
     fontFamily: "Fredoka-Regular",
     color: "#000",
     textAlign: "center",
-    marginBottom: -80,
+    marginBottom: responsive.screenHeight * 0.01,
   },
   formWrapper: {
     flexGrow: 1,
     justifyContent: "flex-start",
     gap: responsive.buttonHeight * 0.025,
+    marginTop: responsive.screenHeight * 0.02,
   },
   centerForm: {
     justifyContent: "center",
@@ -355,8 +367,8 @@ const styles = StyleSheet.create({
   },
   footer: {
     alignItems: "center",
-    marginTop: 16,
-    marginBottom: Platform.OS === "ios" ? 10 : responsive.screenHeight * 0.002,
+    marginTop: responsive.screenHeight * 0.03,
+    marginBottom: responsive.screenHeight * 0.01,
   },
   footerText: {
     color: "#000",
@@ -365,7 +377,7 @@ const styles = StyleSheet.create({
   },
   linkText: {
     fontFamily: "Fredoka-SemiBold",
-    color: "#fff",
+    color: "#ffffff",
     textDecorationLine: "underline",
   },
   footer2Text: {
@@ -375,7 +387,7 @@ const styles = StyleSheet.create({
   },
   link2Text: {
     fontFamily: "Fredoka-SemiBold",
-    color: "#fff",
+    color: "#ffffff",
     textDecorationLine: "underline",
   },
 });

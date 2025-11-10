@@ -4,11 +4,10 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
 import { Tables } from "@/types/database.types";
 
-// Type alias for Session table
 export type SessionRow = Tables<"Session">;
 
 /**
- * Fetch all sessions for a given child ID
+ * Fetch sessions for a specific child ID from Supabase.
  */
 export async function fetchSessionsByChildId(
   childId: string
@@ -23,23 +22,22 @@ export async function fetchSessionsByChildId(
     .order("starttime", { ascending: false });
 
   if (error) throw new Error(error.message);
-  return data as SessionRow[];
+  return data || [];
 }
 
 /**
- * React Query hook to subscribe to session updates for a child in real-time
+ * React Query hook for real-time sessions for a child.
  */
-export function useSessionsByChildId(childId?: string) {
+export function useSessionsByChildId(childId?: string | null) {
   const queryClient = useQueryClient();
 
   const query = useQuery({
     queryKey: ["sessions-for-child", childId],
-    queryFn: () => fetchSessionsByChildId(childId as string),
-    enabled: !!childId,
-    staleTime: 1000 * 30, // 30s
+    queryFn: () => fetchSessionsByChildId(childId!),
+    enabled: !!childId, // ensures it's not called until ID exists
+    staleTime: 1000 * 30,
   });
 
-  // Real-time subscription to Supabase changes
   useEffect(() => {
     if (!childId) return;
 

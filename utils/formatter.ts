@@ -159,8 +159,93 @@ export const emergencyContactSchema = z.object({
 });
 
 // -----------------------------
+// Profile Update Schema
+// -----------------------------
+const MAX_FILE_SIZE = 1024 * 1024 * 5; // 5MB
+const ACCEPTED_IMAGE_MIME_TYPES = [
+  "image/jpeg",
+  "image/jpg",
+  "image/png",
+  "image/webp",
+];
+
+// Use built-in z.any() since React Native returns ImagePicker result objects
+export const updateProfileSchema = z
+  .object({
+    firstName: sanitizedZString()
+      .nullable()
+      .optional()
+      .pipe(z.string().min(2, "First name must be at least 2 characters long")),
+
+    lastName: sanitizedZString()
+      .nullable()
+      .optional()
+      .pipe(z.string().min(2, "Last name must be at least 2 characters long")),
+
+    emailAddress: sanitizedZString()
+      .nullable()
+      .optional()
+      .pipe(z.string().email("Invalid email address")),
+
+    newPassword: z
+      .string()
+      .nullable()
+      .optional()
+      .refine(
+        (val) => !val || val.length >= 12,
+        "Password must be at least 12 characters long"
+      )
+      .refine(
+        (val) =>
+          !val ||
+          /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*()_\-+=\[{\]};:'",.<>/?\\|`~])/.test(
+            val
+          ),
+        "Password must include uppercase, lowercase, number, and special character"
+      ),
+
+    confirmPassword: z
+      .string()
+      .nullable()
+      .optional()
+      .refine(
+        (val) => !val || val.length >= 12,
+        "Password must be at least 12 characters long"
+      ),
+
+    imageSource: z
+      .any()
+      .nullable()
+      .optional()
+      .refine(
+        (file) =>
+          !file ||
+          (file?.size && file.size <= MAX_FILE_SIZE),
+        "Image must be less than 5MB"
+      )
+      .refine(
+        (file) =>
+          !file ||
+          ACCEPTED_IMAGE_MIME_TYPES.includes(file?.type),
+        "Only .jpg, .jpeg, .png, and .webp formats are supported"
+      ),
+  })
+  .refine(
+    (data) =>
+      !data.newPassword ||
+      !data.confirmPassword ||
+      data.newPassword === data.confirmPassword,
+    {
+      message: "Passwords must match",
+      path: ["confirmPassword"],
+    }
+  );
+
+// -----------------------------
 // Helper Functions
 // -----------------------------
+export type UpdateProfileInput = z.infer<typeof updateProfileSchema>;
+
 export function formatSignUp(data: unknown) {
   return signUpSchema.parse(data);
 }

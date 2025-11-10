@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from "react";
+// app/(auth)/index.tsx
+import React, { useState, useEffect, useCallback } from "react";
 import {
   View,
   StyleSheet,
@@ -9,29 +10,46 @@ import {
   TouchableOpacity,
   KeyboardAvoidingView,
   Platform,
-  Linking,
   Alert,
   ActivityIndicator,
+  Keyboard,
+  TouchableWithoutFeedback,
+  Modal,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import * as WebBrowser from "expo-web-browser";
+import * as AuthSession from "expo-auth-session";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
+import { useSSO, useSignIn } from "@clerk/clerk-expo";
 import InputBox from "@/components/InputBox";
 import Button from "@/components/Button";
 import { responsive } from "@/utils/responsive";
-import { useSignIn, useUser } from "@clerk/clerk-expo";
 import { formatSignIn, signInSchema } from "@/utils/formatter";
 import { useAuthStore } from "@/lib/store/authStore";
 import { useChildAuthStore } from "@/lib/store/childAuthStore";
 import { z } from "zod";
 
+// --- Warm up browser for Android SSO
+const useWarmUpBrowser = () => {
+  useEffect(() => {
+    if (Platform.OS !== "android") return;
+    void WebBrowser.warmUpAsync();
+    return () => void WebBrowser.coolDownAsync();
+  }, []);
+};
+
+WebBrowser.maybeCompleteAuthSession();
+
 export default function AuthIndex() {
+  const insets = useSafeAreaInsets();
   const router = useRouter();
   const { width: logoWidth, height: logoHeight } = responsive.logoSize();
-  const { signIn, setActive, isLoaded } = useSignIn();
-  const { user } = useUser();
 
-  const setRole = useAuthStore((role) => role.setRole);
-  const hydrateChildren = useChildAuthStore((state) => state.hydrate);
+  const { signIn, setActive, isLoaded } = useSignIn();
+  const { startSSOFlow } = useSSO();
+
+  const setRole = useAuthStore((r) => r.setRole);
+  const hydrateChildren = useChildAuthStore((s) => s.hydrate);
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -39,18 +57,20 @@ export default function AuthIndex() {
   const [emailError, setEmailError] = useState("");
   const [passwordError, setPasswordError] = useState("");
   const [loadingChildren, setLoadingChildren] = useState(false);
+  const [loadingSSO, setLoadingSSO] = useState(false);
+  const [showRoleModal, setShowRoleModal] = useState(false);
 
-  // --- Real-time validation ---
+  useWarmUpBrowser();
+
+  // --- Validation ---
   useEffect(() => {
     try {
       signInSchema.shape.email.parse(email);
       setEmailError("");
     } catch (err) {
-      if (err instanceof z.ZodError && email.length > 0) {
+      if (err instanceof z.ZodError && email.length > 0)
         setEmailError(err.errors[0]?.message || "Invalid email format");
-      } else {
-        setEmailError("");
-      }
+      else setEmailError("");
     }
   }, [email]);
 
@@ -59,21 +79,17 @@ export default function AuthIndex() {
       signInSchema.shape.password.parse(password);
       setPasswordError("");
     } catch (err) {
-      if (err instanceof z.ZodError && password.length > 0) {
+      if (err instanceof z.ZodError && password.length > 0)
         setPasswordError(err.errors[0]?.message || "Invalid password format");
-      } else {
-        setPasswordError("");
-      }
+      else setPasswordError("");
     }
   }, [password]);
 
-  // --- Secure login handling ---
+  // --- Email/Password Login ---
   const handleLogin = async (role: "parent" | "child") => {
     if (!isLoaded) return;
-
     try {
       const parsed = formatSignIn({ email, password });
-
       const signInAttempt = await signIn.create({
         identifier: parsed.email,
         password: parsed.password,
@@ -83,24 +99,17 @@ export default function AuthIndex() {
         await setActive({ session: signInAttempt.createdSessionId });
         setRole(role);
 
-        // ✅ If parent, go directly to parent area
         if (role === "parent") {
           router.replace("./(protected)/(parent)");
           return;
         }
 
-        // ✅ If child, load children linked to parent email before navigation
         if (role === "child") {
           setLoadingChildren(true);
           try {
-            console.log(
-              `🔄 Fetching children for parent email: ${parsed.email}`
-            );
             await hydrateChildren(parsed.email);
-            console.log("✅ Children loaded into childAuthStore successfully.");
             router.replace("./(protected)/(child)");
-          } catch (err) {
-            console.error("❌ Failed to load children:", err);
+          } catch {
             Alert.alert(
               "Error",
               "Failed to load child profiles. Please try again."
@@ -112,11 +121,10 @@ export default function AuthIndex() {
       } else {
         Alert.alert(
           "Sign-in Incomplete",
-          "Please complete the additional verification steps."
+          "Please complete verification steps."
         );
       }
-    } catch (err) {
-      console.error("Login failed:", err);
+    } catch {
       Alert.alert(
         "Login Failed",
         "Invalid email or password. Please try again."
@@ -124,120 +132,117 @@ export default function AuthIndex() {
     }
   };
 
-  const handleForgotPassword = () => router.push("./(auth)/reset-password");
-  const handleSignUp = () => router.push("./(auth)/sign-up");
-  const handleTermsOfService = () => {
-    Linking.openURL("https://en.wikipedia.org/wiki/Inigo_Montoya").catch(
-      (err) => console.error("Failed to open Terms of Service URL:", err)
-    );
-  };
-  const handleTermsOfConduct = () => {
-    Linking.openURL("https://en.wikipedia.org/wiki/Oscar_Nunez").catch((err) =>
-      console.error("Failed to open Terms of Conduct URL:", err)
-    );
+  // --- SSO Login Handler ---
+  const handleSSOLogin = useCallback(
+    async (strategy: "oauth_google" | "oauth_apple" | "oauth_facebook") => {
+      setLoadingSSO(true);
+      try {
+        const result = await startSSOFlow({
+          strategy,
+          redirectUrl: AuthSession.makeRedirectUri(),
+        });
+
+        // User cancels
+        if (!result || (result as any)?.type === "dismiss") {
+          Alert.alert("Cancelled", "Sign-in cancelled.");
+          setLoadingSSO(false);
+          return;
+        }
+
+        const { createdSessionId, setActive } = result;
+
+        if (!createdSessionId) {
+          router.push("./(auth)/ssoContinue");
+          return;
+        }
+
+        // Activate Clerk session
+        await setActive!({ session: createdSessionId });
+
+        // Show role selection modal instead of auto-redirect
+        setShowRoleModal(true);
+      } catch (err: any) {
+        console.error("SSO Error:", err);
+        if (
+          err?.message?.includes("dismiss") ||
+          err?.error === "user_cancelled"
+        ) {
+          Alert.alert("Cancelled", "SSO sign-in was cancelled.");
+        } else {
+          Alert.alert("Error", "Failed to sign in with selected provider.");
+        }
+      } finally {
+        setLoadingSSO(false);
+      }
+    },
+    [startSSOFlow]
+  );
+
+  // --- Role selection after SSO ---
+  const handleSelectRole = async (role: "parent" | "child") => {
+    setRole(role);
+    setShowRoleModal(false);
+
+    if (role === "parent") {
+      router.replace("./(protected)/(parent)");
+    } else {
+      router.replace("./(protected)/(child)");
+    }
   };
 
-  // --- Loading screen while fetching children ---
-  if (loadingChildren) {
+  const handleTermsOfService = async () =>
+    await WebBrowser.openBrowserAsync(
+      "https://en.wikipedia.org/wiki/Inigo_Montoya"
+    );
+
+  const handleTermsOfConduct = async () =>
+    await WebBrowser.openBrowserAsync(
+      "https://en.wikipedia.org/wiki/Oscar_Nunez"
+    );
+
+  const handleForgotPassword = () => router.push("./(auth)/reset-password");
+  const handleSignUp = () => router.push("./(auth)/sign-up");
+
+  const showGlobalLoader = loadingSSO || loadingChildren;
+
+  if (showGlobalLoader) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#fff" />
-        <Text style={styles.loadingText}>Loading child profiles...</Text>
+        <Text style={styles.loadingText}>
+          {loadingSSO ? "Signing in with SSO..." : "Loading child profiles..."}
+        </Text>
       </View>
     );
   }
 
   return (
-    <SafeAreaView style={styles.container}>
-      <ImageBackground
-        source={require("@/assets/images/app-background.png")}
-        resizeMode="cover"
-        style={StyleSheet.absoluteFillObject}
-      />
-
-      <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-        style={{ flex: 2 }}
+    <ImageBackground
+      source={require("@/assets/images/app-background.png")}
+      resizeMode="cover"
+      imageStyle={{ transform: [{ scale: 1.22 }] }}
+      style={[
+        styles.background,
+        {
+          paddingTop: Math.max(insets.top, 6),
+          paddingBottom: Math.max(insets.bottom, 8),
+        },
+      ]}
+    >
+      {/* --- Role Selection Modal --- */}
+      <Modal
+        visible={showRoleModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowRoleModal(false)}
       >
-        <ScrollView
-          contentContainerStyle={styles.main}
-          keyboardShouldPersistTaps="handled"
-        >
-          {/* Logo */}
-          <View style={styles.logoWrapper}>
-            <Image
-              source={require("@/assets/images/app-logo.png")}
-              style={{
-                width: logoWidth,
-                height: logoHeight,
-                marginBottom: -68,
-                marginTop: -68,
-              }}
-              resizeMode="contain"
-            />
-            <Text
-              style={[
-                styles.loginText,
-                { fontSize: Math.min(25, responsive.signUpFontSize) },
-              ]}
-            >
-              Log In with Email
-            </Text>
-          </View>
-
-          {/* Form */}
-          <View style={styles.formContainer}>
-            <InputBox
-              label="Email"
-              placeholder="Enter your email"
-              value={email}
-              iconLeft="mail-outline"
-              onChangeText={setEmail}
-              keyboardType="email-address"
-              autoCapitalize="none"
-            />
-            {emailError ? (
-              <Text style={styles.errorText}>{emailError}</Text>
-            ) : null}
-
-            <InputBox
-              label="Password"
-              placeholder="Enter your password"
-              value={password}
-              onChangeText={setPassword}
-              secureTextEntry={!showPassword}
-              iconLeft="lock-closed-outline"
-              iconRight={showPassword ? "eye-off" : "eye"}
-              onIconRightPress={() => setShowPassword(!showPassword)}
-            />
-            {passwordError ? (
-              <Text style={styles.errorText}>{passwordError}</Text>
-            ) : null}
-
-            <TouchableOpacity onPress={handleForgotPassword}>
-              <Text
-                style={[
-                  styles.forgotPasswordText,
-                  { fontSize: Math.min(14, responsive.footerFontSize) },
-                ]}
-              >
-                Forgot password?
-              </Text>
-            </TouchableOpacity>
-
-            <Text
-              style={[
-                styles.separator,
-                { fontSize: Math.min(16, responsive.buttonFontSize) },
-              ]}
-            >
-              Log in as
-            </Text>
-
-            <View style={styles.buttonRow}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Continue as</Text>
+            <View style={styles.modalButtonRow}>
               <Button
                 title="Parent"
-                onPress={() => handleLogin("parent")}
+                onPress={() => handleSelectRole("parent")}
                 backgroundColor="#000"
                 textColor="#fff"
                 fontSize={responsive.buttonFontSize}
@@ -245,110 +250,184 @@ export default function AuthIndex() {
               />
               <Button
                 title="Child"
-                onPress={() => handleLogin("child")}
+                onPress={() => handleSelectRole("child")}
                 backgroundColor="#000"
                 textColor="#fff"
                 fontSize={responsive.buttonFontSize}
               />
             </View>
-
-            <View style={styles.separatorView}>
-              <View style={styles.line} />
-              <Text
-                style={[
-                  styles.orText,
-                  { fontSize: Math.min(16, responsive.buttonFontSize) },
-                ]}
-              >
-                Or Use
-              </Text>
-              <View style={styles.line} />
-            </View>
-
-            <View style={styles.iconRow}>
-              <TouchableOpacity>
-                <Image
-                  source={require("@/assets/icons/google-icon.png")}
-                  style={{
-                    width: responsive.socialIconSize,
-                    height: responsive.socialIconSize,
-                    resizeMode: "contain",
-                  }}
-                />
-              </TouchableOpacity>
-
-              <TouchableOpacity>
-                <Image
-                  source={require("@/assets/icons/apple-icon.png")}
-                  style={{
-                    width: responsive.socialIconSize,
-                    height: responsive.socialIconSize,
-                    resizeMode: "contain",
-                  }}
-                />
-              </TouchableOpacity>
-
-              <TouchableOpacity>
-                <Image
-                  source={require("@/assets/icons/facebook-icon.png")}
-                  style={{
-                    width: responsive.socialIconSize,
-                    height: responsive.socialIconSize,
-                    resizeMode: "contain",
-                  }}
-                />
-              </TouchableOpacity>
-            </View>
-
-            <TouchableOpacity
-              style={styles.signUpPrompt}
-              onPress={handleSignUp}
-            >
-              <Text
-                style={[
-                  styles.signUpText,
-                  { fontSize: responsive.signUpFontSize },
-                ]}
-              >
-                Don’t have an account?{" "}
-                <Text style={styles.signUpLink}>Sign Up</Text>
-              </Text>
-            </TouchableOpacity>
           </View>
+        </View>
+      </Modal>
 
-          {/* Footer */}
-          <View style={styles.footer}>
-            <Text
-              style={[
-                styles.footerText,
-                { fontSize: responsive.footerFontSize },
-              ]}
-            >
-              By continuing, you accept our{" "}
-              <Text style={styles.linkText} onPress={handleTermsOfService}>
-                Terms of Service
-              </Text>
-            </Text>
-            <Text
-              style={[
-                styles.footer2Text,
-                { fontSize: responsive.footerFontSize },
-              ]}
-            >
-              and{" "}
-              <Text style={styles.link2Text} onPress={handleTermsOfConduct}>
-                Terms of Conduct
-              </Text>
-            </Text>
-          </View>
-        </ScrollView>
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 45 : 0}
+      >
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+          <ScrollView
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={{ flexGrow: 1 }}
+          >
+            <View style={styles.main}>
+              {/* Logo */}
+              <View style={styles.logoWrapper}>
+                <Image
+                  source={require("@/assets/images/app-logo.png")}
+                  style={{
+                    width: logoWidth * 0.9,
+                    height: logoHeight * 0.9,
+                    marginTop: responsive.screenHeight * -0.015,
+                    marginBottom: responsive.screenHeight * -0.035,
+                  }}
+                  resizeMode="contain"
+                />
+                <Text
+                  style={[
+                    styles.loginText,
+                    { fontSize: Math.min(24, responsive.signUpFontSize) },
+                  ]}
+                >
+                  Log In with Email
+                </Text>
+              </View>
+
+              {/* Form */}
+              <View style={styles.formContainer}>
+                <InputBox
+                  label="Email"
+                  placeholder="Enter your email"
+                  value={email}
+                  iconLeft="mail-outline"
+                  onChangeText={setEmail}
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  error={emailError}
+                />
+
+                <InputBox
+                  label="Password"
+                  placeholder="Enter your password"
+                  value={password}
+                  onChangeText={setPassword}
+                  secureTextEntry={!showPassword}
+                  iconLeft="lock-closed-outline"
+                  iconRight={showPassword ? "eye-off" : "eye"}
+                  onIconRightPress={() => setShowPassword(!showPassword)}
+                  error={passwordError}
+                />
+
+                <TouchableOpacity onPress={handleForgotPassword}>
+                  <Text style={styles.forgotPasswordText}>
+                    Forgot password?
+                  </Text>
+                </TouchableOpacity>
+
+                <Text style={styles.separator}>Log in as</Text>
+
+                <View style={styles.buttonRow}>
+                  <Button
+                    title="Parent"
+                    onPress={() => handleLogin("parent")}
+                    backgroundColor="#000"
+                    textColor="#fff"
+                    fontSize={responsive.buttonFontSize}
+                    marginRight={responsive.buttonGap / 2}
+                  />
+                  <Button
+                    title="Child"
+                    onPress={() => handleLogin("child")}
+                    backgroundColor="#000"
+                    textColor="#fff"
+                    fontSize={responsive.buttonFontSize}
+                  />
+                </View>
+
+                <View style={styles.separatorView}>
+                  <View style={styles.line} />
+                  <Text style={styles.orText}>Or Use</Text>
+                  <View style={styles.line} />
+                </View>
+
+                {/* --- SSO Buttons --- */}
+                <View style={styles.iconRow}>
+                  <TouchableOpacity
+                    onPress={() => handleSSOLogin("oauth_google")}
+                    disabled={loadingSSO}
+                  >
+                    <Image
+                      source={require("@/assets/icons/google-icon.png")}
+                      style={styles.socialIcon}
+                    />
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    onPress={() => handleSSOLogin("oauth_apple")}
+                    disabled={loadingSSO}
+                  >
+                    <Image
+                      source={require("@/assets/icons/apple-icon.png")}
+                      style={styles.socialIcon}
+                    />
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    onPress={() => handleSSOLogin("oauth_facebook")}
+                    disabled={loadingSSO}
+                  >
+                    <Image
+                      source={require("@/assets/icons/facebook-icon.png")}
+                      style={styles.socialIcon}
+                    />
+                  </TouchableOpacity>
+                </View>
+
+                <TouchableOpacity
+                  style={styles.signUpPrompt}
+                  onPress={handleSignUp}
+                >
+                  <Text style={styles.signUpText}>
+                    Don’t have an account?{" "}
+                    <Text style={styles.signUpLink}>Sign Up</Text>
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* Footer */}
+              <View style={styles.footerContainer}>
+                <View style={styles.footer}>
+                  <Text style={styles.footerText}>
+                    By continuing, you accept our{" "}
+                    <Text
+                      style={styles.linkText}
+                      onPress={handleTermsOfService}
+                    >
+                      Terms of Service
+                    </Text>
+                  </Text>
+                  <Text style={styles.footer2Text}>
+                    and{" "}
+                    <Text
+                      style={styles.link2Text}
+                      onPress={handleTermsOfConduct}
+                    >
+                      Terms of Conduct
+                    </Text>
+                  </Text>
+                </View>
+              </View>
+            </View>
+          </ScrollView>
+        </TouchableWithoutFeedback>
       </KeyboardAvoidingView>
-    </SafeAreaView>
+    </ImageBackground>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#fff" },
+  background: { flex: 1 },
   loadingContainer: {
     flex: 1,
     backgroundColor: "#111827",
@@ -364,42 +443,41 @@ const styles = StyleSheet.create({
   main: {
     flexGrow: 1,
     justifyContent: "space-between",
-    paddingVertical: 16,
-    paddingHorizontal: 20,
+    paddingHorizontal: responsive.screenWidth * 0.05,
+    paddingBottom: responsive.screenHeight * 0.012,
   },
   logoWrapper: { alignItems: "center" },
-  loginText: { fontFamily: "Fredoka-Bold", color: "#000" },
-  formContainer: { justifyContent: "center" },
+  loginText: {
+    fontFamily: "Fredoka-Bold",
+    color: "#000",
+  },
+  formContainer: {
+    justifyContent: "center",
+    marginTop: responsive.screenHeight * 0.036,
+  },
   forgotPasswordText: {
     alignSelf: "flex-end",
     fontFamily: "Fredoka-SemiBold",
     textDecorationLine: "underline",
     color: "#000",
-    marginVertical: 8,
-  },
-  errorText: {
-    color: "red",
-    fontSize: responsive.footerFontSize * 0.8,
-    fontFamily: "Fredoka-SemiBold",
-    marginBottom: 4,
-    marginLeft: 8,
+    marginVertical: 5,
   },
   separator: {
     textAlign: "center",
     color: "#000",
     fontFamily: "Fredoka-Bold",
-    marginVertical: 12,
+    marginVertical: 8,
   },
   buttonRow: {
     flexDirection: "row",
     justifyContent: "center",
-    marginBottom: 12,
+    marginBottom: 8,
     alignItems: "center",
   },
   separatorView: {
     flexDirection: "row",
     alignItems: "center",
-    marginVertical: 12,
+    marginVertical: 8,
   },
   line: {
     flex: 1,
@@ -407,23 +485,35 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
   orText: {
-    marginHorizontal: 8,
+    marginHorizontal: 5,
     fontFamily: "Fredoka-SemiBold",
     color: "#000",
   },
   iconRow: {
     flexDirection: "row",
-    justifyContent: "space-around",
-    marginVertical: 12,
+    justifyContent: "space-evenly",
+    marginVertical: 6,
   },
-  signUpPrompt: { alignItems: "center", marginTop: 15 },
+  socialIcon: {
+    width: responsive.socialIconSize * 0.75,
+    height: responsive.socialIconSize * 0.75,
+    resizeMode: "contain",
+  },
+  signUpPrompt: { alignItems: "center", marginTop: 22 },
   signUpText: { color: "#000", fontFamily: "Fredoka-SemiBold" },
   signUpLink: {
-    color: "#000",
+    color: "#fff",
     textDecorationLine: "underline",
     fontFamily: "Fredoka-Bold",
   },
-  footer: { alignItems: "center", justifyContent: "flex-end", marginTop: 8 },
+  footerContainer: {
+    marginTop: "auto",
+    alignItems: "center",
+  },
+  footer: {
+    alignItems: "center",
+    paddingBottom: responsive.screenHeight * 0.008,
+  },
   footerText: {
     color: "#000",
     fontFamily: "Fredoka-Bold",
@@ -431,7 +521,7 @@ const styles = StyleSheet.create({
   },
   linkText: {
     fontFamily: "Fredoka-SemiBold",
-    color: "#000",
+    color: "#fff",
     textDecorationLine: "underline",
   },
   footer2Text: {
@@ -441,7 +531,34 @@ const styles = StyleSheet.create({
   },
   link2Text: {
     fontFamily: "Fredoka-SemiBold",
-    color: "#000",
+    color: "#fff",
     textDecorationLine: "underline",
+  },
+
+  // --- Modal Styles ---
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  modalContent: {
+    backgroundColor: "#fff",
+    borderRadius: 16,
+    padding: responsive.screenWidth * 0.08,
+    alignItems: "center",
+    elevation: 8,
+    width: "80%",
+  },
+  modalTitle: {
+    fontFamily: "Fredoka-Bold",
+    fontSize: responsive.signUpFontSize,
+    color: "#000",
+    marginBottom: responsive.screenHeight * 0.025,
+    textAlign: "center",
+  },
+  modalButtonRow: {
+    flexDirection: "row",
+    justifyContent: "center",
   },
 });

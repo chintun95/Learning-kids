@@ -291,6 +291,7 @@ export type Database = {
           options: Json
           parent_id: string
           question: string
+          question_type: string | null
         }
         Insert: {
           correct_answer: string
@@ -298,6 +299,7 @@ export type Database = {
           options: Json
           parent_id: string
           question: string
+          question_type?: string | null
         }
         Update: {
           correct_answer?: string
@@ -305,6 +307,7 @@ export type Database = {
           options?: Json
           parent_id?: string
           question?: string
+          question_type?: string | null
         }
         Relationships: [
           {
@@ -321,7 +324,7 @@ export type Database = {
           activitytype: string
           childid: string
           date: string
-          endtime: string
+          endtime: string | null
           id: string
           sessiondetails: string | null
           sessionstatus: string
@@ -332,7 +335,7 @@ export type Database = {
           activitytype: string
           childid: string
           date: string
-          endtime: string
+          endtime?: string | null
           id?: string
           sessiondetails?: string | null
           sessionstatus: string
@@ -343,7 +346,7 @@ export type Database = {
           activitytype?: string
           childid?: string
           date?: string
-          endtime?: string
+          endtime?: string | null
           id?: string
           sessiondetails?: string | null
           sessionstatus?: string

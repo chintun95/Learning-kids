@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import {
   View,
   StyleSheet,
@@ -13,129 +13,117 @@ import {
   TouchableOpacity,
   Modal,
   Alert,
-  StatusBar as RNStatusBar,
 } from "react-native";
 import { StatusBar } from "expo-status-bar";
-import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useSignUp } from "@clerk/clerk-expo";
+import { z } from "zod";
 import Button from "@/components/Button";
 import InputBox from "@/components/InputBox";
-import { useSignUp } from "@clerk/clerk-expo";
 import { useAuthStore } from "@/lib/store/authStore";
 import { responsive } from "@/utils/responsive";
-import { z } from "zod";
-import { signUpSchema } from "@/utils/formatter"; // define your Zod schema for signup validation
+import { signUpSchema, sanitizeInput } from "@/utils/formatter";
+
+type SignUpInput = z.infer<typeof signUpSchema>;
+
+/**
+ * Utility: unwrap inner object from ZodEffects (so we can use .shape)
+ */
+function unwrapSchema<T extends z.ZodTypeAny>(
+  schema: T
+): z.AnyZodObject | null {
+  return schema._def?.schema && schema._def.schema instanceof z.ZodObject
+    ? (schema._def.schema as z.AnyZodObject)
+    : schema instanceof z.ZodObject
+    ? schema
+    : null;
+}
 
 export default function SignUpScreen() {
+  const insets = useSafeAreaInsets();
   const router = useRouter();
   const { isLoaded, signUp, setActive } = useSignUp();
   const setRole = useAuthStore((state) => state.setRole);
 
-  const [form, setForm] = useState({
+  const [form, setForm] = useState<SignUpInput>({
     firstName: "",
     lastName: "",
     email: "",
     password: "",
     confirmPassword: "",
-  });
-
-  const [errors, setErrors] = useState({
-    firstName: "",
-    lastName: "",
-    email: "",
-    password: "",
-    confirmPassword: "",
-  });
-
-  const [showPassword, setShowPassword] = useState(false);
-  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-  const [verification, setVerification] = useState({
-    state: "default",
-    error: "",
     code: "",
   });
+
+  const [errors, setErrors] = useState<
+    Partial<Record<keyof SignUpInput, string>>
+  >({});
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [verificationPending, setVerificationPending] = useState(false);
   const [successModal, showSuccessModal] = useState(false);
 
-  // Real-time validation using Zod
-  useEffect(() => {
+  // Unwrap the Zod object shape for field-level validation
+  const innerSchema = unwrapSchema(signUpSchema);
+
+  /**
+   * Real-time validation per field
+   */
+  const handleChange = (field: keyof SignUpInput, value: string) => {
+    const sanitized = sanitizeInput(value);
+    setForm((prev) => ({ ...prev, [field]: sanitized }));
+
     try {
-      signUpSchema.shape.firstName.parse(form.firstName);
-      setErrors((prev) => ({ ...prev, firstName: "" }));
-    } catch (err) {
-      if (err instanceof z.ZodError && form.firstName.length > 0) {
+      const fieldSchema =
+        innerSchema && field in innerSchema.shape
+          ? innerSchema.shape[field as keyof typeof innerSchema.shape]
+          : null;
+
+      if (fieldSchema) {
+        fieldSchema.parse(sanitized);
+        setErrors((prev) => ({ ...prev, [field]: "" }));
+      }
+
+      // Cross-check confirm password
+      if (field === "confirmPassword" && sanitized !== form.password) {
         setErrors((prev) => ({
           ...prev,
-          firstName: err.errors[0]?.message || "Invalid first name",
+          confirmPassword: "Passwords must match",
+        }));
+      }
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        setErrors((prev) => ({
+          ...prev,
+          [field]: err.errors[0]?.message || "Invalid input",
         }));
       }
     }
-  }, [form.firstName]);
+  };
 
-  useEffect(() => {
-    try {
-      signUpSchema.shape.lastName.parse(form.lastName);
-      setErrors((prev) => ({ ...prev, lastName: "" }));
-    } catch (err) {
-      if (err instanceof z.ZodError && form.lastName.length > 0) {
-        setErrors((prev) => ({
-          ...prev,
-          lastName: err.errors[0]?.message || "Invalid last name",
-        }));
-      }
+  /**
+   * Validate full form before submission
+   */
+  const validateForm = () => {
+    const result = signUpSchema.safeParse(form);
+    if (!result.success) {
+      const newErrors: Partial<Record<keyof SignUpInput, string>> = {};
+      result.error.errors.forEach((e) => {
+        const path = e.path[0] as keyof SignUpInput;
+        newErrors[path] = e.message;
+      });
+      setErrors(newErrors);
+      return false;
     }
-  }, [form.lastName]);
-
-  useEffect(() => {
-    try {
-      signUpSchema.shape.email.parse(form.email);
-      setErrors((prev) => ({ ...prev, email: "" }));
-    } catch (err) {
-      if (err instanceof z.ZodError && form.email.length > 0) {
-        setErrors((prev) => ({
-          ...prev,
-          email: err.errors[0]?.message || "Invalid email",
-        }));
-      }
-    }
-  }, [form.email]);
-
-  useEffect(() => {
-    try {
-      signUpSchema.shape.password.parse(form.password);
-      setErrors((prev) => ({ ...prev, password: "" }));
-    } catch (err) {
-      if (err instanceof z.ZodError && form.password.length > 0) {
-        setErrors((prev) => ({
-          ...prev,
-          password: err.errors[0]?.message || "Invalid password",
-        }));
-      }
-    }
-  }, [form.password]);
-
-  useEffect(() => {
-    if (form.confirmPassword && form.confirmPassword !== form.password) {
-      setErrors((prev) => ({
-        ...prev,
-        confirmPassword: "Passwords do not match",
-      }));
-    } else {
-      setErrors((prev) => ({ ...prev, confirmPassword: "" }));
-    }
-  }, [form.confirmPassword, form.password]);
+    setErrors({});
+    return true;
+  };
 
   const handleSwitchToLogin = () => router.push("../");
 
   const onSignUpPress = async () => {
     if (!isLoaded) return;
-
-    if (form.password !== form.confirmPassword) {
-      Alert.alert(
-        "Password Mismatch",
-        "Passwords do not match. Please try again."
-      );
-      return;
-    }
+    if (!validateForm()) return;
 
     try {
       await signUp.create({
@@ -146,7 +134,7 @@ export default function SignUpScreen() {
       });
 
       await signUp.prepareEmailAddressVerification({ strategy: "email_code" });
-      setVerification((prev) => ({ ...prev, state: "pending" }));
+      setVerificationPending(true);
     } catch (err: any) {
       Alert.alert("Error", err.errors?.[0]?.longMessage || "Unknown error");
     }
@@ -156,33 +144,27 @@ export default function SignUpScreen() {
     if (!isLoaded) return;
 
     try {
-      const signUpAttempt = await signUp.attemptEmailAddressVerification({
-        code: verification.code,
+      const attempt = await signUp.attemptEmailAddressVerification({
+        code: form.code,
       });
 
-      if (signUpAttempt.status === "complete") {
-        await setActive({ session: signUpAttempt.createdSessionId });
+      if (attempt.status === "complete") {
+        await setActive({ session: attempt.createdSessionId });
         setRole("parent");
-        setVerification((prev) => ({ ...prev, state: "success", error: "" }));
         showSuccessModal(true);
       } else {
-        setVerification((prev) => ({
-          ...prev,
-          error: "Verification failed. Please try again.",
-          state: "failed",
-        }));
+        Alert.alert(
+          "Verification Failed",
+          "Please check your code and try again."
+        );
       }
     } catch (err: any) {
-      setVerification((prev) => ({
-        ...prev,
-        error: err.errors?.[0]?.longMessage || "Verification error",
-        state: "failed",
-      }));
+      Alert.alert(
+        "Verification Error",
+        err.errors?.[0]?.longMessage || "Error verifying code"
+      );
     }
   };
-
-  const handleTermsOfService = () => console.log("Terms of Service pressed");
-  const handleTermsOfConduct = () => console.log("Terms of Conduct pressed");
 
   const { width, height } = responsive.logoSize();
 
@@ -190,15 +172,27 @@ export default function SignUpScreen() {
     <ImageBackground
       source={require("@/assets/images/app-background.png")}
       resizeMode="cover"
-      style={styles.background}
+      imageStyle={{ transform: [{ scale: 1.22 }] }} // slight zoom
+      style={[
+        styles.background,
+        {
+          paddingTop: insets.top + 8,
+          paddingBottom: insets.bottom + 8,
+        },
+      ]}
     >
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : "height"}
         style={styles.container}
-        keyboardVerticalOffset={Platform.OS === "ios" ? 60 : 0}
       >
         <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-          <ScrollView contentContainerStyle={styles.scrollContainer}>
+          <ScrollView
+            contentContainerStyle={[
+              styles.scrollContainer,
+              { paddingBottom: insets.bottom + responsive.screenHeight * 0.05 },
+            ]}
+            showsVerticalScrollIndicator={false}
+          >
             <StatusBar style="dark" translucent backgroundColor="transparent" />
 
             {/* Logo */}
@@ -225,44 +219,42 @@ export default function SignUpScreen() {
 
               {/* First / Last Name */}
               <View style={styles.nameRow}>
-                <View style={[styles.halfInput]}>
+                <View style={styles.halfInput}>
                   <InputBox
                     label="First Name"
                     placeholder="First Name"
                     value={form.firstName}
-                    onChangeText={(v) => setForm({ ...form, firstName: v })}
+                    onChangeText={(v) => handleChange("firstName", v)}
                     error={errors.firstName}
                   />
                 </View>
-                <View style={[styles.halfInput]}>
+                <View style={styles.halfInput}>
                   <InputBox
                     label="Last Name"
                     placeholder="Last Name"
                     value={form.lastName}
-                    onChangeText={(v) => setForm({ ...form, lastName: v })}
+                    onChangeText={(v) => handleChange("lastName", v)}
                     error={errors.lastName}
                   />
                 </View>
               </View>
 
-              {/* Email */}
               <InputBox
                 label="Email"
                 placeholder="Enter your email"
                 value={form.email}
-                onChangeText={(v) => setForm({ ...form, email: v })}
+                onChangeText={(v) => handleChange("email", v)}
                 error={errors.email}
                 iconLeft="mail-outline"
                 keyboardType="email-address"
                 autoCapitalize="none"
               />
 
-              {/* Password */}
               <InputBox
                 label="Password"
                 placeholder="Enter your password"
                 value={form.password}
-                onChangeText={(v) => setForm({ ...form, password: v })}
+                onChangeText={(v) => handleChange("password", v)}
                 error={errors.password}
                 secureTextEntry={!showPassword}
                 iconLeft="lock-closed-outline"
@@ -270,12 +262,11 @@ export default function SignUpScreen() {
                 onIconRightPress={() => setShowPassword(!showPassword)}
               />
 
-              {/* Confirm Password */}
               <InputBox
                 label="Confirm Password"
                 placeholder="Confirm your password"
                 value={form.confirmPassword}
-                onChangeText={(v) => setForm({ ...form, confirmPassword: v })}
+                onChangeText={(v) => handleChange("confirmPassword", v)}
                 error={errors.confirmPassword}
                 secureTextEntry={!showConfirmPassword}
                 iconLeft="lock-closed-outline"
@@ -291,7 +282,7 @@ export default function SignUpScreen() {
                 backgroundColor="#000"
                 textColor="#fff"
                 fontSize={responsive.buttonFontSize}
-                paddingVertical={responsive.buttonHeight * 0.25}
+                marginTop={responsive.screenHeight * 0.015}
               />
             </View>
 
@@ -299,21 +290,16 @@ export default function SignUpScreen() {
             <View style={styles.footer}>
               <Text style={styles.footerText}>
                 By continuing, you accept our{" "}
-                <Text style={styles.linkText} onPress={handleTermsOfService}>
-                  Terms of Service
-                </Text>
+                <Text style={styles.linkText}>Terms of Service</Text>
               </Text>
               <Text style={styles.footer2Text}>
-                and{" "}
-                <Text style={styles.link2Text} onPress={handleTermsOfConduct}>
-                  Terms of Conduct
-                </Text>
+                and <Text style={styles.link2Text}>Terms of Conduct</Text>
               </Text>
             </View>
 
             {/* Verification Modal */}
             <Modal
-              visible={verification.state === "pending"}
+              visible={verificationPending}
               transparent
               animationType="slide"
             >
@@ -321,17 +307,14 @@ export default function SignUpScreen() {
                 <View style={styles.modalContent}>
                   <Text style={styles.modalTitle}>Verify Your Email</Text>
                   <Text style={styles.modalText}>
-                    We’ve sent a verification code to your email. Please enter
-                    it below.
+                    We’ve sent a verification code to your email.
                   </Text>
 
                   <InputBox
                     placeholder="Enter verification code"
-                    value={verification.code}
-                    onChangeText={(code) =>
-                      setVerification({ ...verification, code })
-                    }
-                    error={verification.error}
+                    value={form.code}
+                    onChangeText={(v) => handleChange("code", v)}
+                    error={errors.code}
                     keyboardType="number-pad"
                   />
 
@@ -340,19 +323,13 @@ export default function SignUpScreen() {
                     onPress={onVerifyPress}
                     backgroundColor="#000"
                     textColor="#fff"
-                    fontSize={responsive.buttonFontSize}
-                    paddingVertical={responsive.buttonHeight * 0.25}
                   />
                 </View>
               </View>
             </Modal>
 
             {/* Success Modal */}
-            <Modal
-              visible={successModal && verification.state === "success"}
-              transparent
-              animationType="slide"
-            >
+            <Modal visible={successModal} transparent animationType="slide">
               <View style={styles.modalOverlay}>
                 <View style={styles.modalContent}>
                   <Text style={styles.modalTitle}>Verification Successful</Text>
@@ -368,8 +345,6 @@ export default function SignUpScreen() {
                     }}
                     backgroundColor="#000"
                     textColor="#fff"
-                    fontSize={responsive.buttonFontSize}
-                    paddingVertical={responsive.buttonHeight * 0.25}
                   />
                 </View>
               </View>
@@ -383,10 +358,7 @@ export default function SignUpScreen() {
 
 const styles = StyleSheet.create({
   background: { flex: 1 },
-  container: {
-    flex: 1,
-    paddingTop: Platform.OS === "android" ? RNStatusBar.currentHeight : 0,
-  },
+  container: { flex: 1 },
   scrollContainer: {
     flexGrow: 1,
     justifyContent: "space-between",
@@ -394,7 +366,7 @@ const styles = StyleSheet.create({
   },
   logoWrapper: {
     alignItems: "center",
-    marginTop: responsive.screenHeight * -0.02,
+    marginTop: responsive.screenHeight * 0.02,
   },
   switchText: {
     fontSize: responsive.signUpFontSize * 0.9,
@@ -420,7 +392,6 @@ const styles = StyleSheet.create({
   footer: {
     alignItems: "center",
     marginTop: responsive.screenHeight * 0.02,
-    marginBottom: responsive.screenHeight * 0.04,
   },
   footerText: {
     color: "#000",

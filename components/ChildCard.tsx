@@ -1,3 +1,4 @@
+// ✅ ChildCard.tsx
 import React, { useState } from "react";
 import {
   View,
@@ -8,38 +9,44 @@ import {
   Platform,
   UIManager,
   Modal,
+  ActivityIndicator,
+  Alert,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import { useQueryClient } from "@tanstack/react-query";
 import StatusIndicator from "./StatusIndicator";
 import { responsive } from "@/utils/responsive";
-import { parseISO, isToday, compareDesc } from "date-fns";
-import sessionData from "@/test/data/session";
-import { ChildCardModel } from "@/services/fetchChildren";
-import { Tables } from "@/types/database.types";
+import { isToday, parseISO, compareDesc } from "date-fns";
 import { deleteChildAndAssociations } from "@/services/deleteChild";
-
-type SessionRow = Tables<"answer_log">; 
-
-type ChildCardProps = {
-  child: ChildCardModel; 
-};
+import { useSessionsByChildId } from "@/services/fetchSession";
+import { ChildCardModel } from "@/services/fetchChildren";
 
 if (Platform.OS === "android") {
   UIManager.setLayoutAnimationEnabledExperimental?.(true);
 }
 
+interface ChildCardProps {
+  child: ChildCardModel;
+}
+
 export default function ChildCard({ child }: ChildCardProps) {
   const [expanded, setExpanded] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const router = useRouter();
+  const queryClient = useQueryClient();
+
+  const { data: sessions, isLoading, error } = useSessionsByChildId(child.id);
 
   const toggleExpand = () => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    setExpanded(!expanded);
+    setExpanded((prev) => !prev);
   };
 
-  const getStatusColor = (status: ChildCardModel["activityStatus"]) => {
+  const getStatusColor = (
+    status: ChildCardModel["activityStatus"]
+  ): "green" | "yellow" | "red" => {
     switch (status) {
       case "active":
         return "green";
@@ -55,26 +62,39 @@ export default function ChildCard({ child }: ChildCardProps) {
     router.push(`/manage-child/${child.id}`);
   };
 
-const handleDeleteChild = async () => {
-  try {
-    await deleteChildAndAssociations(child.id);
-    console.log(`✅ Child deleted: ${child.firstName} ${child.lastName}`);
-    setShowDeleteModal(false);
-  } catch (err: any) {
-    console.error("❌ Failed to delete child:", err.message);
-  }
-};
+  const handleDeleteChild = async () => {
+    try {
+      setDeleting(true);
+      await deleteChildAndAssociations(child.id);
+      console.log(`✅ Child deleted: ${child.firstName} ${child.lastName}`);
 
-  // Filter today's mock sessions (until real DB sessions exist)
-  const todaysSessions = sessionData
-    .filter((s) => s.childId === child.id && isToday(parseISO(s.date)))
-    .sort((a, b) =>
-      compareDesc(
-        parseISO(`${a.date}T${a.startTime}`),
-        parseISO(`${b.date}T${b.startTime}`)
+      // Invalidate parent’s children list
+      queryClient.invalidateQueries({
+        predicate: (query) =>
+          query.queryKey[0] === "children-for-parent-email" ||
+          query.queryKey[0] === "children",
+      });
+
+      setShowDeleteModal(false);
+      Alert.alert("Deleted", `${child.firstName} has been removed.`);
+    } catch (err: any) {
+      console.error("❌ Failed to delete child:", err.message);
+      Alert.alert("Error", "Failed to delete child. Please try again.");
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const todaysSessions =
+    sessions
+      ?.filter((s) => s.date && isToday(parseISO(s.date)))
+      ?.sort((a, b) =>
+        compareDesc(
+          parseISO(`${a.date}T${a.starttime}`),
+          parseISO(`${b.date}T${b.starttime}`)
+        )
       )
-    )
-    .slice(0, 3);
+      .slice(0, 3) ?? [];
 
   return (
     <View style={styles.cardWrapper}>
@@ -95,7 +115,6 @@ const handleDeleteChild = async () => {
           </TouchableOpacity>
         </View>
 
-        {/* Expand & Delete Buttons */}
         <View style={styles.buttonsContainer}>
           <TouchableOpacity onPress={toggleExpand} style={styles.expandButton}>
             <Text style={styles.expandButtonText}>{expanded ? "▲" : "▼"}</Text>
@@ -114,20 +133,24 @@ const handleDeleteChild = async () => {
         </View>
       </View>
 
-      {/* Expanded Drawer */}
       {expanded && (
         <View style={styles.drawer}>
           <Text style={[styles.drawerText, styles.drawerTitle]}>
             Today's Activity
           </Text>
-          {todaysSessions.length === 0 ? (
+
+          {isLoading ? (
+            <ActivityIndicator color="#4F46E5" />
+          ) : error ? (
+            <Text style={styles.drawerText}>Failed to load sessions</Text>
+          ) : todaysSessions.length === 0 ? (
             <Text style={styles.drawerText}>No current activity</Text>
           ) : (
             todaysSessions.map((session) => (
               <View key={session.id} style={styles.sessionRow}>
-                <Text style={styles.drawerText}>{session.activityType}</Text>
+                <Text style={styles.drawerText}>{session.activitytype}</Text>
                 <Text style={[styles.drawerText, { color: "#4F46E5" }]}>
-                  {session.sessionStatus}
+                  {session.sessionstatus}
                 </Text>
               </View>
             ))
@@ -144,24 +167,41 @@ const handleDeleteChild = async () => {
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>
-              You are about to remove {child.firstName} from your account. Are
-              you sure?
-            </Text>
-            <View style={styles.modalButtons}>
-              <TouchableOpacity
-                style={[styles.modalButton, styles.yesButton]}
-                onPress={handleDeleteChild}
-              >
-                <Text style={styles.modalButtonText}>Yes</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.modalButton, styles.noButton]}
-                onPress={() => setShowDeleteModal(false)}
-              >
-                <Text style={styles.modalButtonText}>No</Text>
-              </TouchableOpacity>
-            </View>
+            {deleting ? (
+              <>
+                <ActivityIndicator size="large" color="#4F46E5" />
+                <Text
+                  style={[
+                    styles.modalTitle,
+                    { marginTop: responsive.screenHeight * 0.02 },
+                  ]}
+                >
+                  Deleting {child.firstName}...
+                </Text>
+              </>
+            ) : (
+              <>
+                <Text style={styles.modalTitle}>
+                  You are about to remove {child.firstName} from your account.
+                  {"\n"}
+                  Are you sure?
+                </Text>
+                <View style={styles.modalButtons}>
+                  <TouchableOpacity
+                    style={[styles.modalButton, styles.yesButton]}
+                    onPress={handleDeleteChild}
+                  >
+                    <Text style={styles.modalButtonText}>Yes</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.modalButton, styles.noButton]}
+                    onPress={() => setShowDeleteModal(false)}
+                  >
+                    <Text style={styles.modalButtonText}>No</Text>
+                  </TouchableOpacity>
+                </View>
+              </>
+            )}
           </View>
         </View>
       </Modal>
@@ -169,7 +209,6 @@ const handleDeleteChild = async () => {
   );
 }
 
-// --- Styles ---
 const styles = StyleSheet.create({
   cardWrapper: {
     marginVertical: responsive.screenHeight * 0.01,
@@ -250,6 +289,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#fff",
     borderRadius: 16,
     padding: responsive.screenWidth * 0.05,
+    alignItems: "center",
   },
   modalTitle: {
     fontSize: responsive.isNarrowScreen ? 16 : 18,
@@ -261,6 +301,7 @@ const styles = StyleSheet.create({
   modalButtons: {
     flexDirection: "row",
     justifyContent: "space-between",
+    width: "100%",
   },
   modalButton: {
     flex: 1,

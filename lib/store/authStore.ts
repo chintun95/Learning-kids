@@ -5,10 +5,12 @@ import { zustandStorage } from "@/lib/mmkv-storage";
 interface AuthState {
   role: "parent" | "child" | "default";
   onBoardedStatus: "completed" | "pending";
+  isParentSynced: boolean; // ✅ new flag
 
-  // auth-related
+  // actions
   setRole: (role: "parent" | "child" | "default") => void;
   setOnBoardedStatus: (status: "completed" | "pending") => void;
+  setParentSynced: (synced: boolean) => void;
 }
 
 export const useAuthStore = create<AuthState>()(
@@ -16,9 +18,11 @@ export const useAuthStore = create<AuthState>()(
     (set, get) => ({
       role: "default",
       onBoardedStatus: "pending",
+      isParentSynced: false, // default
 
       setRole: (role) => set({ role }),
       setOnBoardedStatus: (onBoardedStatus) => set({ onBoardedStatus }),
+      setParentSynced: (isParentSynced) => set({ isParentSynced }),
     }),
     {
       name: "auth-storage",

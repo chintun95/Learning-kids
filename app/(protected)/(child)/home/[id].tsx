@@ -1,4 +1,4 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -7,9 +7,10 @@ import {
   ImageBackground,
   Platform,
   FlatList,
-  ScrollView,
+  Animated,
   TouchableOpacity,
 } from "react-native";
+import { BlurView } from "expo-blur";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import ProfileIcon from "@/components/ProfileIcon";
@@ -24,6 +25,7 @@ export default function ChildHome() {
   const { id } = useLocalSearchParams();
   const router = useRouter();
   const childId = String(id);
+
   const { children, getCurrentChild } = useChildAuthStore();
   const child = children.find((c) => c.id === childId) ?? getCurrentChild();
 
@@ -40,6 +42,17 @@ export default function ChildHome() {
       new Date(b.dateearned).getTime() - new Date(a.dateearned).getTime()
   );
   const recentAchievements = sortedAchievements.slice(0, 5);
+
+  const scrollY = useRef(new Animated.Value(0)).current;
+  const [blurVisible, setBlurVisible] = useState(false);
+
+  useEffect(() => {
+    const listener = scrollY.addListener(({ value }) => {
+      // show blur if near top or bottom
+      setBlurVisible(value < 50);
+    });
+    return () => scrollY.removeListener(listener);
+  }, [scrollY]);
 
   if (!child) {
     return (
@@ -62,14 +75,27 @@ export default function ChildHome() {
         barStyle="light-content"
       />
 
-      <ScrollView
+      {/* --- Blurred overlay near top for Android status bar --- */}
+      {Platform.OS === "android" && blurVisible && (
+        <BlurView
+          tint="light"
+          intensity={70}
+          style={StyleSheet.absoluteFillObject}
+        />
+      )}
+
+      <Animated.ScrollView
         contentContainerStyle={styles.scrollContainer}
         showsVerticalScrollIndicator={false}
+        onScroll={Animated.event(
+          [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+          { useNativeDriver: false }
+        )}
+        scrollEventThrottle={16}
       >
         <View style={styles.overlay}>
           {/* --- Profile Container --- */}
           <View style={styles.profileContainer}>
-            {/* Pencil Icon */}
             <TouchableOpacity
               onPress={() => router.push("/(protected)/(child)/profile-select")}
               style={styles.editButton}
@@ -173,7 +199,7 @@ export default function ChildHome() {
             <SignOutButton />
           </View>
         </View>
-      </ScrollView>
+      </Animated.ScrollView>
     </ImageBackground>
   );
 }
@@ -185,7 +211,7 @@ const styles = StyleSheet.create({
     height: "100%",
   },
   backgroundImage: {
-    transform: [{ scale: 1.15 }],
+    transform: [{ scale: 1.22 }],
   },
   scrollContainer: {
     flexGrow: 1,
@@ -201,11 +227,9 @@ const styles = StyleSheet.create({
         ? (StatusBar.currentHeight ?? 0) + responsive.screenHeight * 0.025
         : responsive.screenHeight * 0.045,
   },
-
-  // --- Profile Container ---
   profileContainer: {
     width: responsive.screenWidth * 0.9,
-    backgroundColor: "#D9D9D9",
+    backgroundColor: "rgba(217,217,217,0.85)",
     borderRadius: responsive.screenWidth * 0.04,
     borderWidth: 2,
     borderColor: "#999",
@@ -245,11 +269,9 @@ const styles = StyleSheet.create({
     marginTop: responsive.screenHeight * 0.005,
     marginBottom: responsive.screenHeight * 0.004,
   },
-
-  // --- Achievements Container ---
   achievementContainer: {
     width: responsive.screenWidth * 0.9,
-    backgroundColor: "#D9D9D9",
+    backgroundColor: "rgba(217,217,217,0.85)",
     borderRadius: responsive.screenWidth * 0.04,
     borderWidth: 2,
     borderColor: "#999",
@@ -308,11 +330,9 @@ const styles = StyleSheet.create({
     textAlign: "right",
     marginLeft: responsive.screenWidth * 0.08,
   },
-
-  // --- Lesson Container ---
   lessonContainer: {
     width: responsive.screenWidth * 0.9,
-    backgroundColor: "#D9D9D9",
+    backgroundColor: "rgba(217,217,217,0.85)",
     borderRadius: responsive.screenWidth * 0.04,
     borderWidth: 2,
     borderColor: "#999",
@@ -321,11 +341,9 @@ const styles = StyleSheet.create({
     paddingVertical: responsive.screenHeight * 0.02,
     paddingHorizontal: responsive.screenWidth * 0.04,
   },
-
-  // --- Games Container ---
   gameContainer: {
     width: responsive.screenWidth * 0.9,
-    backgroundColor: "#D9D9D9",
+    backgroundColor: "rgba(217,217,217,0.85)",
     borderRadius: responsive.screenWidth * 0.04,
     borderWidth: 2,
     borderColor: "#999",
@@ -334,20 +352,16 @@ const styles = StyleSheet.create({
     paddingVertical: responsive.screenHeight * 0.02,
     paddingHorizontal: responsive.screenWidth * 0.04,
   },
-
   sectionTitle: {
     fontFamily: "Fredoka-SemiBold",
     fontSize: responsive.buttonFontSize * 1.05,
     color: "#111827",
   },
-
-  // --- Sign Out Section ---
   signOutWrapper: {
     marginTop: responsive.screenHeight * 0.04,
     marginBottom: responsive.screenHeight * 0.03,
     alignItems: "center",
   },
-
   loadingText: {
     fontFamily: "Fredoka-Regular",
     color: "#4F46E5",

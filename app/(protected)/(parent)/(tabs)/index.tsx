@@ -1,6 +1,6 @@
 // app/(protected)/(parent)/(tabs)/index.tsx
 import { useUser } from "@clerk/clerk-expo";
-import React, { useMemo } from "react";
+import React, { useEffect, useState } from "react";
 import {
   Text,
   View,
@@ -23,17 +23,25 @@ import {
   useChildrenByParentEmail,
   ChildCardModel,
 } from "@/services/fetchChildren";
+import { useCreateParent } from "@/services/createParent";
+import { fetchParentByEmail } from "@/services/fetchParent";
+import { useAuthStore } from "@/lib/store/authStore";
 
 const statusBarHeight =
   Platform.OS === "android" ? StatusBar.currentHeight ?? 0 : 40;
 
 export default function ProtectedParentIndex() {
   const { user } = useUser();
-  const [showModal, setShowModal] = React.useState(false);
+  const [showModal, setShowModal] = useState(false);
+  const [syncingParent, setSyncingParent] = useState(false);
+
+  const setParentSynced = useAuthStore((s) => s.setParentSynced);
+  const isParentSynced = useAuthStore((s) => s.isParentSynced);
+
+  const { mutateAsync: createParent } = useCreateParent();
 
   const firstName = user?.firstName ?? "";
   const lastName = user?.lastName ?? "";
-  // Clerk recommended way to get a stable email:
   const emailAddress =
     user?.primaryEmailAddress?.emailAddress ??
     user?.emailAddresses?.[0]?.emailAddress ??
@@ -41,27 +49,87 @@ export default function ProtectedParentIndex() {
 
   const CHILD_THRESHOLD = 12;
 
-  // Fetch children by parent's email
+  // ✅ Ensure parent exists in Supabase (only if not synced yet)
+  useEffect(() => {
+    const ensureParentExists = async () => {
+      if (!emailAddress || isParentSynced) return;
+
+      try {
+        setSyncingParent(true);
+
+        // Check if the parent already exists
+        const existingParent = await fetchParentByEmail(emailAddress);
+
+        if (existingParent) {
+          console.log(
+            "🟢 Parent already exists in Supabase:",
+            existingParent.id
+          );
+          setParentSynced(true);
+          return;
+        }
+
+        // Otherwise, create a new parent record
+        await createParent({
+          firstname: firstName,
+          lastname: lastName,
+          emailaddress: emailAddress,
+        });
+
+        console.log("✅ Parent created in Supabase.");
+        setParentSynced(true);
+      } catch (err) {
+        console.error("❌ Failed to sync parent record:", err);
+      } finally {
+        setSyncingParent(false);
+      }
+    };
+
+    ensureParentExists();
+  }, [emailAddress, isParentSynced]);
+
+  // Fetch children only after confirming parent record exists
   const {
     data: children,
     isLoading,
     isError,
     error,
-    refetch,
-  } = useChildrenByParentEmail(emailAddress);
+  } = useChildrenByParentEmail(isParentSynced ? emailAddress : undefined);
 
   const childCount = children?.length ?? 0;
-
   const renderChild = ({ item }: { item: ChildCardModel }) => (
-    <ChildCard child={item as any} />
+    <ChildCard child={item} />
   );
 
   const handleCloseModal = () => setShowModal(false);
 
+  // ✅ Global loading state (while parent record syncing)
+  if (syncingParent) {
+    return (
+      <SafeAreaView
+        style={[
+          styles.safeContainer,
+          { justifyContent: "center", alignItems: "center" },
+        ]}
+      >
+        <ActivityIndicator size="large" color="#fff" />
+        <Text
+          style={{
+            color: "#fff",
+            marginTop: 10,
+            fontFamily: "Fredoka-SemiBold",
+          }}
+        >
+          Setting up your account...
+        </Text>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.safeContainer} edges={["top"]}>
       <View style={styles.container}>
-        {/* Centered Welcome Banner */}
+        {/* Welcome Banner */}
         <View style={styles.banner}>
           <Text style={styles.welcomeText}>
             Welcome 👋,{" "}
@@ -97,7 +165,7 @@ export default function ProtectedParentIndex() {
           </View>
         )}
 
-        {/* AddChild Button: only shows if children are below threshold */}
+        {/* AddChild Button */}
         {!isLoading && !isError && childCount < CHILD_THRESHOLD && <AddChild />}
 
         {/* No Children Fallback */}
@@ -119,7 +187,7 @@ export default function ProtectedParentIndex() {
           />
         )}
 
-        {/* Modal for Status Indicator */}
+        {/* Status Indicator Modal */}
         <Modal
           visible={showModal}
           transparent
@@ -185,7 +253,6 @@ const styles = StyleSheet.create({
     fontFamily: "Fredoka-Bold",
     color: "#E0E7FF",
   },
-
   childrenHeaderContainer: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -198,7 +265,6 @@ const styles = StyleSheet.create({
     fontFamily: "Fredoka-Medium",
     color: "#111827",
   },
-
   noChildContainer: {
     alignItems: "center",
     justifyContent: "center",
@@ -210,7 +276,6 @@ const styles = StyleSheet.create({
     fontFamily: "Fredoka-Regular",
     fontStyle: "italic",
   },
-
   modalOverlay: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.3)",
