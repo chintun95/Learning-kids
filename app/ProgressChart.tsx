@@ -12,6 +12,7 @@ import {
 } from "react-native";
 import { LineChart } from "react-native-chart-kit";
 import { supabase } from "../backend/supabase";
+import { auth } from "../firebase";
 
 const screenWidth = Dimensions.get("window").width;
 
@@ -30,6 +31,19 @@ const ProgressionChart: React.FC = () => {
   const fetchGameData = async (gameName: string) => {
     setLoading(true);
     try {
+      const user = auth.currentUser;
+      if (!user) return;
+
+      // Get user_id from profiles (Supabase) using Firebase UID
+      const { data: profile, error: profileError } = await supabase
+        .from("profiles")
+        .select("user_id")
+        .eq("user_id", user.uid)
+        .single();
+
+      if (profileError) throw profileError;
+      if (!profile) return;
+
       const { data: results, error } = await supabase
         .from("answer_log")
         .select(
@@ -40,25 +54,30 @@ const ProgressionChart: React.FC = () => {
           answered_at,
           game_name,
           question_id,
-          questions (
-            question
-          )
+          questions ( question )
         `
         )
+        .eq("user_id", profile.user_id)
         .eq("game_name", gameName)
         .order("answered_at", { ascending: true });
 
       if (error) throw error;
 
-      // Group results by date
-      const groupedByDay = results.reduce((acc: any, row: any) => {
+      // Filter out deleted/unknown questions
+      const validResults = results.filter(
+        (r: any) => r.questions?.question && r.questions.question !== "Unknown question"
+      );
+
+      // Group valid results by day for chart
+      const groupedByDay = validResults.reduce((acc: any, row: any) => {
         const day = new Date(row.answered_at).toLocaleDateString();
         if (!acc[day]) acc[day] = { correct: 0, incorrect: 0 };
         row.is_correct ? acc[day].correct++ : acc[day].incorrect++;
         return acc;
       }, {});
 
-      const labels = Object.keys(groupedByDay);
+      // Prepare chart data with newest first
+      const labels = Object.keys(groupedByDay).reverse();
       const correctData = labels.map((day) => groupedByDay[day].correct);
       const incorrectData = labels.map((day) => groupedByDay[day].incorrect);
 
@@ -70,12 +89,14 @@ const ProgressionChart: React.FC = () => {
         ],
       });
 
-      // Build list of answered questions
-      const questionsData = results.map((r: any) => ({
-        question: r.questions?.question || "Unknown question",
-        is_correct: r.is_correct,
-        answered_at: r.answered_at,
-      }));
+      // Prepare question list (newest first) and only include valid questions
+      const questionsData = validResults
+        .map((r: any) => ({
+          question: r.questions?.question,
+          is_correct: r.is_correct,
+          answered_at: r.answered_at,
+        }))
+        .reverse();
 
       setQuestions(questionsData);
     } catch (error) {
@@ -88,7 +109,6 @@ const ProgressionChart: React.FC = () => {
   const renderChart = () => {
     if (loading)
       return <ActivityIndicator size="large" color="#4CAF50" style={{ marginTop: 20 }} />;
-
     if (!data || data.labels.length === 0)
       return <Text style={styles.noDataText}>No progress data for {activeTab}</Text>;
 
@@ -139,7 +159,6 @@ const ProgressionChart: React.FC = () => {
 
   return (
     <View style={styles.container}>
-      {/* Tabs */}
       <View style={styles.tabContainer}>
         {tabs.map((tab) => (
           <TouchableOpacity
@@ -162,10 +181,7 @@ const ProgressionChart: React.FC = () => {
         ))}
       </View>
 
-      {/* Chart */}
       <View style={styles.chartContainer}>{renderChart()}</View>
-
-      {/* List */}
       <Text style={styles.subTitle}>Questions Answered in {activeTab}</Text>
       {renderQuestionList()}
     </View>
