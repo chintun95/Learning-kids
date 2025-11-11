@@ -1,3 +1,5 @@
+// app/profile.tsx
+
 import React, { useEffect, useState, useCallback } from 'react';
 import {
   View,
@@ -11,9 +13,14 @@ import {
   ImageBackground,
   Switch,
   ActivityIndicator,
+  TextInput, 
 } from 'react-native';
 import { auth } from '../firebase';
-import { signOut } from 'firebase/auth';
+import { 
+  signOut, 
+  reauthenticateWithCredential, 
+  EmailAuthProvider 
+} from 'firebase/auth';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { widthPercentageToDP as wp, heightPercentageToDP as hp } from 'react-native-responsive-screen';
@@ -46,10 +53,21 @@ const Profile: React.FC = () => {
   const [editMinute, setEditMinute] = useState(0);
   const [loadingProfile, setLoadingProfile] = useState(true);
 
-  // ✅ Refresh profile when screen focused
+  // --- ADDED STATE FOR PASSWORD GATE ---
+  const [password, setPassword] = useState('');
+  const [isAuthenticating, setIsAuthenticating] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  // --- END OF ADDED STATE ---
+
+  
   useFocusEffect(
     useCallback(() => {
+     
+      setIsAuthenticated(false); // Require auth every time
+      setPassword('');          // Clear password field
       setLoadingProfile(true);
+      // --- END OF MODIFIED LOGIC ---
+
       const user = auth.currentUser;
       if (user) {
         const joinDate = user.metadata.creationTime
@@ -103,6 +121,35 @@ const Profile: React.FC = () => {
   // ✅ Chart navigation
   const handleViewChart = () => navigation.navigate('ProgressChart');
 
+  // --- ADDED PASSWORD VERIFICATION FUNCTION ---
+  const handleReAuthentication = async () => {
+    const user = auth.currentUser;
+    if (!user || !user.email) {
+      Alert.alert("Error", "No user is currently logged in.");
+      navigation.navigate('LogInPage');
+      return;
+    }
+  
+    if (!password) {
+      Alert.alert("Password Required", "Please enter your password.");
+      return;
+    }
+  
+    setIsAuthenticating(true);
+    try {
+      const credential = EmailAuthProvider.credential(user.email, password);
+      await reauthenticateWithCredential(user, credential);
+      setIsAuthenticated(true); // <-- Grant access
+      setPassword('');
+    } catch (error: any) {
+      Alert.alert("Authentication Failed", "The password you entered is incorrect. Please try again.");
+      console.error("Re-authentication error:", error);
+    } finally {
+      setIsAuthenticating(false);
+    }
+  };
+  // --- END OF ADDED FUNCTION ---
+
   if (loadingProfile) {
     return (
       <ImageBackground
@@ -114,6 +161,51 @@ const Profile: React.FC = () => {
     );
   }
 
+  // --- ADDED PASSWORD PROMPT RENDER ---
+  if (!isAuthenticated) {
+    return (
+      <ImageBackground
+        source={require('../assets/images/app-background.png')}
+        style={[styles.image, styles.authContainer]}
+      >
+        <ScrollView contentContainerStyle={styles.authContainer}>
+          <View style={styles.authBox}>
+            <Text style={styles.authTitle}>Verify Your Identity</Text>
+            <Text style={styles.authSubtitle}>Please enter your password to view your profile.</Text>
+            <TextInput
+              style={styles.authInput}
+              placeholder="Password"
+              placeholderTextColor="#888"
+              secureTextEntry
+              value={password}
+              onChangeText={setPassword}
+              autoCapitalize="none"
+            />
+            <TouchableOpacity 
+              style={[styles.actionButton, styles.authButton]} 
+              onPress={handleReAuthentication} 
+              disabled={isAuthenticating}
+            >
+              {isAuthenticating ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.actionButtonText}>Continue</Text>
+              )}
+            </TouchableOpacity>
+            <TouchableOpacity 
+              style={[styles.actionButton, styles.signOutButton, {marginTop: 10, backgroundColor: '#6c757d'}]} 
+              onPress={() => navigation.goBack()}
+            >
+              <Text style={styles.actionButtonText}>Back</Text>
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
+      </ImageBackground>
+    );
+  }
+  // --- END OF ADDED RENDER ---
+
+  // This part below will only render if isAuthenticated is true
   return (
     <ImageBackground
       source={require('../assets/images/app-background.png')}
@@ -317,7 +409,7 @@ const Profile: React.FC = () => {
   );
 };
 
-/* ✅ same styles as your previous version */
+
 const styles = StyleSheet.create({
   image: { flex: 1 },
   loadingContainer: { justifyContent: 'center', alignItems: 'center' },
@@ -490,6 +582,54 @@ const styles = StyleSheet.create({
   },
   signOutButton: { backgroundColor: '#FF3B30' },
   actionButtonText: { color: '#fff', fontSize: wp('5%'), fontFamily: 'FredokaOne-Regular' },
+
+  // --- NEW AUTH STYLES ---
+  authContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: wp('5%'),
+  },
+  authBox: {
+    width: wp('90%'),
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    borderRadius: 30,
+    borderWidth: 3,
+    borderColor: '#000',
+    padding: wp('6%'),
+    alignItems: 'center',
+  },
+  authTitle: {
+    fontSize: wp('7%'),
+    fontFamily: 'FredokaOne-Regular',
+    color: '#1E1E1E',
+    marginBottom: hp('1.5%'),
+  },
+  authSubtitle: {
+    fontSize: wp('4%'),
+    fontFamily: 'FredokaOne-Regular',
+    color: '#555',
+    textAlign: 'center',
+    marginBottom: hp('3%'),
+  },
+  authInput: {
+    width: wp('80%'),
+    height: hp('7%'),
+    borderWidth: 2,
+    borderColor: '#000',
+    borderRadius: 25,
+    paddingHorizontal: wp('4%'),
+    fontSize: wp('4.5%'),
+    fontFamily: 'FredokaOne-Regular',
+    backgroundColor: '#fff',
+    marginBottom: hp('2%'),
+    color: '#000', // Ensure text is visible
+  },
+  authButton: {
+    width: wp('80%'),
+    marginBottom: 0,
+  },
+ 
 });
 
 export default Profile;
