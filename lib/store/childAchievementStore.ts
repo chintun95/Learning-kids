@@ -1,4 +1,3 @@
-// lib/store/childAchievementStore.ts
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 import NetInfo from "@react-native-community/netinfo";
@@ -18,6 +17,9 @@ interface ChildAchievementState {
   fetchChildAchievements: (childId: string) => Promise<void>;
   refreshAll: () => Promise<void>;
   clearAll: () => void;
+
+  /** Completely clears all data and removes persisted cache */
+  resetStore: () => void;
 }
 
 /** Simple UUID format check */
@@ -157,6 +159,27 @@ export const useChildAchievementStore = create<ChildAchievementState>()(
             loading: false,
             syncing: false,
           });
+        },
+
+        /** ✅ Completely reset the store and remove MMKV data */
+        resetStore: () => {
+          console.log("🧹 Resetting childAchievementStore...");
+          Object.values(activeChannels).forEach((channel) =>
+            supabase.removeChannel(channel)
+          );
+          for (const key of Object.keys(activeChannels)) {
+            delete activeChannels[key];
+          }
+
+          set({
+            achievementsByChild: {},
+            error: null,
+            loading: false,
+            syncing: false,
+          });
+
+          // Remove persisted data from MMKV
+          zustandStorage.removeItem("child-achievement-storage");
         },
       };
     },

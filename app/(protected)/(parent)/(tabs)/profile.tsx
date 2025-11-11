@@ -1,4 +1,4 @@
-// (tabs)/profile.tsx
+// file: app/(protected)/(parent)/(tabs)/profile.tsx
 import React, { useState, useRef, useEffect } from "react";
 import {
   View,
@@ -12,6 +12,9 @@ import {
   ImageBackground,
   Platform,
   Animated,
+  TextInput,
+  KeyboardAvoidingView,
+  ScrollView,
 } from "react-native";
 import { BlurView } from "expo-blur";
 import * as ImagePicker from "expo-image-picker";
@@ -20,12 +23,17 @@ import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 
 import SignOutButton from "@/components/SignOutButton";
-import InputBox from "@/components/InputBox";
 import Button from "@/components/Button";
 import { responsive } from "@/utils/responsive";
 import { updateProfileSchema, UpdateProfileInput } from "@/utils/formatter";
 import { useDeleteParent } from "@/services/deleteParent";
 import { useAuthStore } from "@/lib/store/authStore";
+
+// ✅ Notification utilities
+import {
+  registerForPushNotificationsAsync,
+  scheduleLocalNotification,
+} from "@/utils/notifications";
 
 type ImageSource = {
   uri: string;
@@ -39,7 +47,14 @@ export default function ProtectedProfileIndex() {
   const router = useRouter();
   const resetAuth = useAuthStore();
 
-  const [showEditModal, setShowEditModal] = useState(false);
+  // --- Modals ---
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [showPreferencesModal, setShowPreferencesModal] = useState(false); // daily/weekly/monthly
+  const [showHelpModal, setShowHelpModal] = useState(false);
+  const [showFAQModal, setShowFAQModal] = useState(false);
+  const [showNotificationModal, setShowNotificationModal] = useState(false); // Send notification modal
+
+  // --- States ---
   const [firstName, setFirstName] = useState(user?.firstName ?? "");
   const [lastName, setLastName] = useState(user?.lastName ?? "");
   const [email, setEmail] = useState(
@@ -51,11 +66,24 @@ export default function ProtectedProfileIndex() {
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
-  const deleteParentMutation = useDeleteParent(user?.id || "");
+  // --- Notification Send ---
+  const [sending, setSending] = useState(false);
+  const [notifTitle, setNotifTitle] = useState("Learning Kids");
+  const [notifBody, setNotifBody] = useState(
+    "Keep learning something new every day!"
+  );
 
+  // --- UI state ---
+  const [darkModeEnabled, setDarkModeEnabled] = useState(false);
+  const [notifFrequency, setNotifFrequency] = useState({
+    daily: false,
+    weekly: false,
+    monthly: false,
+  });
+
+  const deleteParentMutation = useDeleteParent(user?.id || "");
   const profileImage =
     user?.imageUrl ?? require("@/assets/profile-icons/avatar1.png");
-
   const createdAt = user?.createdAt
     ? new Date(user.createdAt).toLocaleDateString()
     : "Unknown";
@@ -70,76 +98,9 @@ export default function ProtectedProfileIndex() {
     return () => scrollY.removeListener(listener);
   }, [scrollY]);
 
-  const handlePickImage = async () => {
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.8,
-    });
-    if (!result.canceled && result.assets?.length > 0) {
-      const file = result.assets[0];
-      setImageSource({
-        uri: file.uri,
-        size: file.fileSize ?? 0,
-        type: file.mimeType ?? "image/jpeg",
-        name: file.fileName ?? "profile.jpg",
-      });
-    }
-  };
-
-  const handleRemoveImage = () => setImageSource(null);
-
-  const handleSaveChanges = async (): Promise<void> => {
-    if (!user) return;
-    try {
-      setSaving(true);
-      const validated: UpdateProfileInput = updateProfileSchema.parse({
-        firstName,
-        lastName,
-        emailAddress: email,
-        imageSource,
-      });
-
-      await user.update({
-        firstName: validated.firstName ?? undefined,
-        lastName: validated.lastName ?? undefined,
-      });
-
-      const currentEmail =
-        user.primaryEmailAddress?.emailAddress ??
-        user.emailAddresses?.[0]?.emailAddress;
-      if (validated.emailAddress && validated.emailAddress !== currentEmail) {
-        const newEmail = await user.createEmailAddress({
-          email: validated.emailAddress,
-        });
-        await user.update({ primaryEmailAddressId: newEmail.id });
-        await user.reload();
-      }
-
-      if (validated.imageSource && validated.imageSource.uri) {
-        const file = {
-          uri: validated.imageSource.uri,
-          type: validated.imageSource.type || "image/jpeg",
-          name: validated.imageSource.name || "profile.jpg",
-        } as any;
-        await user.setProfileImage({ file });
-      }
-
-      Alert.alert("Success", "Profile updated successfully!");
-      setShowEditModal(false);
-      setImageSource(null);
-    } catch (err: any) {
-      console.error("❌ Clerk update failed:", err);
-      Alert.alert("Error", err.message || "Failed to update profile.");
-    } finally {
-      setSaving(false);
-    }
-  };
-
+  // --- Delete Parent ---
   const handleDeleteUser = async () => {
     if (!user) return;
-
     Alert.alert(
       "Confirm Account Deletion",
       "This will permanently remove your account and all associated data. Continue?",
@@ -158,7 +119,6 @@ export default function ProtectedProfileIndex() {
               Alert.alert("Account Deleted", "Your account has been removed.");
               router.replace("/(auth)");
             } catch (err: any) {
-              console.error("❌ Account deletion failed:", err);
               Alert.alert("Error", err.message || "Failed to delete account.");
             } finally {
               setDeleting(false);
@@ -169,6 +129,37 @@ export default function ProtectedProfileIndex() {
     );
   };
 
+  // ✅ Send Notification
+  const handleSendNotification = async () => {
+    try {
+      if (!notifTitle.trim() || !notifBody.trim()) {
+        Alert.alert(
+          "Missing Fields",
+          "Please fill out both title and message."
+        );
+        return;
+      }
+      setSending(true);
+      const token = await registerForPushNotificationsAsync();
+      if (!token) {
+        Alert.alert("Error", "Failed to register for push notifications.");
+        setSending(false);
+        return;
+      }
+      await scheduleLocalNotification(notifTitle, notifBody, 3);
+      Alert.alert(
+        "Notification Scheduled",
+        "A notification will appear in about 3 seconds."
+      );
+      setShowNotificationModal(false);
+    } catch (e: any) {
+      Alert.alert("Error", e.message || "Notification failed.");
+    } finally {
+      setSending(false);
+    }
+  };
+
+  // --- Render ---
   return (
     <ImageBackground
       source={require("@/assets/images/app-background.png")}
@@ -181,7 +172,6 @@ export default function ProtectedProfileIndex() {
         backgroundColor="transparent"
         barStyle="light-content"
       />
-
       {Platform.OS === "android" && blurVisible && (
         <BlurView tint="light" intensity={70} style={StyleSheet.absoluteFill} />
       )}
@@ -191,7 +181,9 @@ export default function ProtectedProfileIndex() {
         showsVerticalScrollIndicator={false}
         onScroll={Animated.event(
           [{ nativeEvent: { contentOffset: { y: scrollY } } }],
-          { useNativeDriver: false }
+          {
+            useNativeDriver: false,
+          }
         )}
         scrollEventThrottle={16}
       >
@@ -214,7 +206,6 @@ export default function ProtectedProfileIndex() {
               {email || "No email available"}
             </Text>
             <Text style={styles.dateText}>Joined on {createdAt}</Text>
-
             <View style={styles.signOutWrapper}>
               <SignOutButton />
             </View>
@@ -222,19 +213,16 @@ export default function ProtectedProfileIndex() {
 
           {/* --- Actions --- */}
           <View style={styles.actionsContainer}>
-            <TouchableOpacity onPress={() => setShowEditModal(true)}>
-              <Text style={styles.actionText}>View / Edit Profile</Text>
-            </TouchableOpacity>
-            <TouchableOpacity>
+            <TouchableOpacity onPress={() => setShowSettingsModal(true)}>
               <Text style={styles.actionText}>Settings</Text>
             </TouchableOpacity>
-            <TouchableOpacity>
+            <TouchableOpacity onPress={() => setShowPreferencesModal(true)}>
               <Text style={styles.actionText}>Notifications</Text>
             </TouchableOpacity>
-            <TouchableOpacity>
+            <TouchableOpacity onPress={() => setShowHelpModal(true)}>
               <Text style={styles.actionText}>Help</Text>
             </TouchableOpacity>
-            <TouchableOpacity>
+            <TouchableOpacity onPress={() => setShowFAQModal(true)}>
               <Text style={styles.actionText}>FAQ</Text>
             </TouchableOpacity>
           </View>
@@ -248,96 +236,198 @@ export default function ProtectedProfileIndex() {
               borderColor="#000"
               borderWidth={2}
               loading={deleting}
-              paddingVertical={responsive.buttonHeight * 0.2}
-              paddingHorizontal={responsive.buttonHeight * 0.8}
-              fontSize={responsive.buttonFontSize * 0.85}
+            />
+          </View>
+
+          {/* ✅ Send Notification Button */}
+          <View style={styles.sendNotificationWrapper}>
+            <Button
+              title="Send Notification"
+              onPress={() => setShowNotificationModal(true)}
+              backgroundColor="#4F46E5"
+              textColor="#fff"
+              fontSize={responsive.buttonFontSize * 0.9}
             />
           </View>
         </View>
       </Animated.ScrollView>
 
-      {/* --- Edit Profile Modal --- */}
-      <Modal visible={showEditModal} animationType="slide">
-        <View style={styles.modalContainer}>
+      {/* --- Settings Modal --- */}
+      <Modal visible={showSettingsModal} animationType="slide">
+        <View style={styles.fullscreenModal}>
           <TouchableOpacity
-            onPress={() => setShowEditModal(false)}
-            style={styles.modalClose}
+            onPress={() => setShowSettingsModal(false)}
+            style={styles.fullscreenClose}
           >
             <Ionicons
               name="close"
-              size={responsive.screenWidth * 0.06}
+              size={responsive.screenWidth * 0.08}
               color="#000"
             />
           </TouchableOpacity>
-
-          <Text style={styles.modalTitle}>Edit Profile</Text>
-
-          <InputBox
-            label="First Name"
-            placeholder="First Name"
-            value={firstName}
-            onChangeText={setFirstName}
-            iconLeft="person-outline"
-          />
-          <InputBox
-            label="Last Name"
-            placeholder="Last Name"
-            value={lastName}
-            onChangeText={setLastName}
-            iconLeft="person-outline"
-          />
-          <InputBox
-            label="Email Address"
-            placeholder="Email Address"
-            value={email}
-            onChangeText={setEmail}
-            iconLeft="mail-outline"
-            keyboardType="email-address"
-            autoCapitalize="none"
-          />
-
-          <TouchableOpacity onPress={handlePickImage}>
-            <Text style={styles.modalUploadText}>Select Profile Image</Text>
-          </TouchableOpacity>
-
-          {imageSource && (
-            <View style={styles.imagePreviewContainer}>
-              <Image
-                source={{ uri: imageSource.uri }}
-                style={styles.imagePreview}
+          <Text style={styles.fullscreenTitle}>Settings</Text>
+          <View style={styles.separator} />
+          <View style={styles.toggleRow}>
+            <Text style={styles.toggleLabel}>Enable Dark Mode</Text>
+            <TouchableOpacity
+              onPress={() => setDarkModeEnabled(!darkModeEnabled)}
+            >
+              <Ionicons
+                name={darkModeEnabled ? "moon" : "sunny"}
+                size={responsive.screenWidth * 0.07}
+                color="#000"
               />
-              <TouchableOpacity
-                onPress={handleRemoveImage}
-                style={styles.removeImageButton}
-              >
-                <Ionicons name="trash-outline" size={22} color="#000" />
-              </TouchableOpacity>
-            </View>
-          )}
+            </TouchableOpacity>
+          </View>
+          <Text style={styles.disclaimer}>Feature is a work in progress.</Text>
+        </View>
+      </Modal>
 
+      {/* --- Notifications Preferences Modal --- */}
+      <Modal visible={showPreferencesModal} animationType="slide">
+        <View style={styles.fullscreenModal}>
+          <TouchableOpacity
+            onPress={() => setShowPreferencesModal(false)}
+            style={styles.fullscreenClose}
+          >
+            <Ionicons
+              name="close"
+              size={responsive.screenWidth * 0.08}
+              color="#000"
+            />
+          </TouchableOpacity>
+          <Text style={styles.fullscreenTitle}>Notifications</Text>
+          <View style={styles.separator} />
+          {["daily", "weekly", "monthly"].map((key) => (
+            <TouchableOpacity
+              key={key}
+              style={styles.checkboxRow}
+              onPress={() =>
+                setNotifFrequency((prev) => ({
+                  ...prev,
+                  [key]: !prev[key as keyof typeof prev],
+                }))
+              }
+            >
+              <Ionicons
+                name={
+                  notifFrequency[key as keyof typeof notifFrequency]
+                    ? "checkbox"
+                    : "square-outline"
+                }
+                size={responsive.screenWidth * 0.07}
+                color="#000"
+              />
+              <Text style={styles.checkboxLabel}>
+                {key.charAt(0).toUpperCase() + key.slice(1)}
+              </Text>
+            </TouchableOpacity>
+          ))}
           <Button
-            title="Save Changes"
-            onPress={handleSaveChanges}
-            loading={saving}
-            marginTop={responsive.screenHeight * 0.02}
-            backgroundColor="#000"
+            title="Confirm"
+            onPress={() =>
+              Alert.alert("Confirmed", "Selections saved (UI only).")
+            }
+            backgroundColor="#111827"
             textColor="#fff"
+            marginTop={responsive.screenHeight * 0.04}
           />
         </View>
+      </Modal>
+
+      {/* --- Help Modal --- */}
+      <Modal visible={showHelpModal} animationType="slide">
+        <View style={styles.fullscreenModal}>
+          <TouchableOpacity
+            onPress={() => setShowHelpModal(false)}
+            style={styles.fullscreenClose}
+          >
+            <Ionicons
+              name="close"
+              size={responsive.screenWidth * 0.08}
+              color="#000"
+            />
+          </TouchableOpacity>
+          <Text style={styles.fullscreenTitle}>Help</Text>
+          <View style={styles.separator} />
+          <Text style={styles.placeholderText}>More Information Required</Text>
+        </View>
+      </Modal>
+
+      {/* --- FAQ Modal --- */}
+      <Modal visible={showFAQModal} animationType="slide">
+        <View style={styles.fullscreenModal}>
+          <TouchableOpacity
+            onPress={() => setShowFAQModal(false)}
+            style={styles.fullscreenClose}
+          >
+            <Ionicons
+              name="close"
+              size={responsive.screenWidth * 0.08}
+              color="#000"
+            />
+          </TouchableOpacity>
+          <Text style={styles.fullscreenTitle}>FAQ</Text>
+          <View style={styles.separator} />
+          <Text style={styles.placeholderText}>More Information Required</Text>
+        </View>
+      </Modal>
+
+      {/* ✅ Send Custom Notification Modal */}
+      <Modal visible={showNotificationModal} animationType="slide">
+        <KeyboardAvoidingView
+          style={styles.fullscreenModal}
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
+        >
+          <TouchableOpacity
+            onPress={() => setShowNotificationModal(false)}
+            style={styles.fullscreenClose}
+          >
+            <Ionicons
+              name="close"
+              size={responsive.screenWidth * 0.08}
+              color="#000"
+            />
+          </TouchableOpacity>
+          <ScrollView contentContainerStyle={styles.modalScrollContent}>
+            <Text style={styles.fullscreenTitle}>Send Custom Notification</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Notification Title"
+              value={notifTitle}
+              onChangeText={setNotifTitle}
+              placeholderTextColor="#555"
+            />
+            <TextInput
+              style={[styles.input, styles.textArea]}
+              placeholder="Notification Message"
+              value={notifBody}
+              onChangeText={setNotifBody}
+              placeholderTextColor="#555"
+              multiline
+            />
+            <Button
+              title={sending ? "Sending..." : "Send Notification"}
+              onPress={handleSendNotification}
+              loading={sending}
+              backgroundColor="#111827"
+              textColor="#fff"
+              marginTop={responsive.screenHeight * 0.04}
+            />
+            <Text style={styles.fullscreenHint}>
+              This will schedule a test notification in about 3 seconds.
+            </Text>
+          </ScrollView>
+        </KeyboardAvoidingView>
       </Modal>
     </ImageBackground>
   );
 }
 
-// --- Styles ---
 const styles = StyleSheet.create({
-  background: { flex: 1, width: "100%", height: "100%" },
+  background: { flex: 1 },
   backgroundImage: { transform: [{ scale: 1.2 }] },
-  scrollContainer: {
-    flexGrow: 1,
-    alignItems: "center",
-    paddingBottom: responsive.screenHeight * 0.05,
-  },
+  scrollContainer: { flexGrow: 1, alignItems: "center" },
   overlay: {
     flex: 1,
     alignItems: "center",
@@ -349,115 +439,97 @@ const styles = StyleSheet.create({
   profileContainer: {
     width: responsive.screenWidth * 0.9,
     backgroundColor: "rgba(217,217,217,0.85)",
-    borderRadius: responsive.screenWidth * 0.04,
+    borderRadius: 20,
     borderWidth: 2,
     borderColor: "#999",
     alignItems: "center",
-    paddingVertical: responsive.screenHeight * 0.02,
-    paddingHorizontal: responsive.screenWidth * 0.04,
-    shadowColor: "#000",
-    shadowOpacity: 0.25,
-    shadowRadius: 5,
-    elevation: 4,
+    paddingVertical: 20,
   },
   welcomeText: {
     fontFamily: "Fredoka-Bold",
     fontSize: responsive.buttonFontSize * 1.1,
     color: "#111827",
-    marginBottom: responsive.screenHeight * 0.006,
-    textAlign: "center",
   },
   profileImage: {
     width: responsive.screenWidth * 0.25,
     height: responsive.screenWidth * 0.25,
     borderRadius: 999,
+    marginTop: 8,
   },
-  nameText: {
-    fontFamily: "Fredoka-Bold",
-    fontSize: responsive.buttonFontSize * 1.1,
-    color: "#111827",
-    marginTop: responsive.screenHeight * 0.008,
-  },
-  emailText: {
-    fontFamily: "Fredoka-Medium",
-    fontSize: responsive.buttonFontSize * 0.9,
-    color: "#4B5563",
-  },
-  dateText: {
-    fontFamily: "Fredoka-Regular",
-    fontSize: responsive.buttonFontSize * 0.85,
-    color: "#6B7280",
-  },
-  signOutWrapper: {
-    marginTop: responsive.screenHeight * 0.02,
-    alignItems: "center",
-  },
+  nameText: { fontFamily: "Fredoka-Bold", fontSize: responsive.buttonFontSize },
+  emailText: { fontFamily: "Fredoka-Medium", color: "#4B5563" },
+  dateText: { fontFamily: "Fredoka-Regular", color: "#6B7280" },
+  signOutWrapper: { marginTop: 10 },
   actionsContainer: {
     width: responsive.screenWidth * 0.9,
     backgroundColor: "rgba(217,217,217,0.85)",
-    borderRadius: responsive.screenWidth * 0.04,
+    borderRadius: 20,
     borderWidth: 2,
     borderColor: "#999",
-    marginTop: responsive.screenHeight * 0.03,
-    paddingVertical: responsive.screenHeight * 0.02,
+    marginTop: 20,
     alignItems: "center",
-    shadowColor: "#000",
-    shadowOpacity: 0.25,
-    shadowRadius: 5,
-    elevation: 4,
+    paddingVertical: 15,
   },
   actionText: {
     fontSize: responsive.buttonFontSize,
     fontFamily: "Fredoka-Medium",
     color: "#000",
     textDecorationLine: "underline",
-    marginVertical: responsive.screenHeight * 0.008,
+    marginVertical: 6,
   },
-  deleteButtonWrapper: {
-    alignItems: "center",
-    justifyContent: "center",
-    marginTop: responsive.screenHeight * 0.03,
-  },
-  modalContainer: {
+  deleteButtonWrapper: { marginTop: 20 },
+  sendNotificationWrapper: { marginTop: 20 },
+  fullscreenModal: {
     flex: 1,
-    backgroundColor: "rgba(217,217,217,0.85)",
-    justifyContent: "center",
-    alignItems: "center",
+    backgroundColor: "rgba(217,217,217,0.95)",
+    paddingTop: responsive.screenHeight * 0.08,
     paddingHorizontal: responsive.screenWidth * 0.06,
   },
-  modalClose: {
-    position: "absolute",
-    top: responsive.screenHeight * 0.05,
-    right: responsive.screenWidth * 0.06,
-  },
-  modalTitle: {
+  fullscreenClose: { position: "absolute", top: 50, right: 25 },
+  fullscreenTitle: {
     fontFamily: "Fredoka-Bold",
-    fontSize: responsive.buttonFontSize * 1.1,
-    color: "#000",
+    fontSize: responsive.buttonFontSize * 1.2,
     textAlign: "center",
-    marginBottom: responsive.screenHeight * 0.025,
-  },
-  modalUploadText: {
-    fontFamily: "Fredoka-Medium",
     color: "#000",
-    textDecorationLine: "underline",
-    textAlign: "left",
-    marginTop: responsive.screenHeight * 0.015,
   },
-  imagePreviewContainer: {
+  separator: { height: 2, backgroundColor: "#000", marginVertical: 20 },
+  toggleRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  toggleLabel: { fontFamily: "Fredoka-Medium", color: "#000" },
+  disclaimer: { marginTop: 10, fontFamily: "Fredoka-Regular", color: "#444" },
+  checkboxRow: {
     flexDirection: "row",
     alignItems: "center",
-    marginTop: responsive.screenHeight * 0.015,
+    marginVertical: 10,
   },
-  imagePreview: {
-    width: responsive.screenWidth * 0.25,
-    height: responsive.screenWidth * 0.25,
-    borderRadius: 12,
-    marginRight: 10,
+  checkboxLabel: {
+    fontFamily: "Fredoka-Medium",
+    marginLeft: 10,
+    color: "#000",
   },
-  removeImageButton: {
+  placeholderText: {
+    textAlign: "center",
+    color: "#000",
+    fontFamily: "Fredoka-Medium",
+  },
+  modalScrollContent: {
+    flexGrow: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  input: {
+    width: "100%",
+    borderColor: "#000",
+    borderWidth: 2,
+    borderRadius: 15,
+    padding: 12,
     backgroundColor: "#fff",
-    borderRadius: 10,
-    padding: 8,
+    fontFamily: "Fredoka-Medium",
+    marginBottom: 10,
   },
+  textArea: { height: responsive.screenHeight * 0.2, textAlignVertical: "top" },
+  fullscreenHint: { textAlign: "center", marginTop: 10, color: "#333" },
 });

@@ -6,15 +6,22 @@ import Button from "../components/Button";
 import { useSessionStore } from "@/lib/store/sessionStore";
 import { useAuthStore } from "@/lib/store/authStore";
 import { useChildAuthStore } from "@/lib/store/childAuthStore";
+import { useChildAchievementStore } from "@/lib/store/childAchievementStore";
+import { useGameStore } from "@/lib/store/gameStore";
+import { useLessonLogStore } from "@/lib/store/lessonLogStore";
+import { useLessonStore } from "@/lib/store/lessonStore";
+import { useQuestionLogStore } from "@/lib/store/questionLogStore";
+import { useQuestionStore } from "@/lib/store/questionStore";
+import { useSectionStore } from "@/lib/store/sectionStore";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
 import { responsive } from "@/utils/responsive";
 
 /**
- * SignOutButton — integrated with the new sessionStore
+ * SignOutButton — integrated with all local stores
  * - Ends the current session for a child before sign-out
  * - Marks the child inactive in Supabase
- * - Preserves loading state and clean reset
+ * - Clears *all* child-related local and cached data
  */
 export const SignOutButton: React.FC = () => {
   const { signOut } = useClerk();
@@ -23,13 +30,25 @@ export const SignOutButton: React.FC = () => {
   const [loading, setLoading] = useState(false);
 
   // Zustand selectors
-  const { endSession, resetSession } = useSessionStore();
+  const {
+    endSession,
+    resetSession,
+    clearAllSessions, // ✅ Added clearAllSessions
+  } = useSessionStore();
   const setRole = useAuthStore((state) => state.setRole);
+  const setParentSynced = useAuthStore((state) => state.setParentSynced);
   const role = useAuthStore((state) => state.role);
-   const setParentSynced = useAuthStore((state) => state.setParentSynced);
-  const { getCurrentChild } = useChildAuthStore();
+  const { getCurrentChild, resetStore: resetChildAuthStore } =
+    useChildAuthStore();
+  const { resetStore: resetChildAchievementStore } = useChildAchievementStore();
+  const { resetCurrentScore, resetHighScore } = useGameStore();
+  const { clearLogs: clearLessonLogs } = useLessonLogStore();
+  const { clearAll: clearLessonStore } = useLessonStore();
+  const { clearLogs: clearQuestionLogs } = useQuestionLogStore();
+  const { clearAll: clearQuestionStore } = useQuestionStore();
+  const { clearAll: clearSectionStore } = useSectionStore();
 
-  // Mutation: mark child inactive
+  // Mutation: mark child inactive in Supabase
   const { mutateAsync: setInactiveStatus } = useMutation({
     mutationFn: async (childId: string) => {
       const { error } = await supabase
@@ -75,29 +94,59 @@ export const SignOutButton: React.FC = () => {
       if (role === "child") {
         const child = getCurrentChild();
         if (child) {
-          // 1️⃣ End the local session (records endTime + saves to history)
+          // End active session (records end time)
           endSession();
           console.log(`🕒 Ended local session for child ${child.id}`);
 
-          // 2️⃣ Mark as inactive in Supabase
+          // Mark child inactive in Supabase
           console.log(
             `⚙️ Setting activityStatus to inactive for ${child.firstName} ${child.lastName}...`
           );
           await setInactiveStatus(child.id);
         }
+
+        // Reset all game-related scores
+        resetCurrentScore();
+        resetHighScore();
+        console.log("🎮 Reset current and high scores for child.");
+
+        // Clear all lesson-related data
+        clearLessonLogs();
+        clearLessonStore();
+        console.log("📘 Cleared lesson logs and lesson store for child.");
+
+        // Clear all question-related data
+        clearQuestionLogs();
+        clearQuestionStore();
+        console.log("❓ Cleared question logs and question store for child.");
+
+        // Clear section data
+        clearSectionStore();
+        console.log("📚 Cleared section store for child.");
+
+        // Clear all session records
+        clearAllSessions();
+        console.log("🕓 Cleared all saved session records.");
+
+        // Clear child-specific stores completely
+        resetChildAuthStore();
+        resetChildAchievementStore();
+        console.log(
+          "🧹 Cleared childAuthStore & childAchievementStore after child sign-out."
+        );
       }
 
-      // 3️⃣ Sign out from Clerk
+      // Sign out from Clerk
       await signOut();
 
-      // 4️⃣ Reset local state
+      //Reset parent/session states
       resetSession();
       setRole("default");
       setParentSynced(false);
 
       logState("After Sign Out");
 
-      // 5️⃣ Redirect to root
+      // Redirect to root
       Linking.openURL(Linking.createURL("/"));
     } catch (err) {
       console.error("❌ Sign out error:", err);

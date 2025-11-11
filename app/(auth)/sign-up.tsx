@@ -23,13 +23,15 @@ import Button from "@/components/Button";
 import InputBox from "@/components/InputBox";
 import { useAuthStore } from "@/lib/store/authStore";
 import { responsive } from "@/utils/responsive";
-import { signUpSchema, sanitizeInput } from "@/utils/formatter";
+import {
+  signUpSchema,
+  verificationCodeSchema,
+  sanitizeInput,
+} from "@/utils/formatter";
 
 type SignUpInput = z.infer<typeof signUpSchema>;
+type VerificationInput = z.infer<typeof verificationCodeSchema>;
 
-/**
- * Utility: unwrap inner object from ZodEffects (so we can use .shape)
- */
 function unwrapSchema<T extends z.ZodTypeAny>(
   schema: T
 ): z.AnyZodObject | null {
@@ -52,23 +54,21 @@ export default function SignUpScreen() {
     email: "",
     password: "",
     confirmPassword: "",
-    code: "",
   });
+  const [code, setCode] = useState<string>("");
 
   const [errors, setErrors] = useState<
-    Partial<Record<keyof SignUpInput, string>>
+    Partial<Record<keyof SignUpInput | "code", string>>
   >({});
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [verificationPending, setVerificationPending] = useState(false);
   const [successModal, showSuccessModal] = useState(false);
+  const [loading, setLoading] = useState(false);
 
-  // Unwrap the Zod object shape for field-level validation
   const innerSchema = unwrapSchema(signUpSchema);
 
-  /**
-   * Real-time validation per field
-   */
+  // --- Field-level validation ---
   const handleChange = (field: keyof SignUpInput, value: string) => {
     const sanitized = sanitizeInput(value);
     setForm((prev) => ({ ...prev, [field]: sanitized }));
@@ -84,7 +84,6 @@ export default function SignUpScreen() {
         setErrors((prev) => ({ ...prev, [field]: "" }));
       }
 
-      // Cross-check confirm password
       if (field === "confirmPassword" && sanitized !== form.password) {
         setErrors((prev) => ({
           ...prev,
@@ -101,9 +100,7 @@ export default function SignUpScreen() {
     }
   };
 
-  /**
-   * Validate full form before submission
-   */
+  // --- Form validation ---
   const validateForm = () => {
     const result = signUpSchema.safeParse(form);
     if (!result.success) {
@@ -121,48 +118,108 @@ export default function SignUpScreen() {
 
   const handleSwitchToLogin = () => router.push("../");
 
+  // --- Sign Up ---
   const onSignUpPress = async () => {
-    if (!isLoaded) return;
-    if (!validateForm()) return;
+    if (!isLoaded) {
+      console.log("❌ Clerk not loaded yet.");
+      return;
+    }
+
+    console.log("🟢 [SignUp] Button pressed — beginning sign-up process.");
+
+    if (!validateForm()) {
+      console.log("⚠️ [SignUp] Form validation failed.");
+      return;
+    }
 
     try {
-      await signUp.create({
-        firstName: form.firstName,
-        lastName: form.lastName,
-        emailAddress: form.email,
+      setLoading(true);
+      console.log("⏳ [SignUp] Creating account with Clerk...");
+
+      const created = await signUp.create({
+        firstName: form.firstName.trim(),
+        lastName: form.lastName.trim(),
+        emailAddress: form.email.trim().toLowerCase(),
         password: form.password,
       });
 
+      console.log("✅ [SignUp] Clerk account created:", created?.id);
+
+      console.log("📧 [SignUp] Requesting email verification code...");
       await signUp.prepareEmailAddressVerification({ strategy: "email_code" });
-      setVerificationPending(true);
+      console.log("📨 [SignUp] Verification code sent!");
+
+      // Show modal
+      setTimeout(() => {
+        setVerificationPending(true);
+        console.log("🟣 [UI] Showing verification modal.");
+      }, 300);
     } catch (err: any) {
-      Alert.alert("Error", err.errors?.[0]?.longMessage || "Unknown error");
+      console.error("❌ [SignUp] Clerk sign-up error:", err);
+      Alert.alert(
+        "Sign Up Error",
+        err?.errors?.[0]?.longMessage ||
+          err?.message ||
+          "Unknown error occurred."
+      );
+    } finally {
+      setLoading(false);
     }
   };
 
+  // --- Verification ---
   const onVerifyPress = async () => {
-    if (!isLoaded) return;
+    if (!isLoaded) {
+      console.log("❌ Clerk not loaded during verification.");
+      return;
+    }
+
+    console.log("🟡 [Verify] Button pressed — verifying code...");
+
+    const result = verificationCodeSchema.safeParse({ code });
+    if (!result.success) {
+      setErrors((prev) => ({
+        ...prev,
+        code: result.error.errors[0]?.message || "Code required",
+      }));
+      Alert.alert(
+        "Error",
+        "Please enter the verification code sent to your email."
+      );
+      return;
+    }
 
     try {
+      setLoading(true);
+      console.log("⏳ [Verify] Attempting email verification...");
+
       const attempt = await signUp.attemptEmailAddressVerification({
-        code: form.code,
+        code: code.trim(),
       });
 
       if (attempt.status === "complete") {
+        console.log("✅ [Verify] Email verified successfully!");
         await setActive({ session: attempt.createdSessionId });
         setRole("parent");
         showSuccessModal(true);
+        console.log("🎉 [SignUp] Sign-up and verification complete.");
       } else {
+        console.warn("⚠️ [Verify] Verification incomplete:", attempt.status);
         Alert.alert(
           "Verification Failed",
           "Please check your code and try again."
         );
       }
     } catch (err: any) {
+      console.error("❌ [Verify] Error verifying code:", err);
       Alert.alert(
         "Verification Error",
-        err.errors?.[0]?.longMessage || "Error verifying code"
+        err?.errors?.[0]?.longMessage ||
+          err?.message ||
+          "Invalid verification code."
       );
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -172,13 +229,10 @@ export default function SignUpScreen() {
     <ImageBackground
       source={require("@/assets/images/app-background.png")}
       resizeMode="cover"
-      imageStyle={{ transform: [{ scale: 1.22 }] }} // slight zoom
+      imageStyle={{ transform: [{ scale: 1.22 }] }}
       style={[
         styles.background,
-        {
-          paddingTop: insets.top + 8,
-          paddingBottom: insets.bottom + 8,
-        },
+        { paddingTop: insets.top + 8, paddingBottom: insets.bottom + 8 },
       ]}
     >
       <KeyboardAvoidingView
@@ -187,6 +241,7 @@ export default function SignUpScreen() {
       >
         <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
           <ScrollView
+            keyboardShouldPersistTaps="handled"
             contentContainerStyle={[
               styles.scrollContainer,
               { paddingBottom: insets.bottom + responsive.screenHeight * 0.05 },
@@ -211,124 +266,124 @@ export default function SignUpScreen() {
               </TouchableOpacity>
             </View>
 
-            {/* Form */}
-            <View style={styles.formContainer}>
-              <Text style={styles.formHeader}>
-                Parent or Guardian's Information
-              </Text>
+            {/* --- Sign-Up Form --- */}
+            {!verificationPending && (
+              <View style={styles.formContainer}>
+                <Text style={styles.formHeader}>
+                  Parent or Guardian's Information
+                </Text>
 
-              {/* First / Last Name */}
-              <View style={styles.nameRow}>
-                <View style={styles.halfInput}>
-                  <InputBox
-                    label="First Name"
-                    placeholder="First Name"
-                    value={form.firstName}
-                    onChangeText={(v) => handleChange("firstName", v)}
-                    error={errors.firstName}
-                  />
+                {/* First & Last Name */}
+                <View style={styles.nameRow}>
+                  <View style={styles.halfInput}>
+                    <InputBox
+                      label="First Name"
+                      placeholder="First Name"
+                      value={form.firstName}
+                      onChangeText={(v) => handleChange("firstName", v)}
+                      error={errors.firstName}
+                    />
+                  </View>
+                  <View style={styles.halfInput}>
+                    <InputBox
+                      label="Last Name"
+                      placeholder="Last Name"
+                      value={form.lastName}
+                      onChangeText={(v) => handleChange("lastName", v)}
+                      error={errors.lastName}
+                    />
+                  </View>
                 </View>
-                <View style={styles.halfInput}>
-                  <InputBox
-                    label="Last Name"
-                    placeholder="Last Name"
-                    value={form.lastName}
-                    onChangeText={(v) => handleChange("lastName", v)}
-                    error={errors.lastName}
+
+                <InputBox
+                  label="Email"
+                  placeholder="Enter your email"
+                  value={form.email}
+                  onChangeText={(v) => handleChange("email", v)}
+                  error={errors.email}
+                  iconLeft="mail-outline"
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                />
+
+                <InputBox
+                  label="Password"
+                  placeholder="Enter your password"
+                  value={form.password}
+                  onChangeText={(v) => handleChange("password", v)}
+                  error={errors.password}
+                  secureTextEntry={!showPassword}
+                  iconLeft="lock-closed-outline"
+                  iconRight={showPassword ? "eye-off" : "eye"}
+                  onIconRightPress={() => setShowPassword(!showPassword)}
+                />
+
+                <InputBox
+                  label="Confirm Password"
+                  placeholder="Confirm your password"
+                  value={form.confirmPassword}
+                  onChangeText={(v) => handleChange("confirmPassword", v)}
+                  error={errors.confirmPassword}
+                  secureTextEntry={!showConfirmPassword}
+                  iconLeft="lock-closed-outline"
+                  iconRight={showConfirmPassword ? "eye-off" : "eye"}
+                  onIconRightPress={() =>
+                    setShowConfirmPassword(!showConfirmPassword)
+                  }
+                />
+
+                <View style={{ marginTop: responsive.screenHeight * 0.015 }}>
+                  <Button
+                    title={loading ? "Creating Account..." : "Sign Up"}
+                    onPress={() => {
+                      console.log(
+                        "🟢 [Button] Press detected — calling onSignUpPress()"
+                      );
+                      onSignUpPress();
+                    }}
+                    backgroundColor="#000"
+                    textColor="#fff"
+                    fontSize={responsive.buttonFontSize}
+                    disabled={false}
+                    loading={loading}
                   />
                 </View>
               </View>
+            )}
 
-              <InputBox
-                label="Email"
-                placeholder="Enter your email"
-                value={form.email}
-                onChangeText={(v) => handleChange("email", v)}
-                error={errors.email}
-                iconLeft="mail-outline"
-                keyboardType="email-address"
-                autoCapitalize="none"
-              />
-
-              <InputBox
-                label="Password"
-                placeholder="Enter your password"
-                value={form.password}
-                onChangeText={(v) => handleChange("password", v)}
-                error={errors.password}
-                secureTextEntry={!showPassword}
-                iconLeft="lock-closed-outline"
-                iconRight={showPassword ? "eye-off" : "eye"}
-                onIconRightPress={() => setShowPassword(!showPassword)}
-              />
-
-              <InputBox
-                label="Confirm Password"
-                placeholder="Confirm your password"
-                value={form.confirmPassword}
-                onChangeText={(v) => handleChange("confirmPassword", v)}
-                error={errors.confirmPassword}
-                secureTextEntry={!showConfirmPassword}
-                iconLeft="lock-closed-outline"
-                iconRight={showConfirmPassword ? "eye-off" : "eye"}
-                onIconRightPress={() =>
-                  setShowConfirmPassword(!showConfirmPassword)
-                }
-              />
-
-              <Button
-                title="Sign Up"
-                onPress={onSignUpPress}
-                backgroundColor="#000"
-                textColor="#fff"
-                fontSize={responsive.buttonFontSize}
-                marginTop={responsive.screenHeight * 0.015}
-              />
-            </View>
-
-            {/* Footer */}
-            <View style={styles.footer}>
-              <Text style={styles.footerText}>
-                By continuing, you accept our{" "}
-                <Text style={styles.linkText}>Terms of Service</Text>
-              </Text>
-              <Text style={styles.footer2Text}>
-                and <Text style={styles.link2Text}>Terms of Conduct</Text>
-              </Text>
-            </View>
-
-            {/* Verification Modal */}
-            <Modal
-              visible={verificationPending}
-              transparent
-              animationType="slide"
-            >
+            {/* --- Verification Modal --- */}
+            {verificationPending && (
               <View style={styles.modalOverlay}>
                 <View style={styles.modalContent}>
                   <Text style={styles.modalTitle}>Verify Your Email</Text>
                   <Text style={styles.modalText}>
-                    We’ve sent a verification code to your email.
+                    A verification code has been sent to your email.
                   </Text>
 
                   <InputBox
                     placeholder="Enter verification code"
-                    value={form.code}
-                    onChangeText={(v) => handleChange("code", v)}
+                    value={code}
+                    onChangeText={(v) => setCode(v)}
                     error={errors.code}
                     keyboardType="number-pad"
                   />
 
                   <Button
-                    title="Verify"
-                    onPress={onVerifyPress}
+                    title={loading ? "Verifying..." : "Verify"}
+                    onPress={() => {
+                      console.log("🟡 [Button] Verify button pressed.");
+                      onVerifyPress();
+                    }}
                     backgroundColor="#000"
                     textColor="#fff"
+                    disabled={false}
+                    loading={loading}
                   />
                 </View>
               </View>
-            </Modal>
+            )}
 
-            {/* Success Modal */}
+            {/* --- Success Modal --- */}
             <Modal visible={successModal} transparent animationType="slide">
               <View style={styles.modalOverlay}>
                 <View style={styles.modalContent}>
@@ -340,6 +395,9 @@ export default function SignUpScreen() {
                   <Button
                     title="Go to Home Screen"
                     onPress={() => {
+                      console.log(
+                        "🏁 [Flow] Redirecting to parent dashboard..."
+                      );
                       showSuccessModal(false);
                       router.replace("./(protected)/(parent)");
                     }}
@@ -389,30 +447,6 @@ const styles = StyleSheet.create({
     gap: responsive.screenWidth * 0.04,
   },
   halfInput: { flex: 1 },
-  footer: {
-    alignItems: "center",
-    marginTop: responsive.screenHeight * 0.02,
-  },
-  footerText: {
-    color: "#000",
-    fontFamily: "Fredoka-Bold",
-    textAlign: "center",
-  },
-  linkText: {
-    fontFamily: "Fredoka-SemiBold",
-    color: "#ffffff",
-    textDecorationLine: "underline",
-  },
-  footer2Text: {
-    color: "#000",
-    fontFamily: "Fredoka-Bold",
-    textAlign: "center",
-  },
-  link2Text: {
-    fontFamily: "Fredoka-SemiBold",
-    color: "#ffffff",
-    textDecorationLine: "underline",
-  },
   modalOverlay: {
     flex: 1,
     justifyContent: "center",

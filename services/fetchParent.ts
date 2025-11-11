@@ -11,7 +11,12 @@ export async function fetchParentByEmail(
     .from("Parent")
     .select("*")
     .eq("emailaddress", emailAddress)
-    .single();
-  if (error) throw new Error(error.message);
-  return data;
+    .maybeSingle(); // ✅ safer alternative to .single()
+
+  if (error && error.code !== "PGRST116") {
+    // PGRST116 = "Results contain 0 rows" — ignore this harmless case
+    throw new Error(error.message);
+  }
+
+  return data ?? null;
 }

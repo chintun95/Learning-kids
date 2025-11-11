@@ -50,7 +50,6 @@ export const signUpSchema = z
     firstName: sanitizedZString().pipe(z.string().min(2).max(50)),
     lastName: sanitizedZString().pipe(z.string().min(2).max(50)),
     email: sanitizedZString().pipe(z.string().email("Invalid email address")),
-    code: sanitizedZString().pipe(z.string().min(1, "Code is required")),
     password: sanitizedZString().pipe(
       z
         .string()
@@ -218,15 +217,11 @@ export const updateProfileSchema = z
       .nullable()
       .optional()
       .refine(
-        (file) =>
-          !file ||
-          (file?.size && file.size <= MAX_FILE_SIZE),
+        (file) => !file || (file?.size && file.size <= MAX_FILE_SIZE),
         "Image must be less than 5MB"
       )
       .refine(
-        (file) =>
-          !file ||
-          ACCEPTED_IMAGE_MIME_TYPES.includes(file?.type),
+        (file) => !file || ACCEPTED_IMAGE_MIME_TYPES.includes(file?.type),
         "Only .jpg, .jpeg, .png, and .webp formats are supported"
       ),
   })
@@ -244,6 +239,13 @@ export const updateProfileSchema = z
 // -----------------------------
 // Helper Functions
 // -----------------------------
+// --- Verification Code Schema (new, used for verifying) ---
+export const verificationCodeSchema = z.object({
+  code: sanitizedZString().pipe(
+    z.string().min(1, "Verification code is required")
+  ),
+});
+
 export type UpdateProfileInput = z.infer<typeof updateProfileSchema>;
 
 export function formatSignUp(data: unknown) {

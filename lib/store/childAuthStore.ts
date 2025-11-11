@@ -8,44 +8,25 @@ import {
 } from "@/services/fetchChildren";
 import { formatChildPin } from "@/utils/formatter";
 
-/**
- * A compact record for selection & auditing.
- */
 export type ChildSwitchEvent = {
   childId: string;
-  at: string; // ISO string
+  at: string;
 };
 
 type ChildAuthState = {
-  /** All children fetched for the current parent email */
   children: ChildCardModel[];
-  /** Email used for the last hydrate() call */
   loadedForEmail: string | null;
-
-  /** Currently selected child id (null if none) */
   currentChildId: string | null;
-
-  /** Previously logged in child (for switch tracking) */
   previousChildId: string | null;
-
-  /** Last time a profile switch occurred (ISO) */
   lastSwitchAt: string | null;
-
-  /** Append-only local switch history (optional UI/telemetry) */
   switchHistory: ChildSwitchEvent[];
-
-  /** Tracks if this is the user's first time login */
   firstTimeLogin: boolean;
-
-  /** UI helpers */
   loading: boolean;
   error: string | null;
 
-  // Derived getters
   getCurrentChild: () => ChildCardModel | null;
   getPreviousChild: () => ChildCardModel | null;
 
-  // Actions
   hydrate: (parentEmail: string) => Promise<void>;
   setChildren: (
     children: ChildCardModel[],
@@ -56,9 +37,11 @@ type ChildAuthState = {
   clearSelection: () => void;
   removeChildLocally: (childId: string) => void;
 
-  // New actions for firstTimeLogin flag
   setFirstTimeLogin: (value: boolean) => void;
   markFirstTimeComplete: () => void;
+
+  /** Completely clears all data from the store */
+  resetStore: () => void;
 };
 
 let realtimeSubscription: ReturnType<typeof supabase.channel> | null = null;
@@ -74,8 +57,6 @@ export const useChildAuthStore = create<ChildAuthState>()(
       switchHistory: [],
       loading: false,
       error: null,
-
-      /** New: first-time login flag */
       firstTimeLogin: true,
 
       getCurrentChild: () => {
@@ -227,9 +208,29 @@ export const useChildAuthStore = create<ChildAuthState>()(
         });
       },
 
-      /** ---------- New Actions ---------- **/
       setFirstTimeLogin: (value) => set({ firstTimeLogin: value }),
       markFirstTimeComplete: () => set({ firstTimeLogin: false }),
+
+      /** --- NEW --- */
+      resetStore: () => {
+        console.log("🧹 Clearing childAuthStore data...");
+        if (realtimeSubscription) {
+          supabase.removeChannel(realtimeSubscription);
+          realtimeSubscription = null;
+        }
+        set({
+          children: [],
+          loadedForEmail: null,
+          currentChildId: null,
+          previousChildId: null,
+          lastSwitchAt: null,
+          switchHistory: [],
+          firstTimeLogin: true,
+          loading: false,
+          error: null,
+        });
+        zustandStorage.removeItem("child-auth-storage");
+      },
     }),
     {
       name: "child-auth-storage",
