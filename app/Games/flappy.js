@@ -313,7 +313,7 @@ export default function StartFlappyGame() {
             //if (next % 7 === 0) spawnPowerUp();
           
           // NEW: Trigger question after scoring
-          if (next % 5 === 0 && next > 0) {
+          if (next % 3 === 0 && next > 0) {
             if (questionsAnsweredCount < questionsToComplete && availableQuestions.length > 0) {
               const randomIndex = Math.floor(Math.random() * availableQuestions.length);
               const questionToAsk = availableQuestions[randomIndex];
