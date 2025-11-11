@@ -16,6 +16,9 @@ import { Audio } from 'expo-av';
 import * as Haptics from 'expo-haptics';
 import getGameEntities from '../../entities/games-index';
 import Physics from '../../entities/flappy/physics';
+import { fetchQuestions, Question } from '../../backend/fetchquestions';
+import { supabase } from '../../backend/supabase';
+import { getAuth } from 'firebase/auth';
 
 // --- assets (images + optional sounds) ---
 const BG_FAR = require('@/assets/images/fb-game-background.png');
@@ -37,6 +40,18 @@ export default function StartFlappyGame() {
   const [currentPoints, setCurrentPoints] = useState(0);
   const [highScore, setHighScore] = useState(0);
   const [difficulty, setDifficulty] = useState(1);
+
+  // ---- question system states ----
+  const [allQuestions, setAllQuestions] = useState([]);
+  const [availableQuestions, setAvailableQuestions] = useState([]);
+  const [currentQuestion, setCurrentQuestion] = useState(null);
+  const [isQuestionVisible, setIsQuestionVisible] = useState(false);
+  const [questionsAnsweredCount, setQuestionsAnsweredCount] = useState(0);
+  const [questionsToComplete, setQuestionsToComplete] = useState(5);
+  const [isLoadingData, setIsLoadingData] = useState(true);
+
+  const auth = getAuth();
+  const uid = auth.currentUser?.uid;
 
   // ---- power-ups & combo ----
   const [powerUp, setPowerUp] = useState(null); // 'double' | 'shield' | null
@@ -91,6 +106,52 @@ export default function StartFlappyGame() {
     loopsRef.current.forEach((l) => l.stop && l.stop());
     loopsRef.current = [];
   }, []);
+
+  // Load questions and settings
+  useEffect(() => {
+    const loadInitialData = async () => {
+      if (!uid) {
+        alert("User not logged in.");
+        return;
+      }
+      setIsLoadingData(true);
+      try {
+        // Fetch question limit from settings
+        const { data: settingsData, error: settingsError } = await supabase
+          .from('settings')
+          .select('question_limit')
+          .eq('user_id', uid)
+          .single();
+
+        if (settingsError && settingsError.code !== 'PGRST116') throw settingsError;
+        const limit = settingsData?.question_limit || 5;
+        setQuestionsToComplete(limit);
+
+        // Fetch questions
+        let fetchedQuestions = await fetchQuestions(uid);
+        fetchedQuestions = fetchedQuestions.filter(q => 
+          q.question_type !== 'typed_answer' && q.options
+        );
+
+        if (!fetchedQuestions || fetchedQuestions.length === 0) {
+          alert("No suitable questions available. Ask your parent to add some Multiple Choice or True/False questions!");
+          setIsLoadingData(false);
+          return;
+        }
+        
+        setAllQuestions(fetchedQuestions);
+        setAvailableQuestions([...fetchedQuestions].sort(() => 0.5 - Math.random()));
+
+      } catch (e) {
+        console.error('Error loading questions:', e);
+        alert("Could not load game data. Please try again.");
+      } finally {
+        setIsLoadingData(false);
+      }
+    };
+
+    loadInitialData();
+  }, [uid]);
 
   // restart parallax when difficulty changes during a run
   useEffect(() => {
@@ -167,8 +228,7 @@ export default function StartFlappyGame() {
 
   const spawnPowerUp = useCallback(() => {
     if (powerUp) return;
-    const pick = Math.random() < 0.5 ? 'double' : 'shield';
-    activatePowerUp(pick);
+    activatePowerUp('double');
   }, [powerUp, activatePowerUp]);
 
   // ---- overlays ----
@@ -202,10 +262,17 @@ export default function StartFlappyGame() {
     setShowStart(false);
     setShowGameOver(false);
     setShowPaused(false);
+
+    // ---- reset questions ----
+    setQuestionsAnsweredCount(0);
+    setAvailableQuestions([...allQuestions].sort(() => 0.5 - Math.random()));
+    setIsQuestionVisible(false);
+    setCurrentQuestion(null);
+
     gameEngine.current?.swap(getGameEntities('flappy', 1));
     startParallax();
     safeHaptic(Haptics.selectionAsync);
-  }, [clearPowerUp, startParallax]);
+  }, [clearPowerUp, startParallax, isLoadingData, allQuestions]);
 
   const handlePauseResume = useCallback(() => {
     if (!running) return;
@@ -228,44 +295,59 @@ export default function StartFlappyGame() {
   const handleGameEvent = useCallback(
     (e) => {
       if (e.type === 'new_point') {
-        const now = Date.now();
-        const withinCombo = now - (lastPointAtRef.current || 0) <= COMBO_WINDOW_MS;
-        const newCombo = withinCombo ? combo + 1 : 1;
-        lastPointAtRef.current = now;
-        setCombo(newCombo);
-        setMaxCombo((m) => Math.max(m, newCombo));
-        if (newCombo >= 3) showComboToast();
+          const now = Date.now();
+          const withinCombo = now - (lastPointAtRef.current || 0) <= COMBO_WINDOW_MS;
+          const newCombo = withinCombo ? combo + 1 : 1;
+          lastPointAtRef.current = now;
+          setCombo(newCombo);
+          setMaxCombo((m) => Math.max(m, newCombo));
+          if (newCombo >= 3) showComboToast();
 
-        const base = 1 + (powerUp === 'double' ? 1 : 0);
-        const bonus = Math.max(0, newCombo - 1);
-        const delta = base + bonus;
+          const base = 1 + (powerUp === 'double' ? 1 : 0);
+          const bonus = Math.max(0, newCombo - 1);
+          const delta = base + bonus;
 
-        setCurrentPoints((p) => {
-          const next = p + delta;
-          if (next % 5 === 0) setDifficulty((d) => d + 1);
-          if (next % 7 === 0) spawnPowerUp();
+          setCurrentPoints((p) => {
+            const next = p + delta;
+            if (next % 5 === 0) setDifficulty((d) => d + 1);
+            //if (next % 7 === 0) spawnPowerUp();
+          
+          // NEW: Trigger question after scoring
+          if (next % 5 === 0 && next > 0) {
+            if (questionsAnsweredCount < questionsToComplete && availableQuestions.length > 0) {
+              const randomIndex = Math.floor(Math.random() * availableQuestions.length);
+              const questionToAsk = availableQuestions[randomIndex];
+
+              setCurrentQuestion(questionToAsk);
+              setAvailableQuestions(prev => prev.filter((q, index) => index !== randomIndex));
+
+              setIsQuestionVisible(true);
+              setRunning(false);  // Pause the game
+              setPaused(true);
+              stopParallax();
+            } else if (questionsAnsweredCount >= questionsToComplete) {
+              // All questions answered - game complete
+              setRunning(false);
+              setPaused(false);
+              setShowGameOver(true);
+              stopParallax();
+              setLastRunStats({ score: currentPoints, maxCombo, difficulty });
+              play('over');
+              safeHaptic(() =>
+                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error)
+              );
+            }
+          }
+
           return next;
         });
 
-        play('point');
-        bumpScoreAnim();
-        safeHaptic(() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light));
-      }
-
-      if (e.type === 'game_over') {
-        // second-chance: consume shield to auto-revive
-        if (powerUp === 'shield') {
-          clearPowerUp();
-          gameEngine.current?.swap(getGameEntities('flappy', difficulty));
-          setRunning(true);
-          setPaused(false);
-          startParallax();
-          safeHaptic(() =>
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning)
-          );
-          return;
+          play('point');
+          bumpScoreAnim();
+          safeHaptic(() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light));
         }
 
+      if (e.type === 'game_over') {
         setRunning(false);
         setPaused(false);
         setShowGameOver(true);
@@ -288,6 +370,42 @@ export default function StartFlappyGame() {
     [powerUp, difficulty, currentPoints, maxCombo, clearPowerUp, startParallax, stopParallax, spawnPowerUp]
   );
 
+  const answerQuestion = async (isCorrect, selectedOptionKey) => {
+    setIsQuestionVisible(false);
+
+    // Log answer to database
+    if (uid && currentQuestion) {
+      supabase.from('answer_log').insert({
+        user_id: uid,
+        question_id: currentQuestion.id,
+        is_correct: isCorrect,
+        game_name: 'Flappy Bird'
+      }).then(({ error }) => {
+        if (error) {
+          console.error('Error logging answer:', error.message);
+        }
+      });
+    }
+
+    const newAnsweredCount = questionsAnsweredCount + 1;
+    setQuestionsAnsweredCount(newAnsweredCount);
+
+    if (newAnsweredCount >= questionsToComplete) {
+      // All questions complete - end game
+      setRunning(false);
+      setShowGameOver(true);
+      stopParallax();
+      setLastRunStats({ score: currentPoints, maxCombo, difficulty });
+    } else {
+      // Resume game
+      setRunning(true);
+      setPaused(false);
+      startParallax();
+    }
+
+    setCurrentQuestion(null);
+  };
+
   // ---- power-up expiry ticking (UI + expiry) ----
   useEffect(() => {
     if (!powerUp || !powerUpEndsAt || !running || paused) return;
@@ -304,6 +422,14 @@ export default function StartFlappyGame() {
   const txFar = bgFar.interpolate({ inputRange: [0, 1], outputRange: [0, -40] });
   const txMid = bgMid.interpolate({ inputRange: [0, 1], outputRange: [0, -80] });
   const txNear = bgNear.interpolate({ inputRange: [0, 1], outputRange: [0, -140] });
+
+  if (isLoadingData) {
+    return (
+      <View style={styles.container}>
+        <Text style={styles.title}>Loading Game...</Text>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -323,10 +449,11 @@ export default function StartFlappyGame() {
         <View style={styles.hudRow}>
           <Text style={[styles.hudPill, { marginHorizontal: 4 }]}>HS {highScore}</Text>
           <Text style={[styles.hudPill, { marginHorizontal: 4 }]}>LV {difficulty}</Text>
+          <Text style={[styles.hudPill, { marginHorizontal: 4 }]}>Q: {questionsAnsweredCount}/{questionsToComplete}</Text>
 
           {powerUp && (
             <View style={[styles.powerPill, { marginHorizontal: 4 }]}>
-              <Text style={[styles.powerLabel, { marginRight: 8 }]}>{powerUp === 'double' ? 'x2' : 'Shield'}</Text>
+              <Text style={[styles.powerLabel, { marginRight: 8 }]}>x2</Text>
               <View style={styles.powerBar}>
                 <View style={[styles.powerBarFill, { width: `${Math.min(100, Math.max(0, powerUpProgress * 100))}%` }]} />
               </View>
@@ -421,6 +548,23 @@ export default function StartFlappyGame() {
           </View>
         </View>
       )}
+      {/* Question Modal */}
+        {isQuestionVisible && currentQuestion && (
+          <View style={styles.questionContainer}>
+            <Text style={styles.questionText}>{currentQuestion.question}</Text>
+            {currentQuestion.options && typeof currentQuestion.options === 'object' &&
+              Object.entries(currentQuestion.options).map(([key, option]) => (
+                <TouchableOpacity
+                  key={key}
+                  style={styles.questionButton}
+                  onPress={() => answerQuestion(key === currentQuestion.correct_answer, key)}
+                >
+                  <Text style={styles.questionButtonText}>{String(option)}</Text>
+                </TouchableOpacity>
+              ))
+            }
+          </View>
+        )}
     </View>
   );
 }
@@ -559,4 +703,40 @@ const styles = StyleSheet.create({
     borderColor: '#000',
   },
   secondaryBtnTxt: { color: '#000', fontWeight: '900' },
+
+  // ---- quiz questions ----
+  questionContainer: {
+    position: 'absolute',
+    top: '25%',
+    left: '5%',
+    right: '5%',
+    backgroundColor: 'white',
+    padding: 25,
+    borderRadius: 15,
+    elevation: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    zIndex: 100,
+  },
+  questionText: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 15,
+    textAlign: 'center',
+    color: '#000',
+  },
+  questionButton: {
+    backgroundColor: '#007AFF',
+    padding: 12,
+    borderRadius: 8,
+    marginTop: 10,
+    alignItems: 'center',
+  },
+  questionButtonText: {
+    color: 'white',
+    fontWeight: '600',
+    fontSize: 16,
+  },
 });

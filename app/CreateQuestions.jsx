@@ -12,6 +12,15 @@ import { widthPercentageToDP as wp, heightPercentageToDP as hp } from 'react-nat
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 
+import { 
+  createQuiz,
+  fetchQuizzes,
+  deleteQuiz,
+  getQuizQuestions,
+  addQuestionToQuiz,
+  removeQuestionFromQuiz
+} from '../backend/quizzes';
+
 const CreateQuestions = memo(() => {
   const insets = useSafeAreaInsets();
   const [fontsLoaded] = useFonts({
@@ -25,6 +34,12 @@ const CreateQuestions = memo(() => {
   const [optionC, setOptionC] = useState('');
   const [optionD, setOptionD] = useState('');
   const [correctAnswer, setCorrectAnswer] = useState('');
+
+  const [quizzes, setQuizzes] = useState([]);
+  const [selectedQuiz, setSelectedQuiz] = useState(null);
+  const [quizQuestions, setQuizQuestions] = useState([]);
+  const [newQuizName, setNewQuizName] = useState('');
+  const [newQuizDescription, setNewQuizDescription] = useState('');
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -40,6 +55,7 @@ const CreateQuestions = memo(() => {
     if (uid) {
       fetchQuestions();
       fetchQuestionLimit();
+      loadQuizzes();
     }
   }, [uid]);
 
@@ -224,6 +240,110 @@ const CreateQuestions = memo(() => {
     }
   };
 
+  // Load all quizzes
+  const loadQuizzes = async () => {
+    try {
+      const data = await fetchQuizzes();
+      setQuizzes(data);
+    } catch (error) {
+      console.error('Error loading quizzes:', error);
+      Alert.alert('Error', 'Failed to load quizzes');
+    }
+  };
+
+  // Create a new quiz
+  const handleCreateQuiz = async () => {
+    if (!newQuizName.trim()) {
+      Alert.alert('Error', 'Please enter a quiz name');
+      return;
+    }
+
+    try {
+      await createQuiz(newQuizName.trim(), newQuizDescription.trim());
+      setNewQuizName('');
+      setNewQuizDescription('');
+      loadQuizzes();
+      Alert.alert('Success', 'Quiz created!');
+    } catch (error) {
+      console.error('Error creating quiz:', error);
+      Alert.alert('Error', 'Failed to create quiz');
+    }
+  };
+
+  // Delete a quiz
+  const handleDeleteQuiz = async (quizId) => {
+    Alert.alert(
+      'Delete Quiz',
+      'Are you sure? This will remove the quiz but not the questions.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await deleteQuiz(quizId);
+              loadQuizzes();
+              if (selectedQuiz?.id === quizId) {
+                setSelectedQuiz(null);
+                setQuizQuestions([]);
+              }
+              Alert.alert('Success', 'Quiz deleted');
+            } catch (error) {
+              console.error('Error deleting quiz:', error);
+              Alert.alert('Error', 'Failed to delete quiz');
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  // Select a quiz to manage
+  const handleSelectQuiz = async (quiz) => {
+    setSelectedQuiz(quiz);
+    try {
+      const questions = await getQuizQuestions(quiz.id);
+      setQuizQuestions(questions);
+    } catch (error) {
+      console.error('Error loading quiz questions:', error);
+      Alert.alert('Error', 'Failed to load quiz questions');
+    }
+  };
+
+  // Add question to quiz
+  const handleAddQuestionToQuiz = async (questionId) => {
+    if (!selectedQuiz) return;
+
+    try {
+      await addQuestionToQuiz(selectedQuiz.id, questionId);
+      handleSelectQuiz(selectedQuiz); // Refresh
+      Alert.alert('Success', 'Question added to quiz');
+    } catch (error) {
+      console.error('Error adding question:', error);
+      Alert.alert('Error', 'Failed to add question. It may already be in the quiz.');
+    }
+  };
+
+  // Remove question from quiz
+  const handleRemoveQuestionFromQuiz = async (questionId) => {
+    if (!selectedQuiz) return;
+
+    try {
+      await removeQuestionFromQuiz(selectedQuiz.id, questionId);
+      handleSelectQuiz(selectedQuiz); // Refresh
+      Alert.alert('Success', 'Question removed from quiz');
+    } catch (error) {
+      console.error('Error removing question:', error);
+      Alert.alert('Error', 'Failed to remove question');
+    }
+  };
+
+  // Check if question is in the selected quiz
+  const isQuestionInQuiz = (questionId) => {
+    return quizQuestions.some(q => q.id === questionId);
+  };
+
   if (!fontsLoaded) return <ActivityIndicator />;
 
   return (
@@ -237,7 +357,7 @@ const CreateQuestions = memo(() => {
 
       {/* Tab selector */}
       <View style={styles.tabRow}>
-        {['create', 'questions'].map((tab) => (
+        {['create', 'questions', 'quizzes'].map((tab) => (
           <TouchableOpacity
             key={tab}
             style={[styles.tabButton, activeTab === tab && styles.tabButtonActive]}
@@ -351,6 +471,121 @@ const CreateQuestions = memo(() => {
           }}
           contentContainerStyle={{ alignItems: 'center', paddingBottom: hp('5%') }}
         />
+      )}
+
+      {/* Quizzes Tab */}
+      {activeTab === 'quizzes' && (
+        <ScrollView contentContainerStyle={styles.scrollContent}>
+          <Text style={styles.title}>Manage Quizzes</Text>
+
+          {/* Create Quiz Section */}
+          <View style={{ width: wp('85%'), marginBottom: hp('3%') }}>
+            <Text style={styles.label}>Create New Quiz</Text>
+            <TextInput
+              placeholder="Quiz Name"
+              value={newQuizName}
+              onChangeText={setNewQuizName}
+              style={styles.input}
+            />
+            <TextInput
+              placeholder="Description (optional)"
+              value={newQuizDescription}
+              onChangeText={setNewQuizDescription}
+              style={styles.input}
+              multiline
+            />
+            <TouchableOpacity style={styles.button} onPress={handleCreateQuiz}>
+              <Text style={styles.buttonText}>Create Quiz</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Quiz List */}
+          <View style={{ width: wp('85%'), marginBottom: hp('3%') }}>
+            <Text style={styles.label}>Your Quizzes ({quizzes.length})</Text>
+            {quizzes.map((quiz) => (
+              <View key={quiz.id} style={styles.questionCard}>
+                <TouchableOpacity 
+                  onPress={() => handleSelectQuiz(quiz)} 
+                  style={{ flex: 1 }}
+                >
+                  <Text style={styles.questionText}>{quiz.name}</Text>
+                  {quiz.description && (
+                    <Text style={styles.questionTypeText}>{quiz.description}</Text>
+                  )}
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => handleDeleteQuiz(quiz.id)}
+                  style={{
+                    backgroundColor: '#FF5C5C',
+                    paddingVertical: hp('1%'),
+                    paddingHorizontal: wp('3%'),
+                    borderRadius: 8,
+                  }}
+                >
+                  <Text style={{ color: '#fff', fontFamily: 'FredokaOne-Regular' }}>Delete</Text>
+                </TouchableOpacity>
+              </View>
+            ))}
+          </View>
+
+          {/* Selected Quiz - Manage Questions */}
+          {selectedQuiz && (
+            <View style={{ width: wp('85%') }}>
+              <Text style={styles.label}>
+                Manage: {selectedQuiz.name}
+              </Text>
+              <Text style={{ 
+                fontFamily: 'FredokaOne-Regular', 
+                fontSize: wp('3.5%'), 
+                color: '#666',
+                marginBottom: hp('2%'),
+                textAlign: 'center'
+              }}>
+                Questions in quiz: {quizQuestions.length}
+              </Text>
+
+              {questionsList.map((question) => {
+                const inQuiz = isQuestionInQuiz(question.id);
+                const formattedType =
+                  question.question_type === 'multiple_choice'
+                    ? 'MC'
+                    : question.question_type === 'true_false'
+                    ? 'T/F'
+                    : '';
+
+                return (
+                  <View key={question.id} style={styles.questionCard}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.questionText} numberOfLines={2}>
+                        {question.question}
+                      </Text>
+                      <Text style={styles.questionTypeText}>{formattedType}</Text>
+                    </View>
+                    <TouchableOpacity
+                      style={{
+                        backgroundColor: inQuiz ? '#FF5C5C' : '#4CAF50',
+                        paddingVertical: hp('1%'),
+                        paddingHorizontal: wp('3%'),
+                        borderRadius: 8,
+                        minWidth: wp('18%'),
+                        alignItems: 'center',
+                      }}
+                      onPress={() =>
+                        inQuiz
+                          ? handleRemoveQuestionFromQuiz(question.id)
+                          : handleAddQuestionToQuiz(question.id)
+                      }
+                    >
+                      <Text style={{ color: '#fff', fontFamily: 'FredokaOne-Regular' }}>
+                        {inQuiz ? 'Remove' : 'Add'}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                );
+              })}
+            </View>
+          )}
+        </ScrollView>
       )}
     </SafeAreaView>
   );
