@@ -31,11 +31,11 @@ type EmergencyContact = {
 };
 
 export type ChildDraft = {
-  id: string; // local uuid for list management (not the DB id)
+  id: string;
   firstName: string;
   lastName: string;
-  dobISO: string | null; // store ISO for DB
-  dobDisplay: string; // store formatted "MM/DD/YYYY" for UI
+  dobISO: string | null;
+  dobDisplay: string;
   pin: string;
   emergencyContact: EmergencyContact | null;
   collapsed: boolean;
@@ -43,7 +43,7 @@ export type ChildDraft = {
 
 type Props = {
   index: number;
-  canDelete: boolean; // render trash only if true
+  canDelete: boolean;
   data: ChildDraft;
   onChange: (updated: ChildDraft) => void;
   onDelete: (id: string) => void;
@@ -140,7 +140,6 @@ export default function AddChildCard({
 
   return (
     <View style={styles.card}>
-      {/* Trash (top-right) */}
       {canDelete && (
         <TouchableOpacity
           onPress={() => onDelete(data.id)}
@@ -151,7 +150,6 @@ export default function AddChildCard({
         </TouchableOpacity>
       )}
 
-      {/* Content */}
       {data.collapsed ? (
         <TouchableOpacity
           onPress={handleCollapse}
@@ -215,7 +213,6 @@ export default function AddChildCard({
         </>
       )}
 
-      {/* Date Picker */}
       <DateTimePickerModal
         isVisible={showPicker}
         mode="date"
@@ -223,7 +220,6 @@ export default function AddChildCard({
         onCancel={() => setShowPicker(false)}
       />
 
-      {/* Emergency Contact Modal */}
       <EmergencyContactModal
         visible={ecVisible}
         onClose={() => setEcVisible(false)}
@@ -242,7 +238,6 @@ export default function AddChildCard({
           setEmergency(c);
           setEcVisible(false);
         }}
-        // No childId yet (new child). We still use modal for validation & capture.
         childId={""}
       />
     </View>
@@ -251,17 +246,21 @@ export default function AddChildCard({
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: "#fff",
-    borderRadius: 14,
-    padding: responsive.screenWidth * 0.04,
-    marginVertical: responsive.screenHeight * 0.01,
+    backgroundColor: "rgba(217,217,217,0.85)",
+    borderRadius: responsive.screenWidth * 0.04,
     borderWidth: 2,
-    borderColor: "#111",
+    borderColor: "#999",
+    padding: responsive.screenWidth * 0.05,
+    marginVertical: responsive.screenHeight * 0.015,
+    shadowColor: "#000",
+    shadowOpacity: 0.25,
+    shadowRadius: 5,
+    elevation: 4,
   },
   trash: {
     position: "absolute",
-    right: 10,
-    top: 10,
+    right: responsive.screenWidth * 0.03,
+    top: responsive.screenHeight * 0.008,
     zIndex: 10,
   },
   row: { flexDirection: "row" },
@@ -270,34 +269,35 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginTop: responsive.screenHeight * 0.01,
+    marginTop: responsive.screenHeight * 0.015,
   },
   emergencyText: {
-    color: "#4F46E5",
+    color: "#000",
     textDecorationLine: "underline",
-    fontFamily: "Fredoka-SemiBold",
-    fontSize: responsive.buttonFontSize,
+    fontFamily: "Fredoka-Medium",
+    fontSize: responsive.buttonFontSize * 0.9,
   },
   chevBtn: { paddingHorizontal: 12, paddingVertical: 6 },
   chev: {
     fontSize: responsive.isNarrowScreen ? 16 : 20,
-    color: "#4B5563",
-    fontFamily: "Fredoka-Medium",
+    color: "#000",
+    fontFamily: "Fredoka-Bold",
   },
   collapsedRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingVertical: responsive.screenHeight * 0.01,
+    paddingVertical: responsive.screenHeight * 0.012,
   },
   collapsedText: {
-    fontFamily: "Fredoka-SemiBold",
+    fontFamily: "Fredoka-Bold",
     fontSize: responsive.buttonFontSize,
-    color: "#111827",
+    color: "#000",
   },
   error: {
-    color: "red",
+    color: "#EF4444",
     fontSize: responsive.buttonFontSize * 0.75,
     marginTop: 4,
+    fontFamily: "Fredoka-Regular",
   },
 });

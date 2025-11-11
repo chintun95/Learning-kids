@@ -104,6 +104,7 @@ function InitialLayout() {
       >
         <Stack.Screen name="(protected)" />
         <Stack.Screen name="games" />
+        <Stack.Screen name="lessons" />
       </Stack.Protected>
     </Stack>
   );

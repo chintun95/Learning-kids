@@ -48,7 +48,6 @@ export default function ChildHome() {
 
   useEffect(() => {
     const listener = scrollY.addListener(({ value }) => {
-      // show blur if near top or bottom
       setBlurVisible(value < 50);
     });
     return () => scrollY.removeListener(listener);
@@ -177,7 +176,7 @@ export default function ChildHome() {
               title="Go to Lessons"
               backgroundColor="#000"
               textColor="#FFFFFF"
-              onPress={() => {}}
+              onPress={() => router.push("/lessons")}
               marginTop={responsive.screenHeight * 0.01}
             />
           </View>

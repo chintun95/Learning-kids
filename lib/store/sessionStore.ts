@@ -2,39 +2,41 @@ import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 import { zustandStorage } from "@/lib/mmkv-storage";
 import { formatDate, formatTime } from "@/utils/formatter";
+import { syncSessionToSupabase } from "@/services/updateSession";
 
 /**
  * Represents a single session record for a child — aligned with the database table.
  */
 export type ChildSessionRecord = {
-  date: string; // yyyy/mm/dd
-  startTime: string; // hh:mm:ss
-  endTime?: string | null; // hh:mm:ss or null
+  date: string;
+  startTime: string;
+  endTime?: string | null;
   sessionStatus: "In Progress" | "Completed" | "Stalled";
   activityType: "auth" | "lesson" | "quiz" | "game";
   sessionDetails: string | null;
   childID: string; // FK to Child(id)
-  user_id: string | null; // nullable for now
+  user_id: string | null;
 };
 
 export interface SessionState {
-  /** The type of the current session (auth | lesson | quiz | game) */
   sessionType: "auth" | "lesson" | "quiz" | "game" | null;
-
-  /** Which child this session belongs to (null if none) */
   childId: string | null;
-
-  /** Active session details */
   currentDate: string | null;
   sessionStartTime: string | null;
   sessionEndTime: string | null;
   sessionStatus: "In Progress" | "Completed" | "Stalled" | null;
   sessionDetails: string | null;
-
-  /** All locally stored sessions grouped by childId */
   childSessions: Record<string, ChildSessionRecord[]>;
 
-  // === Actions ===
+  /** Track if the player exited specific games */
+  exitedFlappyGame: boolean;
+  exitedSnake: boolean;
+
+  /** Setters for exit flags */
+  setExitedFlappyGame: (exited: boolean) => void;
+  setExitedSnake: (exited: boolean) => void;
+
+  /** Standard session controls */
   setSessionType: (type: "auth" | "lesson" | "quiz" | "game" | null) => void;
   setCurrentDate: () => void;
   setStartTime: () => void;
@@ -44,19 +46,12 @@ export interface SessionState {
   ) => void;
   setSessionDetails: (details: string | null) => void;
 
-  /** Start a new session tied to a child */
   startChildSession: (
     childId: string,
     type: "auth" | "lesson" | "quiz" | "game"
   ) => void;
-
-  /** End the currently active session and save it into the history */
-  endSession: () => void;
-
-  /** Clear all active session data (does NOT delete history) */
+  endSession: () => Promise<void>;
   resetSession: () => void;
-
-  /** Clear all session history */
   clearAllSessions: () => void;
 }
 
@@ -71,6 +66,13 @@ export const useSessionStore = create<SessionState>()(
       sessionStatus: null,
       sessionDetails: null,
       childSessions: {},
+
+      exitedFlappyGame: false,
+      exitedSnake: false,
+
+      /** Exit flag setters */
+      setExitedFlappyGame: (exited) => set({ exitedFlappyGame: exited }),
+      setExitedSnake: (exited) => set({ exitedSnake: exited }),
 
       setSessionType: (type) => set({ sessionType: type }),
 
@@ -90,9 +92,9 @@ export const useSessionStore = create<SessionState>()(
       },
 
       setSessionStatus: (status) => set({ sessionStatus: status }),
-
       setSessionDetails: (details) => set({ sessionDetails: details }),
 
+      /** Begin new child session */
       startChildSession: (childId, type) => {
         const now = new Date();
         set({
@@ -103,10 +105,13 @@ export const useSessionStore = create<SessionState>()(
           sessionEndTime: null,
           sessionStatus: "In Progress",
           sessionDetails: null,
+          exitedFlappyGame: false,
+          exitedSnake: false,
         });
       },
 
-      endSession: () => {
+      /** End session, save locally, and sync to Supabase if online */
+      endSession: async () => {
         const {
           childId,
           sessionType,
@@ -115,8 +120,11 @@ export const useSessionStore = create<SessionState>()(
           sessionDetails,
           childSessions,
         } = get();
-        if (!childId || !sessionType || !currentDate || !sessionStartTime)
+
+        if (!childId || !sessionType || !currentDate || !sessionStartTime) {
+          console.warn("⚠️ Cannot end session — missing data.");
           return;
+        }
 
         const now = new Date();
         const endTime = formatTime(now);
@@ -129,7 +137,7 @@ export const useSessionStore = create<SessionState>()(
           activityType: sessionType,
           sessionDetails,
           childID: childId,
-          user_id: null, // remains NULL for now
+          user_id: null,
         };
 
         const existing = childSessions[childId] ?? [];
@@ -141,8 +149,36 @@ export const useSessionStore = create<SessionState>()(
             [childId]: [...existing, newRecord],
           },
         });
+
+        // Validate UUID before syncing
+        const isUUID = /^[0-9a-fA-F-]{36}$/.test(childId);
+        if (!isUUID) {
+          console.warn(
+            `⚠️ Skipping Supabase sync — invalid childId: ${childId}`
+          );
+          return;
+        }
+
+        const sessionPayload = {
+          activitytype: newRecord.activityType,
+          childid: newRecord.childID,
+          date: newRecord.date,
+          starttime: newRecord.startTime,
+          endtime: newRecord.endTime,
+          sessionstatus: newRecord.sessionStatus,
+          sessiondetails: newRecord.sessionDetails,
+          user_id: newRecord.user_id,
+        };
+
+        const success = await syncSessionToSupabase(sessionPayload);
+        console.log(
+          success
+            ? "✅ Synced session successfully."
+            : "⚠️ Stored session locally."
+        );
       },
 
+      /** Reset active session */
       resetSession: () =>
         set({
           sessionType: null,
@@ -152,8 +188,11 @@ export const useSessionStore = create<SessionState>()(
           sessionEndTime: null,
           sessionStatus: null,
           sessionDetails: null,
+          exitedFlappyGame: false,
+          exitedSnake: false,
         }),
 
+      /** Clear all stored session data */
       clearAllSessions: () => set({ childSessions: {} }),
     }),
     {

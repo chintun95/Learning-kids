@@ -42,7 +42,7 @@ export type Database = {
           id: string
           is_correct: boolean
           question_id: string | null
-          user_id: string
+          user_id: string | null
         }
         Insert: {
           answered_at?: string
@@ -50,7 +50,7 @@ export type Database = {
           id?: string
           is_correct: boolean
           question_id?: string | null
-          user_id: string
+          user_id?: string | null
         }
         Update: {
           answered_at?: string
@@ -58,7 +58,7 @@ export type Database = {
           id?: string
           is_correct?: boolean
           question_id?: string | null
-          user_id?: string
+          user_id?: string | null
         }
         Relationships: [
           {
@@ -227,6 +227,112 @@ export type Database = {
         }
         Relationships: []
       }
+      game_quiz_assignments: {
+        Row: {
+          created_at: string
+          game_name: string
+          id: string
+          quiz_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          game_name: string
+          id?: string
+          quiz_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          game_name?: string
+          id?: string
+          quiz_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "game_quiz_assignments_quiz_id_fkey"
+            columns: ["quiz_id"]
+            isOneToOne: false
+            referencedRelation: "quizzes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      lessonbank: {
+        Row: {
+          description: string | null
+          id: string
+          lessontype: string | null
+          section_id: string
+          title: string
+          user_id: string | null
+        }
+        Insert: {
+          description?: string | null
+          id?: string
+          lessontype?: string | null
+          section_id: string
+          title: string
+          user_id?: string | null
+        }
+        Update: {
+          description?: string | null
+          id?: string
+          lessontype?: string | null
+          section_id?: string
+          title?: string
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lessonbank_section_id_fkey"
+            columns: ["section_id"]
+            isOneToOne: false
+            referencedRelation: "sections"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      lessonlog: {
+        Row: {
+          childid: string
+          completedat: string | null
+          completedlesson: string
+          id: string
+          user_id: string | null
+        }
+        Insert: {
+          childid: string
+          completedat?: string | null
+          completedlesson: string
+          id?: string
+          user_id?: string | null
+        }
+        Update: {
+          childid?: string
+          completedat?: string | null
+          completedlesson?: string
+          id?: string
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lessonlog_childid_fkey"
+            columns: ["childid"]
+            isOneToOne: false
+            referencedRelation: "Child"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lessonlog_completedlesson_fkey"
+            columns: ["completedlesson"]
+            isOneToOne: false
+            referencedRelation: "lessonbank"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       Parent: {
         Row: {
           childrenunderaccount: number | null
@@ -284,6 +390,86 @@ export type Database = {
         }
         Relationships: []
       }
+      questionbank: {
+        Row: {
+          answerchoices: Json
+          choicedescription: Json | null
+          correctanswer: string
+          id: string
+          question: string
+          questiontype: string | null
+          section_id: string
+          user_id: string | null
+        }
+        Insert: {
+          answerchoices: Json
+          choicedescription?: Json | null
+          correctanswer: string
+          id?: string
+          question: string
+          questiontype?: string | null
+          section_id: string
+          user_id?: string | null
+        }
+        Update: {
+          answerchoices?: Json
+          choicedescription?: Json | null
+          correctanswer?: string
+          id?: string
+          question?: string
+          questiontype?: string | null
+          section_id?: string
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "questionbank_section_id_fkey"
+            columns: ["section_id"]
+            isOneToOne: false
+            referencedRelation: "sections"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      questionlog: {
+        Row: {
+          childid: string
+          completedat: string | null
+          completedquestion: string
+          id: string
+          user_id: string | null
+        }
+        Insert: {
+          childid: string
+          completedat?: string | null
+          completedquestion: string
+          id?: string
+          user_id?: string | null
+        }
+        Update: {
+          childid?: string
+          completedat?: string | null
+          completedquestion?: string
+          id?: string
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "questionlog_childid_fkey"
+            columns: ["childid"]
+            isOneToOne: false
+            referencedRelation: "Child"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "questionlog_completedquestion_fkey"
+            columns: ["completedquestion"]
+            isOneToOne: false
+            referencedRelation: "questionbank"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       questions: {
         Row: {
           correct_answer: string
@@ -318,6 +504,84 @@ export type Database = {
             referencedColumns: ["user_id"]
           },
         ]
+      }
+      quiz_questions: {
+        Row: {
+          created_at: string
+          id: string
+          question_id: string
+          quiz_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          question_id: string
+          quiz_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          question_id?: string
+          quiz_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "quiz_questions_question_id_fkey"
+            columns: ["question_id"]
+            isOneToOne: false
+            referencedRelation: "questions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quiz_questions_quiz_id_fkey"
+            columns: ["quiz_id"]
+            isOneToOne: false
+            referencedRelation: "quizzes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      quizzes: {
+        Row: {
+          created_at: string
+          description: string | null
+          id: string
+          name: string
+          parent_id: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          name: string
+          parent_id: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          name?: string
+          parent_id?: string
+        }
+        Relationships: []
+      }
+      sections: {
+        Row: {
+          id: string
+          title: string
+          user_id: string | null
+        }
+        Insert: {
+          id?: string
+          title: string
+          user_id?: string | null
+        }
+        Update: {
+          id?: string
+          title?: string
+          user_id?: string | null
+        }
+        Relationships: []
       }
       Session: {
         Row: {
@@ -394,7 +658,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      requesting_user_id: { Args: never; Returns: string }
     }
     Enums: {
       [_ in never]: never

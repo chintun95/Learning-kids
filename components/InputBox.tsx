@@ -31,6 +31,7 @@ const InputBox: React.FC<InputBoxProps> = ({
   iconColor = "#666",
   fontFamily = "Fredoka-Bold",
   style,
+  onFocus, // include onFocus prop (important for EmergencyContactModal)
   ...props
 }) => {
   const inputHeight = responsive.buttonHeight;
@@ -40,6 +41,7 @@ const InputBox: React.FC<InputBoxProps> = ({
       {label && <Text style={[styles.label, { fontFamily }]}>{label}</Text>}
 
       <View style={[styles.inputWrapper, { borderRadius: inputHeight / 3 }]}>
+        {/* Left Icon */}
         {iconLeft && (
           <Ionicons
             name={iconLeft}
@@ -49,6 +51,7 @@ const InputBox: React.FC<InputBoxProps> = ({
           />
         )}
 
+        {/* Input Field */}
         <TextInput
           style={[
             styles.input,
@@ -61,9 +64,11 @@ const InputBox: React.FC<InputBoxProps> = ({
             style,
           ]}
           placeholderTextColor="#999"
+          onFocus={onFocus} // allow parent components to handle scroll behavior
           {...props}
         />
 
+        {/* Right Icon */}
         {iconRight && (
           <TouchableOpacity onPress={onIconRightPress}>
             <Ionicons
@@ -76,7 +81,8 @@ const InputBox: React.FC<InputBoxProps> = ({
         )}
       </View>
 
-      {error && <Text style={styles.error}>{error}</Text>}
+      {/* Error Text */}
+      {error ? <Text style={styles.error}>{error}</Text> : null}
     </View>
   );
 };

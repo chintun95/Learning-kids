@@ -16,7 +16,7 @@ const AddChild: React.FC = () => {
       <Ionicons
         name="add-circle-outline"
         size={responsive.buttonFontSize * 1.5}
-        color="#4F46E5"
+        color="#000"
         style={styles.icon}
       />
       <Text style={styles.text}>Add Child (Maximum Number: 12)</Text>
@@ -28,19 +28,28 @@ const styles = StyleSheet.create({
   container: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: responsive.screenHeight * 0.01,
-    paddingHorizontal: responsive.screenWidth * 0.04,
-    backgroundColor: "#F3F4F6",
-    borderRadius: 12,
-    marginVertical: responsive.screenHeight * 0.01,
+    justifyContent: "center",
+    backgroundColor: "rgba(217,217,217,0.85)",
+    borderRadius: responsive.screenWidth * 0.04,
+    borderWidth: 2,
+    borderColor: "#999",
+    paddingVertical: responsive.screenHeight * 0.02,
+    paddingHorizontal: responsive.screenWidth * 0.05,
+    marginTop: responsive.screenHeight * 0.025,
+    marginHorizontal: responsive.screenWidth * 0.05,
+    shadowColor: "#000",
+    shadowOpacity: 0.25,
+    shadowRadius: 5,
+    elevation: 4,
   },
   icon: {
-    marginRight: responsive.screenWidth * 0.02,
+    marginRight: responsive.screenWidth * 0.03,
   },
   text: {
     fontFamily: "Fredoka-Bold",
-    fontSize: responsive.buttonFontSize,
-    color: "#111827",
+    fontSize: responsive.buttonFontSize * 1.05,
+    color: "#000",
+    textAlign: "center",
   },
 });
 

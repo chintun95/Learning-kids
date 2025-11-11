@@ -8,7 +8,10 @@ import {
   StatusBar,
   ActivityIndicator,
   Platform,
+  Modal,
+  ImageBackground,
 } from "react-native";
+import DateTimePickerModal from "react-native-modal-datetime-picker";
 import {
   SafeAreaView,
   useSafeAreaInsets,
@@ -27,6 +30,7 @@ import ProfileIcon from "@/components/ProfileIcon";
 import EmergencyContactModal from "@/components/EmergencyContactModal";
 import { responsive } from "@/utils/responsive";
 import InputBox from "@/components/InputBox";
+import Button from "@/components/Button";
 import { useChildById } from "@/services/fetchChildren";
 import { useUpdateChildByParent } from "@/services/updateChild";
 import { useSessionsByChildId } from "@/services/fetchSession";
@@ -36,15 +40,18 @@ export default function ManageChildIndex() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const insets = useSafeAreaInsets();
 
-  // State management
   const [showEmergencyModal, setShowEmergencyModal] = useState(false);
   const [showEditNameModal, setShowEditNameModal] = useState(false);
+  const [showPinModal, setShowPinModal] = useState(false);
+  const [showEditPinModal, setShowEditPinModal] = useState(false);
+  const [pinValue, setPinValue] = useState("");
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
+  const [showStartPicker, setShowStartPicker] = useState(false);
+  const [showEndPicker, setShowEndPicker] = useState(false);
   const [startDate, setStartDate] = useState<Date | null>(null);
   const [endDate, setEndDate] = useState<Date | null>(null);
 
-  // Data fetching
   const { data: child, isLoading: isLoadingChild } = useChildById(id);
   const { mutate: updateChildByParent } = useUpdateChildByParent();
   const {
@@ -54,12 +61,11 @@ export default function ManageChildIndex() {
     error: sessionError,
   } = useSessionsByChildId(id ?? null);
 
-  // Loading & Error
   if (isLoadingChild || isLoadingSessions) {
     return (
       <SafeAreaView style={styles.safeContainer} edges={["top", "bottom"]}>
         <View style={styles.centered}>
-          <ActivityIndicator size="large" color="#4F46E5" />
+          <ActivityIndicator size="large" color="#000" />
           <Text style={styles.loadingText}>Loading child data...</Text>
         </View>
       </SafeAreaView>
@@ -88,12 +94,10 @@ export default function ManageChildIndex() {
     );
   }
 
-  // --- Data prep ---
   const dob = parseISO(child.dateOfBirth);
   const age = differenceInYears(new Date(), dob);
   const formattedDob = format(dob, "MM/dd/yyyy");
 
-  // --- Filter sessions ---
   let filteredSessions = sessions.filter((s) => s.childid === child.id);
   if (startDate && endDate) {
     filteredSessions = filteredSessions.filter((s) =>
@@ -107,7 +111,6 @@ export default function ManageChildIndex() {
     )
   );
 
-  // --- Group sessions ---
   const groupedSessions: Record<string, typeof filteredSessions> = {};
   filteredSessions.forEach((session) => {
     const sessionDate = parseISO(session.date);
@@ -130,7 +133,6 @@ export default function ManageChildIndex() {
 
   const hasAnySession = filteredSessions.length > 0;
 
-  // --- Edit Name ---
   const handleEditNamePress = () => {
     setFirstName(child.firstName);
     setLastName(child.lastName);
@@ -145,7 +147,6 @@ export default function ManageChildIndex() {
     setShowEditNameModal(false);
   };
 
-  // --- Navigate back ---
   const handleGoBack = () => {
     router.push("/(protected)/(parent)/(tabs)");
   };
@@ -158,134 +159,267 @@ export default function ManageChildIndex() {
         barStyle="dark-content"
       />
 
-      {/* Header */}
-      <View
-        style={[
-          styles.topHeader,
-          {
-            paddingTop: Platform.OS === "android" ? insets.top + 4 : insets.top,
-          },
-        ]}
-      >
-        <Text style={styles.headerTitle}>
-          Manage {child.firstName} {child.lastName} Data
-        </Text>
-        <TouchableOpacity onPress={handleGoBack} style={styles.closeButton}>
-          <Ionicons
-            name="close"
-            size={responsive.screenWidth * 0.06}
-            color="#111827"
-          />
-        </TouchableOpacity>
-      </View>
+      {/* Header background extension */}
+      <View style={[styles.headerBackground, { height: insets.top + 50 }]} />
 
-      {/* ScrollView */}
-      <ScrollView
-        style={styles.scrollContainer}
-        contentContainerStyle={{
-          paddingBottom: insets.bottom + responsive.screenHeight * 0.05,
-        }}
-        showsVerticalScrollIndicator={false}
+      <ImageBackground
+        source={require("@/assets/images/app-background.png")}
+        style={styles.background}
+        imageStyle={styles.backgroundImage}
+        resizeMode="cover"
       >
-        {/* Child Info */}
-        <View style={styles.headerSection}>
-          <ProfileIcon
-            source={child.profilePicture}
-            size={responsive.screenWidth * 0.25}
-          />
-          <View style={styles.headerRight}>
-            <View style={styles.nameRow}>
-              <Text style={styles.nameText}>
-                {child.firstName} {child.lastName}
+        {/* Header */}
+        <View
+          style={[
+            styles.topHeader,
+            {
+              paddingTop:
+                Platform.OS === "android" ? insets.top + 2 : insets.top,
+            },
+          ]}
+        >
+          <Text style={styles.headerTitle}>
+            Manage {child.firstName} {child.lastName}
+          </Text>
+          <TouchableOpacity onPress={handleGoBack} style={styles.closeButton}>
+            <Ionicons
+              name="close"
+              size={responsive.screenWidth * 0.06}
+              color="#000"
+            />
+          </TouchableOpacity>
+        </View>
+
+        <ScrollView
+          style={styles.scrollContainer}
+          contentContainerStyle={{
+            paddingBottom: insets.bottom + responsive.screenHeight * 0.05,
+          }}
+          showsVerticalScrollIndicator={false}
+        >
+          {/* --- Child Info Section --- */}
+          <View style={styles.profileContainer}>
+            <ProfileIcon
+              source={child.profilePicture}
+              size={responsive.screenWidth * 0.25}
+            />
+            <View style={styles.headerRight}>
+              <View style={styles.nameRow}>
+                <Text style={styles.nameText}>
+                  {child.firstName} {child.lastName}
+                </Text>
+                <TouchableOpacity
+                  onPress={handleEditNamePress}
+                  style={styles.editIconButton}
+                >
+                  <Ionicons
+                    name="pencil"
+                    size={responsive.screenWidth * 0.05}
+                    color="#000"
+                  />
+                </TouchableOpacity>
+              </View>
+              <Text style={styles.dobText}>
+                Date of Birth: {formattedDob} ({age} yrs)
               </Text>
+
               <TouchableOpacity
-                onPress={handleEditNamePress}
-                style={styles.editIconButton}
+                onPress={() => setShowPinModal(true)}
+                style={styles.linkButton}
               >
-                <Ionicons
-                  name="pencil"
-                  size={responsive.screenWidth * 0.05}
-                  color="#4F46E5"
-                />
+                <Text style={styles.linkText}>Manage Profile Pin</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={() => setShowEmergencyModal(true)}
+                style={styles.linkButton}
+              >
+                <Text style={styles.linkText}>Emergency Contact</Text>
               </TouchableOpacity>
             </View>
-            <Text style={styles.dobText}>
-              Date of Birth: {formattedDob} ({age} yrs)
-            </Text>
-            <TouchableOpacity
-              onPress={() => setShowEmergencyModal(true)}
-              style={styles.linkButton}
-            >
-              <Text style={styles.linkText}>Emergency Contact</Text>
+          </View>
+
+          <View style={styles.separator} />
+
+          {/* --- Activity Tracker Section --- */}
+          <View style={styles.activityHeader}>
+            <Text style={styles.activityTitle}>Activity Tracker</Text>
+            <TouchableOpacity onPress={() => setShowStartPicker(true)}>
+              <Ionicons
+                name="filter"
+                size={responsive.screenWidth * 0.06}
+                color="#000"
+              />
             </TouchableOpacity>
           </View>
-        </View>
 
-        <View style={styles.separator} />
+          <View style={styles.activityList}>
+            {!hasAnySession ? (
+              <Text style={styles.noActivityText}>
+                No Activity Logged for {child.firstName}
+              </Text>
+            ) : (
+              groupKeys.map((key) => (
+                <View key={key} style={styles.group}>
+                  <View style={{ flexDirection: "row", alignItems: "center" }}>
+                    <Text style={styles.groupTitle}>{key}</Text>
+                    {key === "Today" && (
+                      <Text style={styles.todayNote}> (Always included)</Text>
+                    )}
+                  </View>
 
-        {/* Activity Tracker */}
-        <View style={styles.activityHeader}>
-          <Text style={styles.activityTitle}>Activity Tracker</Text>
-        </View>
+                  {groupedSessions[key].map((session) => {
+                    const startTime = session.starttime;
+                    const endTime = session.endtime ?? "__";
+                    const sessionDate = format(
+                      parseISO(session.date),
+                      "MM/dd/yyyy"
+                    );
+                    const statusColor =
+                      session.sessionstatus === "In Progress"
+                        ? "#EF4444"
+                        : session.sessionstatus === "Completed"
+                        ? "#22C55E"
+                        : "#6B7280";
 
-        <View style={styles.activityList}>
-          {!hasAnySession ? (
-            <Text style={styles.noActivityText}>
-              No Activity Logged for {child.firstName}
-            </Text>
-          ) : (
-            groupKeys.map((key) => (
-              <View key={key} style={styles.group}>
-                <View style={{ flexDirection: "row", alignItems: "center" }}>
-                  <Text style={styles.groupTitle}>{key}</Text>
-                  {key === "Today" && (
-                    <Text style={styles.todayNote}> (Always included)</Text>
-                  )}
-                </View>
-
-                {groupedSessions[key].map((session) => {
-                  const startTime = session.starttime;
-                  const endTime = session.endtime ?? "__";
-                  const sessionDate = format(
-                    parseISO(session.date),
-                    "MM/dd/yyyy"
-                  );
-
-                  return (
-                    <View key={session.id} style={styles.sessionItem}>
-                      <View style={styles.sessionHeader}>
-                        <Text style={styles.activityType}>
-                          {session.activitytype}
+                    return (
+                      <View key={session.id} style={styles.sessionItem}>
+                        <View style={styles.sessionHeader}>
+                          <Text style={styles.activityType}>
+                            {session.activitytype}
+                          </Text>
+                          <Text
+                            style={[
+                              styles.sessionStatus,
+                              { color: statusColor },
+                            ]}
+                          >
+                            {session.sessionstatus}
+                          </Text>
+                        </View>
+                        <Text style={styles.sessionDate}>
+                          {sessionDate} | {startTime} - {endTime}
                         </Text>
-                        <Text style={styles.sessionStatus}>
-                          {session.sessionstatus}
+                        <Text style={styles.sessionDetails}>
+                          {session.sessiondetails || "No details"}
                         </Text>
                       </View>
-                      <Text style={styles.sessionDate}>
-                        {sessionDate} | {startTime} - {endTime}
-                      </Text>
-                      <Text style={styles.sessionDetails}>
-                        {session.sessiondetails || "No details"}
-                      </Text>
-                    </View>
-                  );
-                })}
-              </View>
-            ))
-          )}
+                    );
+                  })}
+                </View>
+              ))
+            )}
+          </View>
+        </ScrollView>
+      </ImageBackground>
+
+      {/* --- Edit Name Modal --- */}
+      <Modal visible={showEditNameModal} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <TouchableOpacity
+              onPress={() => setShowEditNameModal(false)}
+              style={styles.modalClose}
+            >
+              <Ionicons
+                name="close"
+                size={responsive.screenWidth * 0.06}
+                color="#000"
+              />
+            </TouchableOpacity>
+            <Text style={styles.modalTitle}>Edit Child Name</Text>
+            <InputBox
+              label="First Name"
+              value={firstName}
+              onChangeText={setFirstName}
+            />
+            <InputBox
+              label="Last Name"
+              value={lastName}
+              onChangeText={setLastName}
+            />
+            <Button
+              title="Save"
+              onPress={handleSaveName}
+              backgroundColor="#000"
+              marginTop={responsive.screenHeight * 0.02}
+              textColor="#fff"
+            />
+          </View>
         </View>
-      </ScrollView>
+      </Modal>
+
+      {/* --- Profile Pin Modal --- */}
+      <Modal visible={showPinModal} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <TouchableOpacity
+              onPress={() => setShowPinModal(false)}
+              style={styles.modalClose}
+            >
+              <Ionicons
+                name="close"
+                size={responsive.screenWidth * 0.06}
+                color="#000"
+              />
+            </TouchableOpacity>
+            <Text style={styles.modalTitle}>Profile Pin</Text>
+            <Text style={styles.modalText}>
+              Current Pin: {child.profilePin ?? "Not Set"}
+            </Text>
+            <Button
+              title={child.profilePin ? "Change Pin" : "Add Pin"}
+              onPress={() => setShowEditPinModal(true)}
+              backgroundColor="#000"
+              marginTop={responsive.screenHeight * 0.02}
+              textColor="#fff"
+            />
+          </View>
+        </View>
+      </Modal>
+
+      {/* --- Date Picker Modals --- */}
+      <DateTimePickerModal
+        isVisible={showStartPicker}
+        mode="date"
+        onConfirm={(date) => {
+          setStartDate(date);
+          setShowStartPicker(false);
+          setShowEndPicker(true);
+        }}
+        onCancel={() => setShowStartPicker(false)}
+      />
+      <DateTimePickerModal
+        isVisible={showEndPicker}
+        mode="date"
+        onConfirm={(date) => {
+          setEndDate(date);
+          setShowEndPicker(false);
+        }}
+        onCancel={() => setShowEndPicker(false)}
+      />
+
+      {/* --- Emergency Contact Modal --- */}
+      <EmergencyContactModal
+        visible={showEmergencyModal}
+        onClose={() => setShowEmergencyModal(false)}
+        contact={child.emergencyContact}
+        childId={child.id}
+        onUpdate={() => console.log("Updated contact")}
+      />
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  safeContainer: { flex: 1, backgroundColor: "#F9FAFB" },
-  scrollContainer: { flex: 1, backgroundColor: "#F9FAFB" },
+  safeContainer: { flex: 1, backgroundColor: "#fff" },
+  background: { flex: 1, width: "100%", height: "100%" },
+  backgroundImage: { transform: [{ scale: 1.2 }] },
+  scrollContainer: { flex: 1, backgroundColor: "transparent" },
   centered: { flex: 1, justifyContent: "center", alignItems: "center" },
   loadingText: {
     fontFamily: "Fredoka-Regular",
-    color: "#4F46E5",
+    color: "#000",
     marginTop: 8,
   },
   notFoundText: {
@@ -293,36 +427,54 @@ const styles = StyleSheet.create({
     fontSize: responsive.buttonFontSize,
     color: "#6B7280",
   },
+  headerBackground: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: "rgba(217,217,217,0.85)",
+    borderBottomColor: "#999",
+    borderBottomWidth: 2,
+    zIndex: 1,
+  },
   topHeader: {
-    backgroundColor: "#F3F4F6",
-    paddingVertical: responsive.screenHeight * 0.015,
+    backgroundColor: "rgba(217,217,217,0.85)",
+    borderBottomColor: "#999",
+    borderBottomWidth: 2,
+    paddingVertical: responsive.screenHeight * 0.012,
     paddingHorizontal: responsive.screenWidth * 0.05,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    borderBottomWidth: 1,
-    borderBottomColor: "#E5E7EB",
+    borderBottomLeftRadius: 20,
+    borderBottomRightRadius: 20,
+    zIndex: 2,
   },
   headerTitle: {
     fontSize: responsive.buttonFontSize * 1.05,
-    fontFamily: "Fredoka-SemiBold",
-    color: "#111827",
+    fontFamily: "Fredoka-Bold",
+    color: "#000",
     textAlign: "center",
   },
   closeButton: {
     position: "absolute",
     right: responsive.screenWidth * 0.05,
-    top: responsive.screenHeight * 0.018,
+    top: responsive.screenHeight * 0.012,
     padding: 4,
   },
-  headerSection: {
-    flexDirection: "column",
+  profileContainer: {
+    backgroundColor: "rgba(217,217,217,0.85)",
+    borderRadius: responsive.screenWidth * 0.04,
+    borderWidth: 2,
+    borderColor: "#999",
+    marginTop: responsive.screenHeight * 0.03,
+    marginHorizontal: responsive.screenWidth * 0.05,
     alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#F3F4F6",
-    padding: responsive.screenWidth * 0.05,
-    borderBottomWidth: 1,
-    borderBottomColor: "#E5E7EB",
+    paddingVertical: responsive.screenHeight * 0.03,
+    shadowColor: "#000",
+    shadowOpacity: 0.25,
+    shadowRadius: 5,
+    elevation: 4,
   },
   headerRight: {
     alignItems: "center",
@@ -333,32 +485,34 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  editIconButton: { marginLeft: responsive.screenWidth * 0.01 },
+  editIconButton: { marginLeft: responsive.screenWidth * 0.015 },
   nameText: {
     fontSize: responsive.buttonFontSize * 1.1,
     fontFamily: "Fredoka-Bold",
-    color: "#111827",
+    color: "#000",
     textAlign: "center",
   },
   dobText: {
-    fontSize: responsive.buttonFontSize * 0.85,
+    fontSize: responsive.buttonFontSize * 0.9,
     fontFamily: "Fredoka-Medium",
     marginTop: responsive.screenHeight * 0.005,
-    color: "#374151",
+    color: "#000",
     textAlign: "center",
   },
   linkButton: { marginTop: responsive.screenHeight * 0.01 },
   linkText: {
     fontSize: responsive.buttonFontSize * 0.8,
     fontFamily: "Fredoka-Medium",
-    color: "#4F46E5",
+    color: "#000",
     textDecorationLine: "underline",
     textAlign: "center",
   },
   separator: {
-    height: 1,
-    backgroundColor: "#E5E7EB",
-    marginVertical: responsive.screenHeight * 0.02,
+    height: 2,
+    backgroundColor: "#999",
+    marginVertical: responsive.screenHeight * 0.025,
+    marginHorizontal: responsive.screenWidth * 0.08,
+    borderRadius: 4,
   },
   activityHeader: {
     flexDirection: "row",
@@ -369,32 +523,29 @@ const styles = StyleSheet.create({
   },
   activityTitle: {
     fontSize: responsive.buttonFontSize,
-    fontFamily: "Fredoka-SemiBold",
-    color: "#111827",
+    fontFamily: "Fredoka-Bold",
+    color: "#000",
   },
   activityList: { paddingHorizontal: responsive.screenWidth * 0.05 },
   group: { marginBottom: responsive.screenHeight * 0.03 },
   groupTitle: {
     fontSize: responsive.buttonFontSize * 0.9,
-    fontFamily: "Fredoka-SemiBold",
+    fontFamily: "Fredoka-Bold",
     marginBottom: responsive.screenHeight * 0.01,
-    color: "#111827",
+    color: "#000",
   },
   todayNote: {
-    fontSize: responsive.buttonFontSize * 0.7,
-    color: "#4F46E5",
+    fontSize: responsive.buttonFontSize * 0.75,
+    color: "#000",
     marginLeft: responsive.screenWidth * 0.015,
   },
   sessionItem: {
     marginBottom: responsive.screenHeight * 0.015,
-    backgroundColor: "#FFFFFF",
-    padding: responsive.screenWidth * 0.03,
-    borderRadius: 12,
-    shadowColor: "#000",
-    shadowOpacity: 0.05,
-    shadowOffset: { width: 0, height: 1 },
-    shadowRadius: 3,
-    elevation: 1,
+    backgroundColor: "rgba(217,217,217,0.85)",
+    borderRadius: responsive.screenWidth * 0.04,
+    borderWidth: 2,
+    borderColor: "#999",
+    padding: responsive.screenWidth * 0.04,
   },
   sessionHeader: {
     flexDirection: "row",
@@ -402,31 +553,65 @@ const styles = StyleSheet.create({
     marginBottom: responsive.screenHeight * 0.005,
   },
   activityType: {
-    fontSize: responsive.buttonFontSize * 0.8,
+    fontSize: responsive.buttonFontSize * 0.9,
     fontFamily: "Fredoka-Medium",
-    color: "#111827",
+    color: "#000",
   },
   sessionStatus: {
-    fontSize: responsive.buttonFontSize * 0.8,
-    fontFamily: "Fredoka-Medium",
-    color: "#4F46E5",
+    fontSize: responsive.buttonFontSize * 0.9,
+    fontFamily: "Fredoka-Bold",
   },
   sessionDate: {
-    fontSize: responsive.buttonFontSize * 0.7,
+    fontSize: responsive.buttonFontSize * 0.8,
     fontFamily: "Fredoka-Regular",
-    color: "#6B7280",
+    color: "#000",
     marginBottom: responsive.screenHeight * 0.002,
   },
   sessionDetails: {
-    fontSize: responsive.buttonFontSize * 0.7,
-    fontFamily: "Fredoka-Regular",
-    color: "#374151",
-  },
-  noActivityText: {
     fontSize: responsive.buttonFontSize * 0.8,
     fontFamily: "Fredoka-Regular",
-    color: "#6B7280",
+    color: "#000",
+  },
+  noActivityText: {
+    fontSize: responsive.buttonFontSize * 0.85,
+    fontFamily: "Fredoka-Regular",
+    color: "#000",
     textAlign: "center",
     marginTop: responsive.screenHeight * 0.02,
+  },
+
+  // --- Modal Styles ---
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.4)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  modalContent: {
+    width: "90%",
+    backgroundColor: "rgba(217,217,217,0.85)",
+    borderRadius: responsive.screenWidth * 0.04,
+    borderWidth: 2,
+    borderColor: "#999",
+    padding: responsive.screenWidth * 0.06,
+    alignItems: "center",
+  },
+  modalClose: {
+    position: "absolute",
+    top: responsive.screenHeight * 0.012,
+    right: responsive.screenWidth * 0.04,
+  },
+  modalTitle: {
+    fontSize: responsive.buttonFontSize * 1.1,
+    fontFamily: "Fredoka-Bold",
+    color: "#000",
+    textAlign: "center",
+    marginBottom: responsive.screenHeight * 0.02,
+  },
+  modalText: {
+    fontSize: responsive.buttonFontSize * 0.9,
+    fontFamily: "Fredoka-Medium",
+    color: "#000",
+    marginBottom: responsive.screenHeight * 0.02,
   },
 });

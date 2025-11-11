@@ -10,12 +10,11 @@ export default function ParentTabsLayout() {
     <Tabs
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: "#000",
-        tabBarInactiveTintColor: "#888",
+        tabBarActiveTintColor: "#FFFFFF",
+        tabBarInactiveTintColor: "#000",
         tabBarStyle: {
-          backgroundColor: "#fff",
-          borderTopWidth: 0.5,
-          borderTopColor: "#ccc",
+          backgroundColor: "#93DEFF",
+          borderTopWidth: 0,
           height:
             Platform.OS === "android"
               ? 60 + (insets.bottom > 0 ? insets.bottom : 8)
@@ -27,6 +26,11 @@ export default function ParentTabsLayout() {
                 : 8
               : insets.bottom,
           paddingTop: 5,
+          elevation: 0, // removes Android shadow
+          shadowOpacity: 0, // removes iOS shadow
+        },
+        tabBarLabelStyle: {
+          fontFamily: "Fredoka-Medium",
         },
       }}
     >

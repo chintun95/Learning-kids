@@ -9,20 +9,29 @@ import {
   Platform,
   Modal,
   KeyboardAvoidingView,
+  ImageBackground,
+  useWindowDimensions,
+  ListRenderItemInfo,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
 import { useChildAuthStore } from "@/lib/store/childAuthStore";
 import { useSessionStore } from "@/lib/store/sessionStore";
+import { useChildAchievementStore } from "@/lib/store/childAchievementStore";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
 import ProfileIcon from "@/components/ProfileIcon";
 import { responsive } from "@/utils/responsive";
 import SignOutButton from "@/components/SignOutButton";
 import InputBox from "@/components/InputBox";
-import Button from "@/components/Button";
 import { sanitizeInput } from "@/utils/formatter";
 import { useNetworkMonitor } from "@/utils/networkMonitor";
+import { TablesInsert } from "@/types/database.types"; // adjust if your Supabase types differ
+
+const statusBarHeight =
+  Platform.OS === "android" ? StatusBar.currentHeight ?? 0 : 40;
+
 const ChildIndexScreen: React.FC = () => {
   const {
     children,
@@ -31,33 +40,35 @@ const ChildIndexScreen: React.FC = () => {
     loadedForEmail,
     loading,
     error,
+    markFirstTimeComplete,
   } = useChildAuthStore();
 
-  const { startChildSession } = useSessionStore();
+  const { achievementsByChild, fetchChildAchievements } =
+    useChildAchievementStore();
+
+  const { startChildSession, setSessionDetails } = useSessionStore();
   const queryClient = useQueryClient();
   const currentChild = getCurrentChild();
   const router = useRouter();
+  const { height: screenHeight } = useWindowDimensions();
 
   const [localChildren, setLocalChildren] = useState(children);
   useEffect(() => setLocalChildren(children), [children]);
 
-  // Global network state (persistent across layouts)
   const { isConnected, isInternetReachable, initialized } = useNetworkMonitor();
 
-  // Log updates
   useEffect(() => {
     if (loadedForEmail) {
       console.log(`🟢 Listening for updates for ${loadedForEmail}`);
     }
   }, [loadedForEmail]);
 
-  // Modal state
   const [modalVisible, setModalVisible] = useState(false);
   const [selectedChildId, setSelectedChildId] = useState<string | null>(null);
   const [enteredPin, setEnteredPin] = useState("");
   const [pinError, setPinError] = useState("");
 
-  // --- Online mutation (will fail gracefully when offline)
+  /** ----------------- Update active child online ------------------ **/
   const { mutateAsync: setActiveStatus } = useMutation({
     mutationFn: async (childId: string) => {
       const { error: updateError } = await supabase
@@ -81,33 +92,104 @@ const ChildIndexScreen: React.FC = () => {
     },
   });
 
-  // --- Handle selecting a child
+  /** 🏆 Award "Logged In for the First Time" Achievement */
+  const handleFirstTimeLoginAchievement = useCallback(
+    async (childId: string): Promise<void> => {
+      try {
+        if (!childId) return;
+        // Ensure achievements are loaded
+        await fetchChildAchievements(childId);
+        const currentAchievements = achievementsByChild?.[childId] ?? [];
+
+        // Check for existing achievement by achievementinfo
+        const alreadyEarned = currentAchievements.some(
+          (a) =>
+            a.achievementinfo?.trim()?.toLowerCase() ===
+            "logged in for the first time"
+        );
+
+        if (alreadyEarned) return;
+
+        console.log(
+          "🏆 Granting 'Logged In for the first time' achievement..."
+        );
+
+        const payload: TablesInsert<"ChildAchievement"> = {
+          childid: childId,
+          achievementinfo: "Logged In for the first time",
+          dateearned: new Date().toISOString(),
+        };
+
+        const { data, error } = await supabase
+          .from("ChildAchievement")
+          .insert(payload)
+          .select()
+          .single();
+
+        if (error) {
+          console.warn("❌ Failed to insert achievement:", error.message);
+          return;
+        }
+
+        console.log("✅ 'Logged In for the first time' achievement added!");
+
+        // Update local cache
+        useChildAchievementStore.setState((state) => {
+          const prev = state.achievementsByChild?.[childId] ?? [];
+          return {
+            achievementsByChild: {
+              ...state.achievementsByChild,
+              [childId]: [
+                ...prev,
+                {
+                  ...data,
+                  achievementinfo: "Logged In for the first time",
+                  description: "Signed into profile for the first time",
+                },
+              ],
+            },
+          };
+        });
+
+        markFirstTimeComplete();
+      } catch (err: any) {
+        console.warn("⚠️ Error handling first-time achievement:", err.message);
+      }
+    },
+    [fetchChildAchievements, achievementsByChild, markFirstTimeComplete]
+  );
+
+  /** -------------- No PIN Login -------------- **/
   const handleSelectChild = useCallback(
-    (childId: string) => {
+    async (childId: string): Promise<void> => {
       const child = localChildren.find((c) => c.id === childId);
       if (!child) return;
 
       if (child.profilePin) {
         setSelectedChildId(childId);
         setModalVisible(true);
-      } else {
-        // No PIN: start session immediately (works offline)
-        selectChildUnsafe(childId);
-        if (isConnected && isInternetReachable) {
-          setActiveStatus(childId).catch(() => {
-            console.warn(
-              "⚠️ Online but failed to update Supabase, continuing locally."
-            );
-          });
-        } else {
-          console.warn(
-            "📴 Offline: skipping Supabase update, continuing locally."
-          );
-        }
-        startChildSession(childId, "auth");
-        console.log(`🟢 Session started (no PIN) for ${child.firstName}`);
-        router.push(`/home/${childId}`);
+        return;
       }
+
+      selectChildUnsafe(childId);
+
+      if (isConnected && isInternetReachable) {
+        try {
+          await setActiveStatus(childId);
+        } catch (err) {
+          console.warn("⚠️ Failed to update Supabase:", err);
+        }
+      }
+
+      startChildSession(childId, "auth");
+      setSessionDetails(
+        `${child.firstName} ${child.lastName} signed into their profile`
+      );
+
+      // Award first-time login achievement
+      await handleFirstTimeLoginAchievement(childId);
+
+      router.push(`/home/${childId}`);
     },
     [
       localChildren,
@@ -115,81 +197,82 @@ const ChildIndexScreen: React.FC = () => {
       router,
       setActiveStatus,
       startChildSession,
+      setSessionDetails,
       isConnected,
       isInternetReachable,
+      handleFirstTimeLoginAchievement,
     ]
   );
 
-  // --- Handle PIN submission
-  const handlePinSubmit = async () => {
+  /** -------------- PIN Login -------------- **/
+  const handlePinSubmit = useCallback(async (): Promise<void> => {
     if (!selectedChildId) return;
     const child = localChildren.find((c) => c.id === selectedChildId);
     if (!child) return;
 
     const sanitizedPin = sanitizeInput(enteredPin);
-    if (sanitizedPin === child.profilePin) {
-      setPinError("");
-      setModalVisible(false);
-      selectChildUnsafe(selectedChildId);
-
-      // Use global connection state (no need for one-time check)
-      if (isConnected && isInternetReachable) {
-        try {
-          await setActiveStatus(selectedChildId);
-          console.log("✅ Online: status updated in Supabase.");
-        } catch (err) {
-          console.warn("⚠️ Online update failed:", err);
-        }
-      } else {
-        console.warn("📴 Offline: using local session only.");
-      }
-
-      // Always start session locally (even offline)
-      startChildSession(selectedChildId, "auth");
-      console.log(
-        `🟢 Auth session started locally for ${child.firstName} ${child.lastName}`
-      );
-
-      setEnteredPin("");
-      router.push(`/home/${selectedChildId}`);
-    } else {
+    if (sanitizedPin !== child.profilePin) {
       setPinError("Incorrect PIN. Please try again.");
+      return;
     }
-  };
 
-  const handleBack = () => {
+    setPinError("");
+    setModalVisible(false);
+    selectChildUnsafe(selectedChildId);
+
+    if (isConnected && isInternetReachable) {
+      try {
+        await setActiveStatus(selectedChildId);
+      } catch (err) {
+        console.warn("⚠️ Online update failed:", err);
+      }
+    }
+
+    startChildSession(selectedChildId, "auth");
+    setSessionDetails(
+      `${child.firstName} ${child.lastName} signed into their profile`
+    );
+
+    // Award first-time login achievement
+    await handleFirstTimeLoginAchievement(selectedChildId);
+
+    setEnteredPin("");
+    router.push(`/home/${selectedChildId}`);
+  }, [
+    selectedChildId,
+    localChildren,
+    enteredPin,
+    selectChildUnsafe,
+    isConnected,
+    isInternetReachable,
+    setActiveStatus,
+    startChildSession,
+    setSessionDetails,
+    handleFirstTimeLoginAchievement,
+    router,
+  ]);
+
+  const handleBack = (): void => {
     setEnteredPin("");
     setPinError("");
     setSelectedChildId(null);
     setModalVisible(false);
   };
 
-  // --- Loading / Error States ---
+  /** ---------- Loading / Empty States ---------- **/
   if (loading || !initialized) {
     return (
-      <SafeAreaView style={[styles.container, styles.centered]}>
-        <StatusBar
-          translucent
-          backgroundColor="transparent"
-          barStyle="light-content"
-        />
+      <SafeAreaView style={[styles.safeContainer, styles.centered]}>
         <Text style={styles.emptyText}>Loading profiles...</Text>
       </SafeAreaView>
     );
   }
 
-  if (error) {
-    console.warn("⚠️ Child store error:", error);
-  }
+  if (error) console.warn("⚠️ Child store error:", error);
 
   if (!localChildren || localChildren.length === 0) {
     return (
-      <SafeAreaView style={[styles.container, styles.centered]}>
-        <StatusBar
-          translucent
-          backgroundColor="transparent"
-          barStyle="light-content"
-        />
+      <SafeAreaView style={[styles.safeContainer, styles.centered]}>
         <Text style={styles.emptyText}>No profiles found</Text>
         <View style={styles.signOutWrapper}>
           <SignOutButton />
@@ -198,45 +281,73 @@ const ChildIndexScreen: React.FC = () => {
     );
   }
 
-  // --- Main UI ---
+  /** ---------- Main UI ---------- **/
   return (
-    <SafeAreaView
-      style={styles.container}
-      edges={["top", "left", "right", "bottom"]}
-    >
-      <StatusBar
-        translucent
-        backgroundColor="transparent"
-        barStyle="light-content"
-      />
-      <Text style={styles.header}>Select Your Profile</Text>
+    <SafeAreaView style={styles.safeContainer} edges={["top"]}>
+      <View style={styles.headerBackground} />
+      <ImageBackground
+        source={require("@/assets/images/app-background.png")}
+        style={styles.background}
+        imageStyle={styles.backgroundImage}
+        resizeMode="cover"
+      >
+        {/* Header */}
+        <View style={styles.headerBar}>
+          <Text style={styles.headerTitle}>Select Your Profile</Text>
+          <TouchableOpacity
+            onPress={() => router.back()}
+            style={styles.closeButton}
+          >
+            <Ionicons
+              name="close"
+              size={responsive.isNarrowScreen ? 20 : 24}
+              color="#000"
+            />
+          </TouchableOpacity>
+        </View>
 
-      <FlatList
-        data={localChildren}
-        keyExtractor={(item) => item.id}
-        numColumns={2}
-        columnWrapperStyle={styles.row}
-        contentContainerStyle={styles.listContainer}
-        renderItem={({ item }) => {
-          const isActive = currentChild?.id === item.id;
-          return (
-            <TouchableOpacity
-              style={[styles.iconContainer, isActive && styles.activeContainer]}
-              onPress={() => handleSelectChild(item.id)}
-              activeOpacity={0.8}
-            >
-              <ProfileIcon source={item.profilePicture} />
-              <Text style={styles.nameText}>
-                {item.firstName} {item.lastName}
-              </Text>
-            </TouchableOpacity>
-          );
-        }}
-      />
+        {/* Profile list */}
+        <View style={styles.contentWrapper}>
+          <FlatList
+            data={localChildren}
+            keyExtractor={(item) => item.id}
+            numColumns={2}
+            columnWrapperStyle={styles.row}
+            contentContainerStyle={styles.listContainer}
+            showsVerticalScrollIndicator={false}
+            renderItem={({
+              item,
+            }: ListRenderItemInfo<(typeof localChildren)[number]>) => {
+              const isActive = currentChild?.id === item.id;
+              return (
+                <TouchableOpacity
+                  style={[
+                    styles.iconContainer,
+                    isActive && styles.activeContainer,
+                  ]}
+                  onPress={() => handleSelectChild(item.id)}
+                  activeOpacity={0.8}
+                >
+                  <ProfileIcon source={item.profilePicture} />
+                  <Text style={styles.nameText}>
+                    {item.firstName} {item.lastName}
+                  </Text>
+                </TouchableOpacity>
+              );
+            }}
+          />
+        </View>
 
-      <View style={styles.signOutWrapper}>
-        <SignOutButton />
-      </View>
+        {/* Footer Sign-Out */}
+        <View
+          style={[
+            styles.signOutWrapper,
+            Platform.OS === "android" && { marginBottom: 20 },
+          ]}
+        >
+          <SignOutButton />
+        </View>
+      </ImageBackground>
 
       {/* --- PIN Modal --- */}
       <Modal
@@ -261,29 +372,26 @@ const ChildIndexScreen: React.FC = () => {
               style={styles.pinInput}
             />
             {pinError ? <Text style={styles.errorText}>{pinError}</Text> : null}
-            <View style={styles.buttonRow}>
-              <View style={styles.modalButtonWrapper}>
-                <Button
-                  title="Back"
-                  onPress={handleBack}
-                  backgroundColor="#374151"
-                  textColor="#F9FAFB"
-                  fontSize={responsive.buttonFontSize * 0.8}
-                  paddingVertical={responsive.buttonHeight * 0.2}
-                  paddingHorizontal={responsive.buttonHeight * 0.6}
-                />
-              </View>
-              <View style={styles.modalButtonWrapper}>
-                <Button
-                  title="Done"
-                  onPress={handlePinSubmit}
-                  backgroundColor="#6366F1"
-                  textColor="#F9FAFB"
-                  fontSize={responsive.buttonFontSize * 0.8}
-                  paddingVertical={responsive.buttonHeight * 0.2}
-                  paddingHorizontal={responsive.buttonHeight * 0.6}
-                />
-              </View>
+
+            <View style={styles.modalButtonRow}>
+              <TouchableOpacity
+                style={[
+                  styles.modalButton,
+                  { backgroundColor: "rgba(217,217,217,0.85)" },
+                ]}
+                onPress={handleBack}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.modalButtonText}>Back</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.modalButton, { backgroundColor: "#000" }]}
+                onPress={handlePinSubmit}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.modalButtonText}>Done</Text>
+              </TouchableOpacity>
             </View>
           </View>
         </KeyboardAvoidingView>
@@ -294,61 +402,93 @@ const ChildIndexScreen: React.FC = () => {
 
 export default ChildIndexScreen;
 
-// --- Styles (unchanged) ---
+/** ---------- Styles ---------- **/
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#111827",
+  safeContainer: { flex: 1, backgroundColor: "#fff" },
+  background: { flex: 1, width: "100%", height: "100%" },
+  backgroundImage: { transform: [{ scale: 1.2 }] },
+  headerBackground: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    height: statusBarHeight + 40,
+    backgroundColor: "rgba(217,217,217,0.85)",
+    zIndex: 1,
+  },
+  headerBar: {
+    backgroundColor: "rgba(217,217,217,0.85)",
+    borderBottomColor: "#999",
+    borderBottomWidth: 2,
+    paddingTop: statusBarHeight * 0.4,
+    paddingBottom: responsive.screenHeight * 0.02,
+    paddingHorizontal: responsive.screenWidth * 0.05,
+    borderBottomLeftRadius: 20,
+    borderBottomRightRadius: 20,
     alignItems: "center",
-    paddingTop: Platform.OS === "android" ? StatusBar.currentHeight ?? 0 : 0,
+    justifyContent: "center",
+    shadowColor: "#000",
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 3,
+    zIndex: 2,
   },
-  header: {
-    fontSize: responsive.buttonFontSize * 1.2,
-    fontWeight: "600",
-    marginVertical: responsive.screenHeight * 0.025,
-    color: "#F9FAFB",
+  headerTitle: {
+    color: "#000",
+    fontSize: responsive.isNarrowScreen ? 18 : 22,
+    fontFamily: "Fredoka-Bold",
+    textAlign: "center",
   },
+  closeButton: {
+    position: "absolute",
+    right: responsive.screenWidth * 0.05,
+    top: "50%",
+    transform: [{ translateY: -responsive.screenHeight * 0.015 }],
+    padding: 6,
+  },
+  contentWrapper: { flex: 1, justifyContent: "center" },
   listContainer: {
     justifyContent: "center",
-    paddingHorizontal: responsive.screenWidth * 0.05,
-    paddingBottom: responsive.screenHeight * 0.1,
+    alignItems: "center",
+    paddingVertical: responsive.screenHeight * 0.05,
   },
   row: {
-    justifyContent: "space-around",
+    justifyContent: "space-evenly",
     marginBottom: responsive.screenHeight * 0.03,
   },
   iconContainer: {
     alignItems: "center",
-    marginHorizontal: responsive.screenWidth * 0.05,
-  },
-  activeContainer: {
+    justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.75)",
+    borderRadius: 20,
+    borderColor: "#999",
     borderWidth: 2,
-    borderColor: "#6366F1",
-    borderRadius: responsive.profileIconSize() / 2,
-    padding: responsive.screenWidth * 0.01,
+    margin: responsive.screenWidth * 0.04,
+    padding: responsive.screenWidth * 0.04,
+    width: responsive.screenWidth * 0.4,
+    shadowColor: "#000",
+    shadowOpacity: 0.2,
+    shadowRadius: 3,
+    elevation: 4,
   },
+  activeContainer: { borderColor: "#6366F1" },
   nameText: {
     marginTop: responsive.screenHeight * 0.01,
     fontSize: responsive.buttonFontSize,
-    fontWeight: "500",
+    fontFamily: "Fredoka-Medium",
+    color: "#000",
     textAlign: "center",
-    color: "#E5E7EB",
-  },
-  centered: {
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  emptyText: {
-    fontSize: responsive.buttonFontSize,
-    color: "#9CA3AF",
-    marginBottom: responsive.screenHeight * 0.02,
   },
   signOutWrapper: {
-    width: "100%",
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: responsive.screenWidth * 0.05,
     paddingBottom: Platform.OS === "android" ? 25 : 10,
+  },
+  centered: { justifyContent: "center", alignItems: "center" },
+  emptyText: {
+    fontSize: responsive.buttonFontSize,
+    color: "#333",
+    marginBottom: responsive.screenHeight * 0.02,
   },
   modalOverlay: {
     flex: 1,
@@ -358,40 +498,36 @@ const styles = StyleSheet.create({
     paddingHorizontal: responsive.screenWidth * 0.08,
   },
   modalContainer: {
-    width: "100%",
-    backgroundColor: "#1F2937",
-    borderRadius: responsive.screenWidth * 0.03,
-    padding: responsive.screenHeight * 0.03,
+    width: "90%",
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    padding: 25,
     alignItems: "center",
-    shadowColor: "#000",
-    shadowOpacity: 0.5,
-    shadowRadius: 10,
-    elevation: 5,
   },
   modalTitle: {
-    fontSize: responsive.buttonFontSize * 1.2,
+    fontSize: 20,
     fontWeight: "600",
-    marginBottom: responsive.screenHeight * 0.015,
-    color: "#F9FAFB",
-  },
-  pinInput: {
-    textAlign: "center",
-    fontSize: responsive.buttonFontSize,
+    marginBottom: 15,
     color: "#000",
   },
-  buttonRow: {
+  pinInput: { textAlign: "center", fontSize: 18, color: "#000" },
+  modalButtonRow: {
     flexDirection: "row",
     justifyContent: "space-between",
+    marginTop: 25,
     width: "100%",
-    marginTop: responsive.screenHeight * 0.025,
   },
-  modalButtonWrapper: {
+  modalButton: {
     flex: 1,
+    marginHorizontal: 8,
+    borderRadius: 20,
+    paddingVertical: 12,
     alignItems: "center",
   },
-  errorText: {
-    color: "#F87171",
-    marginTop: responsive.screenHeight * 0.01,
-    fontSize: responsive.buttonFontSize * 0.85,
+  modalButtonText: {
+    color: "#fff",
+    fontWeight: "bold",
+    fontSize: 16,
   },
+  errorText: { color: "#EF4444", marginTop: 10, fontSize: 14 },
 });

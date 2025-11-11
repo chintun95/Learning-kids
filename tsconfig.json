@@ -15,5 +15,5 @@
     "**/*.jsx",
     ".expo/types/**/*.ts",
     "expo-env.d.ts"
- ]
+, "app/games/Flappy/core/GameLoop,ts" ]
 }

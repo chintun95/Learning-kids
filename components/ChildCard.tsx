@@ -1,4 +1,3 @@
-// ✅ ChildCard.tsx
 import React, { useState } from "react";
 import {
   View,
@@ -68,7 +67,6 @@ export default function ChildCard({ child }: ChildCardProps) {
       await deleteChildAndAssociations(child.id);
       console.log(`✅ Child deleted: ${child.firstName} ${child.lastName}`);
 
-      // Invalidate parent’s children list
       queryClient.invalidateQueries({
         predicate: (query) =>
           query.queryKey[0] === "children-for-parent-email" ||
@@ -140,7 +138,7 @@ export default function ChildCard({ child }: ChildCardProps) {
           </Text>
 
           {isLoading ? (
-            <ActivityIndicator color="#4F46E5" />
+            <ActivityIndicator color="#000" />
           ) : error ? (
             <Text style={styles.drawerText}>Failed to load sessions</Text>
           ) : todaysSessions.length === 0 ? (
@@ -149,7 +147,7 @@ export default function ChildCard({ child }: ChildCardProps) {
             todaysSessions.map((session) => (
               <View key={session.id} style={styles.sessionRow}>
                 <Text style={styles.drawerText}>{session.activitytype}</Text>
-                <Text style={[styles.drawerText, { color: "#4F46E5" }]}>
+                <Text style={[styles.drawerText, { color: "#000" }]}>
                   {session.sessionstatus}
                 </Text>
               </View>
@@ -169,7 +167,7 @@ export default function ChildCard({ child }: ChildCardProps) {
           <View style={styles.modalContent}>
             {deleting ? (
               <>
-                <ActivityIndicator size="large" color="#4F46E5" />
+                <ActivityIndicator size="large" color="#000" />
                 <Text
                   style={[
                     styles.modalTitle,
@@ -211,31 +209,32 @@ export default function ChildCard({ child }: ChildCardProps) {
 
 const styles = StyleSheet.create({
   cardWrapper: {
-    marginVertical: responsive.screenHeight * 0.01,
+    marginVertical: responsive.screenHeight * 0.012,
   },
   cardContainer: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#FFFFFF",
-    borderRadius: 16,
+    backgroundColor: "rgba(217,217,217,0.85)",
+    borderRadius: responsive.screenWidth * 0.04,
+    borderWidth: 2,
+    borderColor: "#999",
     padding: responsive.screenWidth * 0.04,
     shadowColor: "#000",
-    shadowOpacity: 0.1,
-    shadowOffset: { width: 0, height: 2 },
-    shadowRadius: 6,
-    elevation: 3,
+    shadowOpacity: 0.25,
+    shadowRadius: 5,
+    elevation: 4,
   },
   infoContainer: { flex: 1, marginLeft: responsive.screenWidth * 0.03 },
   nameText: {
     fontSize: responsive.buttonFontSize,
-    color: "#111827",
+    color: "#000",
     fontFamily: "Fredoka-SemiBold",
   },
   manageText: {
-    color: "#4F46E5",
+    color: "#000",
     textDecorationLine: "underline",
     marginTop: responsive.screenHeight * 0.005,
-    fontSize: responsive.buttonFontSize * 0.8,
+    fontSize: responsive.buttonFontSize * 0.85,
     fontFamily: "Fredoka-Medium",
   },
   buttonsContainer: {
@@ -249,7 +248,7 @@ const styles = StyleSheet.create({
   },
   expandButtonText: {
     fontSize: responsive.isNarrowScreen ? 16 : 20,
-    color: "#4B5563",
+    color: "#000",
     fontFamily: "Fredoka-Medium",
   },
   deleteButton: {
@@ -258,14 +257,16 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   drawer: {
-    backgroundColor: "#F3F4F6",
+    backgroundColor: "rgba(217,217,217,0.85)",
+    borderWidth: 2,
+    borderColor: "#999",
+    borderBottomLeftRadius: responsive.screenWidth * 0.04,
+    borderBottomRightRadius: responsive.screenWidth * 0.04,
     padding: responsive.screenWidth * 0.04,
-    borderBottomLeftRadius: 16,
-    borderBottomRightRadius: 16,
     marginTop: 4,
   },
   drawerText: {
-    color: "#111827",
+    color: "#000",
     fontSize: responsive.buttonFontSize * 0.85,
     fontFamily: "Fredoka-Regular",
   },
@@ -286,16 +287,22 @@ const styles = StyleSheet.create({
   },
   modalContent: {
     width: "85%",
-    backgroundColor: "#fff",
-    borderRadius: 16,
+    backgroundColor: "rgba(217,217,217,0.85)",
+    borderColor: "#999",
+    borderWidth: 2,
+    borderRadius: responsive.screenWidth * 0.04,
     padding: responsive.screenWidth * 0.05,
     alignItems: "center",
+    shadowColor: "#000",
+    shadowOpacity: 0.25,
+    shadowRadius: 5,
+    elevation: 4,
   },
   modalTitle: {
     fontSize: responsive.isNarrowScreen ? 16 : 18,
     fontFamily: "Fredoka-SemiBold",
     marginBottom: responsive.screenHeight * 0.025,
-    color: "#111827",
+    color: "#000",
     textAlign: "center",
   },
   modalButtons: {
@@ -310,7 +317,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     alignItems: "center",
   },
-  yesButton: { backgroundColor: "#48b42dff" },
+  yesButton: { backgroundColor: "#000" },
   noButton: { backgroundColor: "#EF4444" },
   modalButtonText: {
     color: "#fff",

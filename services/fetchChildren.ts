@@ -137,7 +137,7 @@ export async function fetchChildrenByParentEmail(
 }
 
 // --------------------
-// React Query hook
+// React Query hook (Parent-scoped Realtime Updates)
 // --------------------
 export function useChildrenByParentEmail(emailAddress?: string) {
   const queryClient = useQueryClient();
@@ -149,25 +149,57 @@ export function useChildrenByParentEmail(emailAddress?: string) {
     staleTime: 1000 * 30,
   });
 
-  // Live updates
   useEffect(() => {
     if (!emailAddress) return;
 
-    const channel = supabase
-      .channel("children-realtime")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "Child" },
-        () => {
-          queryClient.invalidateQueries({
-            queryKey: ["children-for-parent-email", emailAddress],
-          });
-        }
-      )
-      .subscribe();
+    let parentId: string | null = null;
 
+    const setupRealtime = async () => {
+      // --- Look up the parent ID for scoped subscription
+      const { data: parent, error: parentError } = await supabase
+        .from("Parent")
+        .select("id")
+        .eq("emailaddress", emailAddress.trim().toLowerCase())
+        .maybeSingle();
+
+      if (parentError || !parent) {
+        console.warn(
+          "⚠️ Could not set up realtime subscription: parent not found"
+        );
+        return;
+      }
+
+      parentId = parent.id;
+
+      // --- Subscribe only to this parent's children
+      const channel = supabase
+        .channel(`children-realtime-${parentId}`)
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table: "Child",
+            filter: `parent_id=eq.${parentId}`,
+          },
+          () => {
+            queryClient.invalidateQueries({
+              queryKey: ["children-for-parent-email", emailAddress],
+            });
+          }
+        )
+        .subscribe();
+
+      // --- Cleanup on unmount
+      return () => {
+        supabase.removeChannel(channel);
+      };
+    };
+
+    const unsubscribePromise = setupRealtime();
     return () => {
-      supabase.removeChannel(channel);
+      // Wait for setup to finish before cleanup
+      unsubscribePromise?.then((cleanup) => cleanup && cleanup());
     };
   }, [emailAddress, queryClient]);
 
@@ -200,11 +232,17 @@ export async function fetchChildById(
     `
     )
     .eq("id", childId)
-    .single();
+    .maybeSingle(); // ✅ prevents PGRST116 when no rows
 
   if (error) {
     console.error("❌ fetchChildById error:", error);
     throw new Error(error.message);
+  }
+
+  // ✅ If no data, just return null instead of throwing
+  if (!data) {
+    console.log("ℹ️ Child not found (was likely deleted):", childId);
+    return null;
   }
 
   const ec = (data as ChildWithRelations)?.EmergencyContact ?? {};

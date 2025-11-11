@@ -7,7 +7,6 @@ import {
   type ChildCardModel,
 } from "@/services/fetchChildren";
 import { formatChildPin } from "@/utils/formatter";
-import NetInfo from "@react-native-community/netinfo";
 
 /**
  * A compact record for selection & auditing.
@@ -20,7 +19,7 @@ export type ChildSwitchEvent = {
 type ChildAuthState = {
   /** All children fetched for the current parent email */
   children: ChildCardModel[];
-  /** Email used for the last hydrate() call (useful for cache validation) */
+  /** Email used for the last hydrate() call */
   loadedForEmail: string | null;
 
   /** Currently selected child id (null if none) */
@@ -34,6 +33,9 @@ type ChildAuthState = {
 
   /** Append-only local switch history (optional UI/telemetry) */
   switchHistory: ChildSwitchEvent[];
+
+  /** Tracks if this is the user's first time login */
+  firstTimeLogin: boolean;
 
   /** UI helpers */
   loading: boolean;
@@ -53,6 +55,10 @@ type ChildAuthState = {
   verifyPinAndSelect: (childId: string, pinInput?: string | null) => void;
   clearSelection: () => void;
   removeChildLocally: (childId: string) => void;
+
+  // New actions for firstTimeLogin flag
+  setFirstTimeLogin: (value: boolean) => void;
+  markFirstTimeComplete: () => void;
 };
 
 let realtimeSubscription: ReturnType<typeof supabase.channel> | null = null;
@@ -68,6 +74,9 @@ export const useChildAuthStore = create<ChildAuthState>()(
       switchHistory: [],
       loading: false,
       error: null,
+
+      /** New: first-time login flag */
+      firstTimeLogin: true,
 
       getCurrentChild: () => {
         const { children, currentChildId } = get();
@@ -106,7 +115,6 @@ export const useChildAuthStore = create<ChildAuthState>()(
             error: null,
           });
 
-          // Clear invalid selection if necessary
           const { currentChildId } = get();
           if (
             currentChildId &&
@@ -115,7 +123,6 @@ export const useChildAuthStore = create<ChildAuthState>()(
             set({ currentChildId: null });
           }
 
-          // 🟢 Setup real-time listener if not already subscribed
           if (realtimeSubscription) {
             supabase.removeChannel(realtimeSubscription);
           }
@@ -219,6 +226,10 @@ export const useChildAuthStore = create<ChildAuthState>()(
           return next as Pick<ChildAuthState, keyof ChildAuthState>;
         });
       },
+
+      /** ---------- New Actions ---------- **/
+      setFirstTimeLogin: (value) => set({ firstTimeLogin: value }),
+      markFirstTimeComplete: () => set({ firstTimeLogin: false }),
     }),
     {
       name: "child-auth-storage",
@@ -226,6 +237,7 @@ export const useChildAuthStore = create<ChildAuthState>()(
       partialize: (state) => ({
         ...state,
         switchHistory: state.switchHistory.slice(-50),
+        firstTimeLogin: state.firstTimeLogin,
       }),
     }
   )
