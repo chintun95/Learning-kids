@@ -50,6 +50,12 @@ export default function StartFlappyGame() {
   const [questionsToComplete, setQuestionsToComplete] = useState(5);
   const [isLoadingData, setIsLoadingData] = useState(true);
 
+  // --- ADD THESE ---
+  const [feedbackContent, setFeedbackContent] = useState(null);
+  const feedbackAnim = useRef(new Animated.Value(0)).current;
+  const [isAnswering, setIsAnswering] = useState(false);
+  // --- END ADD ---
+
   const auth = getAuth();
   const uid = auth.currentUser?.uid;
 
@@ -309,10 +315,10 @@ export default function StartFlappyGame() {
 
           setCurrentPoints((p) => {
             const next = p + delta;
-            if (next % 5 === 0) setDifficulty((d) => d + 1);
+            if (next % 5 === 0) setDifficulty((d) => d + 1); // This is for game speed, keep it at 5
             //if (next % 7 === 0) spawnPowerUp();
           
-          // NEW: Trigger question after scoring
+          // --- MODIFIED: Trigger question every 3 points ---
           if (next % 3 === 0 && next > 0) {
             if (questionsAnsweredCount < questionsToComplete && availableQuestions.length > 0) {
               const randomIndex = Math.floor(Math.random() * availableQuestions.length);
@@ -367,44 +373,78 @@ export default function StartFlappyGame() {
         });
       }
     },
-    [powerUp, difficulty, currentPoints, maxCombo, clearPowerUp, startParallax, stopParallax, spawnPowerUp]
+    [
+        powerUp, difficulty, currentPoints, maxCombo, clearPowerUp, 
+        startParallax, stopParallax, spawnPowerUp, 
+        questionsAnsweredCount, questionsToComplete, availableQuestions // Add dependencies
+    ]
   );
 
+  // --- REPLACED aanswerQuestion function ---
   const answerQuestion = async (isCorrect, selectedOptionKey) => {
-    setIsQuestionVisible(false);
+    if (isAnswering) return;
+    setIsAnswering(true);
 
-    // Log answer to database
-    if (uid && currentQuestion) {
-      supabase.from('answer_log').insert({
-        user_id: uid,
-        question_id: currentQuestion.id,
-        is_correct: isCorrect,
-        game_name: 'Flappy Bird'
-      }).then(({ error }) => {
-        if (error) {
-          console.error('Error logging answer:', error.message);
-        }
-      });
-    }
-
-    const newAnsweredCount = questionsAnsweredCount + 1;
-    setQuestionsAnsweredCount(newAnsweredCount);
-
-    if (newAnsweredCount >= questionsToComplete) {
-      // All questions complete - end game
-      setRunning(false);
-      setShowGameOver(true);
-      stopParallax();
-      setLastRunStats({ score: currentPoints, maxCombo, difficulty });
+    // 1. Set feedback content
+    if (isCorrect) {
+      setFeedbackContent({ icon: '🎉👍', text: 'Great job!' });
     } else {
-      // Resume game
-      setRunning(true);
-      setPaused(false);
-      startParallax();
+      setFeedbackContent({ icon: '❌', text: 'Incorrect' });
     }
 
-    setCurrentQuestion(null);
+    // 2. Run animation
+    feedbackAnim.setValue(0);
+    Animated.sequence([
+      Animated.timing(feedbackAnim, {
+        toValue: 1,
+        duration: 300,
+        useNativeDriver: true,
+      }),
+      Animated.delay(1000),
+      Animated.timing(feedbackAnim, {
+        toValue: 0,
+        duration: 200,
+        useNativeDriver: true,
+      }),
+    ]).start(() => {
+      // 3. Run all logic AFTER animation
+      setFeedbackContent(null);
+      setIsQuestionVisible(false);
+      setCurrentQuestion(null);
+      setIsAnswering(false);
+
+      // Log answer to database
+      if (uid && currentQuestion) {
+        supabase.from('answer_log').insert({
+          user_id: uid,
+          question_id: currentQuestion.id,
+          is_correct: isCorrect,
+          game_name: 'Flappy Bird'
+        }).then(({ error }) => {
+          if (error) {
+            console.error('Error logging answer:', error.message);
+          }
+        });
+      }
+
+      const newAnsweredCount = questionsAnsweredCount + 1;
+      setQuestionsAnsweredCount(newAnsweredCount);
+
+      if (newAnsweredCount >= questionsToComplete) {
+        // All questions complete - end game
+        setRunning(false);
+        setShowGameOver(true);
+        stopParallax();
+        setLastRunStats({ score: currentPoints, maxCombo, difficulty });
+      } else {
+        // Resume game
+        setRunning(true);
+        setPaused(false);
+        startParallax();
+      }
+    });
   };
+  // --- END REPLACEMENT ---
 
   // ---- power-up expiry ticking (UI + expiry) ----
   useEffect(() => {
@@ -558,11 +598,40 @@ export default function StartFlappyGame() {
                   key={key}
                   style={styles.questionButton}
                   onPress={() => answerQuestion(key === currentQuestion.correct_answer, key)}
+                  disabled={isAnswering} // <-- ADD THIS
                 >
                   <Text style={styles.questionButtonText}>{String(option)}</Text>
                 </TouchableOpacity>
               ))
             }
+
+            {/* --- ADD THIS NEW OVERLAY --- */}
+            {feedbackContent && (
+              <Animated.View
+                pointerEvents="none"
+                style={[
+                  styles.feedbackOverlay,
+                  {
+                    opacity: feedbackAnim,
+                    transform: [
+                      {
+                        scale: feedbackAnim.interpolate({
+                          inputRange: [0, 1],
+                          outputRange: [0.7, 1],
+                        }),
+                      },
+                    ],
+                  },
+                ]}
+              >
+                <Text style={styles.feedbackIcon}>{feedbackContent.icon}</Text>
+                {feedbackContent.text ? (
+                  <Text style={styles.feedbackText}>{feedbackContent.text}</Text>
+                ) : null}
+              </Animated.View>
+            )}
+            {/* --- END ADD --- */}
+
           </View>
         )}
     </View>
@@ -739,4 +808,26 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     fontSize: 16,
   },
+
+  // --- ADD THESE NEW STYLES ---
+  feedbackOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.85)', // A light overlay to cover the question
+    borderRadius: 15, // Match the modal's border radius
+  },
+  feedbackIcon: {
+    fontSize: 80,
+    textShadowColor: 'rgba(0, 0, 0, 0.3)',
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 3,
+  },
+  feedbackText: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#333', // Dark text for the light background
+    marginTop: 10,
+  },
+  // --- END ADD ---
 });

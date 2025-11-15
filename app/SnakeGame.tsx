@@ -210,7 +210,7 @@ function SnakeGame({ navigation }: { navigation: any }): JSX.Element {
     const w = GAME_BOUNDS.xMax;
     const h = GAME_BOUNDS.yMax;
     for (let x = 6; x <= w - 6; x++) { arr.push({ x, y: 10 }); arr.push({ x, y: h - 10 }); }
-    for (let y = 14; y <= h - 14; y++) { arr.push({ x: 8, y }); arr.push({ x: w - 8, y }); }
+    for (let y = 14; y <= h - 14; y++) { arr.push({ x: 8, y }); arr.push({ x, y: w - 8 }); }
     for (let x = Math.floor(w / 2) - 6; x <= Math.floor(w / 2) + 6; x++) arr.push({ x, y: Math.floor(h / 2) });
     for (let y = Math.floor(h / 2) - 6; y <= Math.floor(h / 2) + 6; y++) arr.push({ x: Math.floor(w / 2), y });
     return arr;
@@ -229,6 +229,11 @@ function SnakeGame({ navigation }: { navigation: any }): JSX.Element {
       Animated.timing(comboAnim, { toValue: 0, delay: 600, duration: 180, useNativeDriver: true }).start();
     });
   }, [comboAnim]);
+
+  // --- ADD THESE ---
+  const [feedbackContent, setFeedbackContent] = useState<{ icon: string; text: string } | null>(null);
+  const feedbackAnim = useRef(new Animated.Value(0)).current;
+  // --- END ADD ---
 
   const eatRipple = useRef(new Animated.Value(0)).current;
   const triggerEatRipple = useCallback(() => {
@@ -394,37 +399,61 @@ function SnakeGame({ navigation }: { navigation: any }): JSX.Element {
 
     if (isCorrect) {
         bonusPoints = 25;
-        Alert.alert('Correct!', '+25 points!');
+        // --- MODIFIED ---
+        setFeedbackContent({ icon: '🎉👍', text: '+25 points!' });
     } else {
-        Alert.alert('Incorrect', 'Try again next time!');
+        // --- MODIFIED ---
+        setFeedbackContent({ icon: '❌', text: '' });
     }
 
-    if (uid && currentQuestion) {
-      supabase.from('answer_log').insert({
-        user_id: uid,
-        question_id: currentQuestion.id,
-        is_correct: isCorrect,
-        game_name: 'Snake' 
-      }).then(({ error }) => {
-        if (error) {
-          console.error('Error logging answer:', error.message);
-        }
-      });
-    }
-    
+    // --- NEW: Trigger feedback animation ---
+    feedbackAnim.setValue(0);
+    Animated.sequence([
+      // Fade/scale in
+      Animated.timing(feedbackAnim, { 
+        toValue: 1, 
+        duration: 300, 
+        useNativeDriver: true 
+      }),
+      // Hold for 1 second
+      Animated.delay(1000), 
+      // Fade/scale out
+      Animated.timing(feedbackAnim, { 
+        toValue: 0, 
+        duration: 200, 
+        useNativeDriver: true 
+      })
+    ]).start(() => {
+      // --- ALL LOGIC BELOW IS MOVED INTO THIS CALLBACK ---
+      setFeedbackContent(null); // Clear content after animation
 
-    setScore(s => s + bonusPoints);
+      if (uid && currentQuestion) {
+        supabase.from('answer_log').insert({
+          user_id: uid,
+          question_id: currentQuestion.id,
+          is_correct: isCorrect,
+          game_name: 'Snake' 
+        }).then(({ error }) => {
+          if (error) {
+            console.error('Error logging answer:', error.message);
+          }
+        });
+      }
+      
+      setScore(s => s + bonusPoints);
 
-    const newAnsweredCount = questionsAnsweredCount + 1;
-    setQuestionsAnsweredCount(newAnsweredCount);
+      const newAnsweredCount = questionsAnsweredCount + 1;
+      setQuestionsAnsweredCount(newAnsweredCount);
 
-    if (newAnsweredCount >= questionsToComplete) {
-        endGame('quiz_complete');
-    } else {
-        setPhase('countdown');
-        setIsPaused(true);
-    }
-     setCurrentQuestion(null);
+      if (newAnsweredCount >= questionsToComplete) {
+          endGame('quiz_complete');
+      } else {
+          setPhase('countdown');
+          setIsPaused(true);
+      }
+      setCurrentQuestion(null);
+      // --- END OF MOVED LOGIC ---
+    });
   };
 
 
@@ -577,6 +606,32 @@ function SnakeGame({ navigation }: { navigation: any }): JSX.Element {
             </View>
           )}
 
+          {/* --- ADD THIS NEW FEEDBACK OVERLAY BLOCK --- */}
+          {feedbackContent && (
+            <Animated.View 
+              pointerEvents="none" 
+              style={[
+                styles.feedbackOverlay,
+                {
+                  opacity: feedbackAnim,
+                  transform: [
+                    { scale: feedbackAnim.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [0.7, 1]
+                      }) 
+                    }
+                  ]
+                }
+              ]}
+            >
+              <Text style={styles.feedbackIcon}>{feedbackContent.icon}</Text>
+              {feedbackContent.text ? (
+                <Text style={styles.feedbackText}>{feedbackContent.text}</Text>
+              ) : null}
+            </Animated.View>
+          )}
+          {/* --- END OF ADDED BLOCK --- */}
+
             {showSettings && (
              <View style={styles.settingsPanel}>
               <Text style={styles.settingsTitle}>Settings</Text>
@@ -705,6 +760,36 @@ const styles = StyleSheet.create({
         shadowRadius: 3.84,
     },
     questionText: { fontSize: 18, fontWeight: 'bold', marginBottom: 15, textAlign: 'center' },
+    
+    // --- ADD THESE NEW STYLES ---
+    feedbackOverlay: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        justifyContent: 'center',
+        alignItems: 'center',
+        backgroundColor: 'rgba(0, 0, 0, 0.4)',
+        borderRadius: 22, // Match boundaries
+    },
+    feedbackIcon: {
+        fontSize: 80,
+        textShadowColor: 'rgba(0, 0, 0, 0.3)',
+        textShadowOffset: { width: 0, height: 2 },
+        textShadowRadius: 3,
+    },
+    feedbackText: {
+        fontSize: 24,
+        fontWeight: 'bold',
+        color: '#fff',
+        marginTop: 10,
+        textShadowColor: 'rgba(0, 0, 0, 0.5)',
+        textShadowOffset: { width: 0, height: 1 },
+        textShadowRadius: 2,
+    },
+    // --- END OF ADDED STYLES ---
+
     settingsPanel: {
         position: 'absolute',
         bottom: 20,

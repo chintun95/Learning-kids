@@ -1,5 +1,5 @@
-import React, { useState, useCallback } from 'react';
-import { StyleSheet, Text, View, ActivityIndicator, TouchableOpacity, Alert } from 'react-native';
+import React, { useState, useCallback, useRef } from 'react';
+import { StyleSheet, Text, View, ActivityIndicator, TouchableOpacity, Alert, Animated } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { getAuth } from 'firebase/auth';
@@ -13,6 +13,12 @@ const QuizScreen = () => {
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [loading, setLoading] = useState(true);
   const [questionsPerSession, setQuestionsPerSession] = useState(5); // default limit
+
+  // --- ADD THESE ---
+  const [isAnswering, setIsAnswering] = useState(false);
+  const [feedbackContent, setFeedbackContent] = useState(null);
+  const feedbackAnim = useRef(new Animated.Value(0)).current;
+  // --- END ADD ---
 
   const auth = getAuth();
   const uid = auth.currentUser?.uid;
@@ -35,7 +41,6 @@ const QuizScreen = () => {
     }
   }, [uid]);
 
-  // ✅ Load quiz questions
   const loadQuiz = useCallback(async () => {
     if (!uid) {
       Alert.alert("Error", "You must be logged in to play the quiz.");
@@ -73,10 +78,15 @@ const QuizScreen = () => {
     }, [loadQuiz])
   );
 
-  // ✅ Handle answer + log to Supabase for ProgressionChart
   const handleAnswer = async (option) => {
+    if (isAnswering) return; // Don't allow multiple answers
+    setIsAnswering(true);
+
     const currentQuestion = questions[currentQuestionIndex];
-    if (!currentQuestion) return;
+    if (!currentQuestion) {
+      setIsAnswering(false); // Failsafe
+      return;
+    }
 
     const isCorrect = option === currentQuestion.correct_answer;
 
@@ -94,20 +104,40 @@ const QuizScreen = () => {
       }
     }
 
+    // --- REPLACE ALERTS WITH THIS ---
     if (isCorrect) {
-      Alert.alert('✅ Correct!', 'Great job!');
+      setFeedbackContent({ icon: '🎉👍', text: 'Great job!' });
     } else {
-      Alert.alert('❌ Incorrect', 'Try again next time!');
+      setFeedbackContent({ icon: '❌', text: 'Incorrect' });
     }
 
-    setTimeout(() => {
+    // --- REPLACE setTimeout WITH ANIMATION ---
+    feedbackAnim.setValue(0);
+    Animated.sequence([
+      Animated.timing(feedbackAnim, {
+        toValue: 1,
+        duration: 300,
+        useNativeDriver: true,
+      }),
+      Animated.delay(1000),
+      Animated.timing(feedbackAnim, {
+        toValue: 0,
+        duration: 200,
+        useNativeDriver: true,
+      }),
+    ]).start(() => {
+      // Logic to run AFTER animation
+      setFeedbackContent(null);
+
       if (currentQuestionIndex < questions.length - 1) {
         setCurrentQuestionIndex(currentQuestionIndex + 1);
+        setIsAnswering(false); // Re-enable buttons
       } else {
-        Alert.alert("Quiz Complete!", "You've finished the quiz!");
         navigation.navigate('GamePage');
+        // No need to set isAnswering(false) here since we are navigating away
       }
-    }, 500);
+    });
+    // --- END REPLACEMENT ---
   };
 
   if (loading || questions.length === 0) {
@@ -124,7 +154,12 @@ const QuizScreen = () => {
     if (!currentQuestion?.options) return null;
 
     return Object.entries(currentQuestion.options).map(([key, value]) => (
-      <TouchableOpacity key={key} style={styles.button} onPress={() => handleAnswer(key)}>
+      <TouchableOpacity
+        key={key}
+        style={styles.button}
+        onPress={() => handleAnswer(key)}
+        disabled={isAnswering} // <-- ADD THIS
+      >
         <Text style={styles.buttonText}>{`${key.toUpperCase()}: ${value}`}</Text>
       </TouchableOpacity>
     ));
@@ -137,6 +172,34 @@ const QuizScreen = () => {
       </Text>
       <Text style={styles.question}>{currentQuestion.question}</Text>
       {renderOptions()}
+
+      {/* --- ADD THIS NEW OVERLAY --- */}
+      {feedbackContent && (
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            styles.feedbackOverlay,
+            {
+              opacity: feedbackAnim,
+              transform: [
+                {
+                  scale: feedbackAnim.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0.7, 1],
+                  }),
+                },
+              ],
+            },
+          ]}
+        >
+          <Text style={styles.feedbackIcon}>{feedbackContent.icon}</Text>
+          {feedbackContent.text ? (
+            <Text style={styles.feedbackText}>{feedbackContent.text}</Text>
+          ) : null}
+        </Animated.View>
+      )}
+      {/* --- END ADD --- */}
+      
     </SafeAreaView>
   );
 };
@@ -179,4 +242,32 @@ const styles = StyleSheet.create({
     fontFamily: 'FredokaOne-Regular',
     fontSize: wp('5%'),
   },
+
+  // --- ADD THESE NEW STYLES ---
+  feedbackOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.4)',
+  },
+  feedbackIcon: {
+    fontSize: 80,
+    textShadowColor: 'rgba(0, 0, 0, 0.3)',
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 3,
+  },
+  feedbackText: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#fff',
+    marginTop: 10,
+    textShadowColor: 'rgba(0, 0, 0, 0.5)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
+  },
+  // --- END ADD ---
 });
