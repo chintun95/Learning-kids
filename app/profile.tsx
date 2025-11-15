@@ -1,5 +1,7 @@
 // app/profile.tsx
 
+// app/profile.tsx
+
 import React, { useEffect, useState, useCallback } from 'react';
 import {
   View,
@@ -396,8 +398,18 @@ const Profile: React.FC = () => {
         {/* Footer Buttons */}
         <View style={styles.bottomButtonContainer}>
           <TouchableOpacity style={styles.actionButton} onPress={handleEditProfile}>
-            <Text style={styles.actionButtonText}>Edit Profile</Text>
+            <Text style={styles.actionButtonText}>Info & Questions</Text>
           </TouchableOpacity>
+          
+          {/* --- THIS IS THE NEW BUTTON --- */}
+          <TouchableOpacity 
+            style={[styles.actionButton, { backgroundColor: '#34A853' }]} 
+            onPress={() => navigation.navigate('AddChildScreen')}
+          >
+            <Text style={styles.actionButtonText}>+ Add Child</Text>
+          </TouchableOpacity>
+          {/* --- END NEW BUTTON --- */}
+
           <TouchableOpacity
             style={[styles.actionButton, styles.signOutButton]}
             onPress={handleSignOut}>
