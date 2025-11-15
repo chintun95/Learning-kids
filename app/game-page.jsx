@@ -134,7 +134,7 @@ const GamePage = memo(() => {
       <ImageBackground source={bg} resizeMode="cover" style={styles.background} />
 
       <View style={[styles.backContainer, { top: insets.top + hp('1%') }]}>
-        <Pressable onPress={() => navigation.goBack()} style={styles.backButton}>
+        <Pressable onPress={() => navigation.navigate('ChildSelectScreen')} style={styles.backButton}>
           <Ionicons name="chevron-back" size={wp('6.2%')} color="#000" />
           <Text style={styles.backLabel}>Back</Text>
         </Pressable>

@@ -1,40 +1,77 @@
-//QuizScreen.jsx
-import React, { useState, useEffect, useCallback } from 'react';
-import { StyleSheet, Text, View, ActivityIndicator, TextInput, TouchableOpacity, Alert } from 'react-native';
+import React, { useState, useCallback, useRef } from 'react';
+import { StyleSheet, Text, View, ActivityIndicator, TouchableOpacity, Alert, Animated } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { getAuth } from 'firebase/auth';
 import { supabase } from '../backend/supabase';
 import { fetchQuestions } from '../backend/fetchquestions';
 import { widthPercentageToDP as wp, heightPercentageToDP as hp } from 'react-native-responsive-screen';
+import { useChild } from './ChildContext';
 
 const QuizScreen = () => {
   const navigation = useNavigation();
   const [questions, setQuestions] = useState([]);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [userAnswer, setUserAnswer] = useState('');
-  const [questionsPerSession, setQuestionsPerSession] = useState(5);
+  const [questionsPerSession, setQuestionsPerSession] = useState(5); // default limit
+
+  // --- ADD THESE ---
+  const [isAnswering, setIsAnswering] = useState(false);
+  const [feedbackContent, setFeedbackContent] = useState(null);
+  const feedbackAnim = useRef(new Animated.Value(0)).current;
+  const { selectedChild } = useChild(); // <-- 2. GET SELECTED CHILD
+  // --- END ADD ---
 
   const auth = getAuth();
-  const uid = auth.currentUser?.uid;
+  const uid = auth.currentUser?.uid; // This is the PARENT'S ID
 
+  // ✅ Fetch question limit from settings
+  const fetchQuestionLimit = useCallback(async () => {
+    if (!uid) return 5;
+    try {
+      const { data, error } = await supabase
+        .from('settings')
+        .select('question_limit')
+        .eq('user_id', uid)
+        .single();
+
+      if (error && error.code !== 'PGRST116') throw error;
+      return data?.question_limit || 5;
+    } catch (err) {
+      console.error('Error fetching question limit:', err.message);
+      return 5;
+    }
+  }, [uid]);
+
+  // ✅ Load quiz questions
   const loadQuiz = useCallback(async () => {
     if (!uid) {
       Alert.alert("Error", "You must be logged in to play the quiz.");
       navigation.goBack();
       return;
     }
+    // --- This check is now crucial ---
+    if (!selectedChild) {
+      Alert.alert("Error", "No child selected.");
+      navigation.navigate("ChildSelectScreen");
+      return;
+    }
+    // --- End check ---
+
     setLoading(true);
     try {
-      const userQuestions = await fetchQuestions(uid);
+      const limit = await fetchQuestionLimit();
+      setQuestionsPerSession(limit);
+
+      const userQuestions = await fetchQuestions(uid); // Questions fetched by parent
       if (userQuestions.length === 0) {
         Alert.alert("No Questions", "Please ask your parent to create some questions first!");
         navigation.goBack();
         return;
       }
+
       const shuffled = [...userQuestions].sort(() => 0.5 - Math.random());
-      setQuestions(shuffled.slice(0, Math.min(shuffled.length, questionsPerSession)));
+      setQuestions(shuffled.slice(0, Math.min(shuffled.length, limit)));
       setCurrentQuestionIndex(0);
     } catch (error) {
       console.error("Failed to load quiz", error);
@@ -43,7 +80,7 @@ const QuizScreen = () => {
     } finally {
       setLoading(false);
     }
-  }, [uid, questionsPerSession, navigation]);
+  }, [uid, navigation, fetchQuestionLimit, selectedChild]); // Add selectedChild dependency
 
   useFocusEffect(
     useCallback(() => {
@@ -51,48 +88,73 @@ const QuizScreen = () => {
     }, [loadQuiz])
   );
 
-  const handleNextQuestion = () => {
-    if (currentQuestionIndex < questions.length - 1) {
-      setCurrentQuestionIndex(currentQuestionIndex + 1);
-      setUserAnswer('');
-    } else {
-      Alert.alert("Quiz Complete!", "You've finished the questions for now.");
-      navigation.navigate('GamePage');
-    }
-  };
-
+  // ✅ Handle answer + log to Supabase for ProgressionChart
   const handleAnswer = async (option) => {
+    // --- ADD THESE ---
+    if (isAnswering) return; // Don't allow multiple answers
+    setIsAnswering(true);
+    // --- END ADD ---
+
     const currentQuestion = questions[currentQuestionIndex];
-    if (currentQuestion.question_type === 'typed_answer') {
-        if (!userAnswer.trim()) {
-            Alert.alert("Empty Answer", "Please type an answer.");
-            return;
-        }
-        // For typed answers, submit for approval
-        const { error } = await supabase.from('submissions').insert([{
-            question_id: currentQuestion.id,
-            child_id: uid, // Assuming child is the one playing
-            parent_id: currentQuestion.parent_id,
-            submitted_answer: userAnswer,
-            status: 'pending'
-        }]);
-
-        if (error) {
-            Alert.alert("Error", "Could not submit your answer.");
-        } else {
-            Alert.alert("Submitted!", "Your parent will check your answer soon.");
-            setTimeout(handleNextQuestion, 500);
-        }
-
-    } else {
-      // For MC and T/F
-      if (option === currentQuestion.correct_answer) {
-        Alert.alert('Correct!', 'Great job!');
-      } else {
-        Alert.alert('Incorrect', 'Try again next time!');
-      }
-      setTimeout(handleNextQuestion, 500);
+    if (!currentQuestion) {
+      setIsAnswering(false); // Failsafe
+      return;
     }
+
+    const isCorrect = option === currentQuestion.correct_answer;
+
+    // --- 3. UPDATED LOGIC ---
+    // Log answer in Supabase
+    if (uid && selectedChild?.id && currentQuestion.id) {
+      const { error } = await supabase.from('answer_log').insert({
+        user_id: uid, // Parent's ID
+        child_id: selectedChild.id, // Child's ID
+        question_id: currentQuestion.id,
+        is_correct: isCorrect,
+        game_name: 'Quiz',
+      });
+
+      if (error) {
+        console.error('Error logging quiz answer:', error.message);
+      }
+    }
+    // --- END UPDATED LOGIC ---
+
+    // --- REPLACE ALERTS WITH THIS ---
+    if (isCorrect) {
+      setFeedbackContent({ icon: '🎉👍', text: 'Great job!' });
+    } else {
+      setFeedbackContent({ icon: '❌', text: 'Incorrect' });
+    }
+
+    // --- REPLACE setTimeout WITH ANIMATION ---
+    feedbackAnim.setValue(0);
+    Animated.sequence([
+      Animated.timing(feedbackAnim, {
+        toValue: 1,
+        duration: 300,
+        useNativeDriver: true,
+      }),
+      Animated.delay(1000),
+      Animated.timing(feedbackAnim, {
+        toValue: 0,
+        duration: 200,
+        useNativeDriver: true,
+      }),
+    ]).start(() => {
+      // Logic to run AFTER animation
+      setFeedbackContent(null);
+
+      if (currentQuestionIndex < questions.length - 1) {
+        setCurrentQuestionIndex(currentQuestionIndex + 1);
+        setIsAnswering(false); // Re-enable buttons
+      } else {
+        Alert.alert("Quiz Complete!", "You've finished the quiz!");
+        navigation.navigate('GamePage');
+        // No need to set isAnswering(false) here since we are navigating away
+      }
+    });
+    // --- END REPLACEMENT ---
   };
 
   if (loading || questions.length === 0) {
@@ -105,62 +167,63 @@ const QuizScreen = () => {
 
   const currentQuestion = questions[currentQuestionIndex];
 
-  const renderInputs = () => {
-    if (!currentQuestion) return null;
+  const renderOptions = () => {
+    if (!currentQuestion?.options) return null;
 
-    // Infer question type for older data that might not have it
-    let type = currentQuestion.question_type;
-    if (!type) {
-      if (currentQuestion.options && currentQuestion.options.a === 'True' && currentQuestion.options.b === 'False') {
-        type = 'true_false';
-      } else if (currentQuestion.options && typeof currentQuestion.options === 'object') {
-        type = 'multiple_choice';
-      } else {
-        type = 'typed_answer'; // Fallback
-      }
-    }
-
-    if (type === 'multiple_choice' && currentQuestion.options) {
-      return Object.entries(currentQuestion.options).map(([key, value]) => (
-        <TouchableOpacity key={key} style={styles.button} onPress={() => handleAnswer(key)}>
-            <Text style={styles.buttonText}>{`${key.toUpperCase()}: ${value}`}</Text>
-        </TouchableOpacity>
-      ));
-    }
-    if (type === 'true_false' && currentQuestion.options) {
-        return Object.entries(currentQuestion.options).map(([key, value]) => (
-            <TouchableOpacity key={key} style={styles.button} onPress={() => handleAnswer(key)}>
-                <Text style={styles.buttonText}>{value}</Text>
-            </TouchableOpacity>
-      ));
-    }
-    if (type === 'typed_answer') {
-      return (
-        <>
-          <TextInput
-            style={styles.input}
-            placeholder="Type your answer here..."
-            value={userAnswer}
-            onChangeText={setUserAnswer}
-          />
-          <TouchableOpacity style={styles.button} onPress={() => handleAnswer(userAnswer)}>
-            <Text style={styles.buttonText}>Submit</Text>
-          </TouchableOpacity>
-        </>
-      );
-    }
-    return null;
+    return Object.entries(currentQuestion.options).map(([key, value]) => (
+      <TouchableOpacity
+        key={key}
+        style={styles.button}
+        onPress={() => handleAnswer(key)}
+        disabled={isAnswering} // <-- ADD THIS
+      >
+        <Text style={styles.buttonText}>{`${key.toUpperCase()}: ${value}`}</Text>
+      </TouchableOpacity>
+    ));
   };
 
   return (
     <SafeAreaView style={styles.container}>
-      <Text style={styles.progressText}>Question {currentQuestionIndex + 1} of {questions.length}</Text>
+      <Text style={styles.progressText}>
+        Question {currentQuestionIndex + 1} of {questions.length}
+      </Text>
       <Text style={styles.question}>{currentQuestion.question}</Text>
-      {renderInputs()}
+      {renderOptions()}
+
+      {/* --- ADD THIS NEW OVERLAY --- */}
+      {feedbackContent && (
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            styles.feedbackOverlay,
+            {
+              opacity: feedbackAnim,
+              transform: [
+                {
+                  scale: feedbackAnim.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0.7, 1],
+                  }),
+                },
+              ],
+            },
+          ]}
+        >
+          <Text style={styles.feedbackIcon}>{feedbackContent.icon}</Text>
+          {feedbackContent.text ? (
+            <Text style={styles.feedbackText}>{feedbackContent.text}</Text>
+          ) : null}
+        </Animated.View>
+      )}
+      {/* --- END ADD --- */}
+      
     </SafeAreaView>
   );
 };
 
+export default QuizScreen;
+
+// ... (Styles remain unchanged) ...
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -174,24 +237,14 @@ const styles = StyleSheet.create({
     fontSize: wp('4%'),
     color: '#888',
     position: 'absolute',
-    top: hp('10%')
+    top: hp('10%'),
   },
   question: {
     fontFamily: 'FredokaOne-Regular',
     fontSize: wp('7%'),
     textAlign: 'center',
     marginBottom: hp('5%'),
-    color: '#333'
-  },
-  input: {
-    fontFamily: 'FredokaOne-Regular',
-    width: wp('80%'),
-    padding: 15,
-    borderWidth: 1,
-    borderColor: '#ccc',
-    borderRadius: 10,
-    marginBottom: 20,
-    backgroundColor: '#fff'
+    color: '#333',
   },
   button: {
     backgroundColor: '#4A90E2',
@@ -206,8 +259,31 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontFamily: 'FredokaOne-Regular',
     fontSize: wp('5%'),
-  }
+  },
+
+  feedbackOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.4)',
+  },
+  feedbackIcon: {
+    fontSize: 80,
+    textShadowColor: 'rgba(0, 0, 0, 0.3)',
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 3,
+  },
+  feedbackText: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#fff',
+    marginTop: 10,
+    textShadowColor: 'rgba(0, 0, 0, 0.5)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
+  },
 });
-
-export default QuizScreen;
-

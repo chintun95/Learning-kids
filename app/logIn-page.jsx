@@ -1,4 +1,8 @@
+// app/logIn-page.jsx
+
 //login
+
+// app/logIn-page.jsx
 
 import React, { useState, memo } from 'react'
 import { StyleSheet, Text, View, ImageBackground,PixelRatio, TextInput,
@@ -47,7 +51,11 @@ const LogInPage = memo(() => {
         setIsLoading(true);
         const userCredential = await signInWithEmailAndPassword(auth, email, password);
         Alert.alert("Login successful!", `Hello, ${userCredential.user.email}`);
-        navigation.navigate("ProfilePage");
+
+
+
+        navigation.navigate("ChildSelectScreen");
+
       } catch (err) {
         const msg = err?.message ?? "Unknown error";
         setErrorMessage(msg);
@@ -120,7 +128,7 @@ const LogInPage = memo(() => {
       {/* Social Login Icons */}
       <Text style={styles.otherText1}>Or continue with:</Text>
       <View style={styles.iconContainer}>
-        <Pressable onPress={() => navigation.navigate('GamesPage')}>
+        <Pressable onPress={() => navigation.navigate('ChildSelectScreen')}>
           <Image style={styles.icon} source={require('@/assets/images/google-icon.png')} />
         </Pressable>
 

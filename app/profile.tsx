@@ -1,29 +1,42 @@
-import React, { useEffect, useState } from 'react';
-import { 
-  View, 
-  Text, 
-  StyleSheet, 
-  Image, 
-  TouchableOpacity, 
-  ScrollView, 
+// app/profile.tsx
+
+// app/profile.tsx
+
+import React, { useEffect, useState, useCallback } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  Image,
+  TouchableOpacity,
+  ScrollView,
   Alert,
   PixelRatio,
-  ImageBackground
+  ImageBackground,
+  Switch,
+  ActivityIndicator,
+  TextInput, 
 } from 'react-native';
-import { auth } from '../firebase'; 
-import { signOut } from 'firebase/auth';
-import { useNavigation } from '@react-navigation/native';
+import { auth } from '../firebase';
+import { 
+  signOut, 
+  reauthenticateWithCredential, 
+  EmailAuthProvider 
+} from 'firebase/auth';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { widthPercentageToDP as wp, heightPercentageToDP as hp } from 'react-native-responsive-screen';
-import { scheduleLocalNotification, scheduleDailyReminder, cancelDailyReminder, isDailyReminderScheduled } from './utils/notifications';
-import { Switch } from 'react-native';
+import {
+  scheduleLocalNotification,
+  scheduleDailyReminder,
+  cancelDailyReminder,
+  isDailyReminderScheduled,
+  getDailyReminderTime,
+} from './utils/notifications';
 
-type ProfileScreenProps = {
-  route: any;
-};
-
-const Profile: React.FC<ProfileScreenProps> = ({ route }) => {
+const Profile: React.FC = () => {
   const navigation = useNavigation<NativeStackNavigationProp<any>>();
+
   const [userData, setUserData] = useState({
     name: 'User',
     email: auth.currentUser?.email || 'No email',
@@ -33,11 +46,6 @@ const Profile: React.FC<ProfileScreenProps> = ({ route }) => {
       { id: 2, title: 'Complete Profile', completed: false },
       { id: 3, title: 'Play First Game', completed: true },
     ],
-    recentActivities: [
-      { id: 1, title: 'Math Challenge', date: '2 days ago' },
-      { id: 2, title: 'Spelling Quiz', date: '5 days ago' },
-      { id: 3, title: 'Science Experiment', date: '1 week ago' },
-    ]
   });
 
   const [reminderEnabled, setReminderEnabled] = useState(false);
@@ -45,79 +53,178 @@ const Profile: React.FC<ProfileScreenProps> = ({ route }) => {
   const [isEditingTime, setIsEditingTime] = useState(false);
   const [editHour, setEditHour] = useState(9);
   const [editMinute, setEditMinute] = useState(0);
+  const [loadingProfile, setLoadingProfile] = useState(true);
 
-  useEffect(() => {
-    if (auth.currentUser) {
+  // --- ADDED STATE FOR PASSWORD GATE ---
+  const [password, setPassword] = useState('');
+  const [isAuthenticating, setIsAuthenticating] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  // --- END OF ADDED STATE ---
+
+  
+  useFocusEffect(
+    useCallback(() => {
+     
+      setIsAuthenticated(false); // Require auth every time
+      setPassword('');          // Clear password field
+      setLoadingProfile(true);
+      // --- END OF MODIFIED LOGIC ---
+
       const user = auth.currentUser;
-      const joinDate = user.metadata.creationTime 
-        ? new Date(user.metadata.creationTime).toLocaleDateString() 
-        : 'Unknown';
-      
-      setUserData(prev => ({
-        ...prev,
-        email: user.email || 'No email',
-        name: user.displayName || 'User',
-        joinDate
-      }));
-    }
+      if (user) {
+        const joinDate = user.metadata.creationTime
+          ? new Date(user.metadata.creationTime).toLocaleDateString()
+          : 'Unknown';
 
- 
-    (async () => {
-      const scheduled = await isDailyReminderScheduled();
-      setReminderEnabled(!!scheduled);
-      if (scheduled) {
-        const time = await (await import("./utils/notifications")).getDailyReminderTime();
-        if (time) {
-          setEditHour(time.hour);
-          setEditMinute(time.minute);
-          const hh = ((time.hour + 11) % 12) + 1; 
-          const mm = time.minute.toString().padStart(2, '0');
-          const ampm = time.hour >= 12 ? 'PM' : 'AM';
-          setReminderTimeLabel(`Daily at ${hh}:${mm} ${ampm}`);
-        }
+        setUserData(prev => ({
+          ...prev,
+          email: user.email || 'No email',
+          name: user.displayName || 'User',
+          joinDate,
+        }));
+
+        (async () => {
+          const scheduled = await isDailyReminderScheduled();
+          setReminderEnabled(!!scheduled);
+          if (scheduled) {
+            const time = await getDailyReminderTime();
+            if (time) {
+              setEditHour(time.hour);
+              setEditMinute(time.minute);
+              const hh = ((time.hour + 11) % 12) + 1;
+              const mm = time.minute.toString().padStart(2, '0');
+              const ampm = time.hour >= 12 ? 'PM' : 'AM';
+              setReminderTimeLabel(`Daily at ${hh}:${mm} ${ampm}`);
+            }
+          }
+          setLoadingProfile(false);
+        })();
+      } else {
+        navigation.navigate('LogInPage');
+        setLoadingProfile(false);
       }
-    })();
-  }, []);
+    }, [navigation])
+  );
 
   const handleSignOut = () => {
     signOut(auth)
       .then(() => {
         Alert.alert('Success', 'You have been signed out');
-        navigation.navigate("LogInPage");
+        navigation.navigate('LogInPage');
       })
       .catch(error => {
         Alert.alert('Error', error.message);
       });
   };
 
-  const handleEditProfile = () => {
-    navigation.navigate("EditProfilePage");
-  };
+  const handleEditProfile = () => navigation.navigate('EditProfilePage');
+  const handleGames = () => navigation.navigate('GamePage');
+
+  // ✅ Chart navigation
+  const handleViewChart = () => navigation.navigate('ProgressChart');
+
+  // --- ADDED PASSWORD VERIFICATION FUNCTION ---
+  const handleReAuthentication = async () => {
+    const user = auth.currentUser;
+    if (!user || !user.email) {
+      Alert.alert("Error", "No user is currently logged in.");
+      navigation.navigate('LogInPage');
+      return;
+    }
   
-  const handleApproval = () => {
-    navigation.navigate("ApprovalScreen");
+    if (!password) {
+      Alert.alert("Password Required", "Please enter your password.");
+      return;
+    }
+  
+    setIsAuthenticating(true);
+    try {
+      const credential = EmailAuthProvider.credential(user.email, password);
+      await reauthenticateWithCredential(user, credential);
+      setIsAuthenticated(true); // <-- Grant access
+      setPassword('');
+    } catch (error: any) {
+      Alert.alert("Authentication Failed", "The password you entered is incorrect. Please try again.");
+      console.error("Re-authentication error:", error);
+    } finally {
+      setIsAuthenticating(false);
+    }
   };
+  // --- END OF ADDED FUNCTION ---
 
-  const handleGames = () => {
-    navigation.navigate("GamePage");
-  };
+  if (loadingProfile) {
+    return (
+      <ImageBackground
+        source={require('../assets/images/app-background.png')}
+        style={[styles.image, styles.loadingContainer]}>
+        <ActivityIndicator size="large" color="#fff" />
+        <Text style={styles.loadingText}>Loading Profile...</Text>
+      </ImageBackground>
+    );
+  }
 
+  // --- ADDED PASSWORD PROMPT RENDER ---
+  if (!isAuthenticated) {
+    return (
+      <ImageBackground
+        source={require('../assets/images/app-background.png')}
+        style={[styles.image, styles.authContainer]}
+      >
+        <ScrollView contentContainerStyle={styles.authContainer}>
+          <View style={styles.authBox}>
+            <Text style={styles.authTitle}>Verify Your Identity</Text>
+            <Text style={styles.authSubtitle}>Please enter your password to view your profile.</Text>
+            <TextInput
+              style={styles.authInput}
+              placeholder="Password"
+              placeholderTextColor="#888"
+              secureTextEntry
+              value={password}
+              onChangeText={setPassword}
+              autoCapitalize="none"
+            />
+            <TouchableOpacity 
+              style={[styles.actionButton, styles.authButton]} 
+              onPress={handleReAuthentication} 
+              disabled={isAuthenticating}
+            >
+              {isAuthenticating ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.actionButtonText}>Continue</Text>
+              )}
+            </TouchableOpacity>
+            <TouchableOpacity 
+              style={[styles.actionButton, styles.signOutButton, {marginTop: 10, backgroundColor: '#6c757d'}]} 
+              onPress={() => navigation.goBack()}
+            >
+              <Text style={styles.actionButtonText}>Back</Text>
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
+      </ImageBackground>
+    );
+  }
+  // --- END OF ADDED RENDER ---
+
+  // This part below will only render if isAuthenticated is true
   return (
-    <ImageBackground 
+    <ImageBackground
       source={require('../assets/images/app-background.png')}
-      style={styles.image}
-    >
+      style={styles.image}>
       <ScrollView contentContainerStyle={styles.scrollContainer}>
+        {/* Header */}
         <View style={styles.header}>
-          <Image 
-            source={{ uri: 'https://placehold.co/150x150/a2d2ff/333?text=User' }} 
-            style={styles.profileImage} 
+          <Image
+            source={{ uri: 'https://placehold.co/150x150/a2d2ff/333?text=User' }}
+            style={styles.profileImage}
           />
           <Text style={styles.name}>{userData.name}</Text>
           <Text style={styles.email}>{userData.email}</Text>
           <Text style={styles.joinDate}>Member since {userData.joinDate}</Text>
         </View>
 
+        {/* Stats */}
         <View style={styles.statsContainer}>
           <View style={styles.statBox}>
             <Text style={styles.statNumber}>12</Text>
@@ -133,151 +240,198 @@ const Profile: React.FC<ProfileScreenProps> = ({ route }) => {
           </View>
         </View>
 
+        {/* Achievements */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Achievements</Text>
           {userData.achievements.map(achievement => (
             <View key={achievement.id} style={styles.achievementItem}>
-              <View style={[styles.achievementStatus, achievement.completed ? styles.completed : styles.incomplete]} />
+              <View
+                style={[
+                  styles.achievementStatus,
+                  achievement.completed ? styles.completed : styles.incomplete,
+                ]}
+              />
               <Text style={styles.achievementTitle}>{achievement.title}</Text>
             </View>
           ))}
         </View>
 
+        {/* Progress Chart */}
+        <View style={styles.section}>
+          <TouchableOpacity style={styles.chartButton} onPress={handleViewChart}>
+            <Text style={styles.chartButtonText}>View Progress Chart</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Games */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Games</Text>
-          <TouchableOpacity 
-            style={styles.gamesButton} 
-            onPress={handleGames}
-          >
+          <TouchableOpacity style={styles.gamesButton} onPress={handleGames}>
             <Text style={styles.gamesButtonText}>Play Games</Text>
           </TouchableOpacity>
         </View>
 
-        <View style={styles.buttonContainer}>
-          <TouchableOpacity style={styles.editButton} onPress={handleEditProfile}>
-            <Text style={styles.buttonText}>Edit Profile</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.signOutButton} onPress={handleSignOut}>
-            <Text style={styles.buttonText}>Sign Out</Text>
-          </TouchableOpacity>
+        {/* 🔔 Daily Reminder Section */}
+        <View style={[styles.section, styles.reminderSection]}>
+          <View style={styles.reminderHeader}>
+            <Text style={styles.sectionTitle}>Daily Reminder</Text>
+            <Switch
+              trackColor={{ false: '#767577', true: '#81b0ff' }}
+              thumbColor={reminderEnabled ? '#f5dd4b' : '#f4f3f4'}
+              ios_backgroundColor="#3e3e3e"
+              onValueChange={async value => {
+                setReminderEnabled(value);
+                if (value) {
+                  const id = await scheduleDailyReminder(editHour, editMinute);
+                  if (id) {
+                    const hh = ((editHour + 11) % 12) + 1;
+                    const mm = editMinute.toString().padStart(2, '0');
+                    const ampm = editHour >= 12 ? 'PM' : 'AM';
+                    setReminderTimeLabel(`Daily at ${hh}:${mm} ${ampm}`);
+                  }
+                } else {
+                  await cancelDailyReminder();
+                  setReminderTimeLabel(null);
+                  setIsEditingTime(false);
+                }
+              }}
+              value={reminderEnabled}
+            />
+          </View>
 
-            <View style={{ marginTop: hp('2%'), alignItems: 'center' }}>
-              <Text style={[styles.sectionTitle, { marginBottom: hp('1%') }]}>Daily Reminder</Text>
-              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                <Switch
-                  value={reminderEnabled}
-                  onValueChange={async (value) => {
-                    setReminderEnabled(value);
-                    if (value) {
-                      const id = await scheduleDailyReminder(9, 0);
-                      if (id) {
-                        await scheduleLocalNotification('Reminder enabled', 'You will receive daily reminders at 9:00 AM');
-                        setReminderTimeLabel('Daily at 9:00 AM');
-                      }
+          {reminderEnabled && !isEditingTime && reminderTimeLabel && (
+            <View style={styles.reminderTimeContainer}>
+              <Text style={styles.reminderLabel}>{reminderTimeLabel}</Text>
+              <TouchableOpacity
+                style={styles.editTimeButton}
+                onPress={() => setIsEditingTime(true)}>
+                <Text style={styles.editTimeButtonText}>Edit Time</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+
+          {reminderEnabled && isEditingTime && (
+            <View style={styles.timeEditor}>
+              <Text style={styles.editingTimeLabel}>
+                Editing:{' '}
+                {(((editHour + 11) % 12) + 1)
+                  .toString()
+                  .padStart(2, '0')}
+                :
+                {editMinute.toString().padStart(2, '0')}{' '}
+                {editHour >= 12 ? 'PM' : 'AM'}
+              </Text>
+              <View style={styles.timeAdjustRow}>
+                <TouchableOpacity
+                  onPress={() => setEditHour(h => (h + 23) % 24)}
+                  style={styles.smallButton}>
+                  <Text style={styles.smallButtonText}>H-</Text>
+                </TouchableOpacity>
+                <Text style={styles.timeValue}>{editHour.toString().padStart(2, '0')}</Text>
+                <TouchableOpacity
+                  onPress={() => setEditHour(h => (h + 1) % 24)}
+                  style={styles.smallButton}>
+                  <Text style={styles.smallButtonText}>H+</Text>
+                </TouchableOpacity>
+
+                <View style={{ width: wp('4%') }} />
+
+                <TouchableOpacity
+                  onPress={() => setEditMinute(m => (m + 59) % 60)}
+                  style={styles.smallButton}>
+                  <Text style={styles.smallButtonText}>M-</Text>
+                </TouchableOpacity>
+                <Text style={styles.timeValue}>{editMinute.toString().padStart(2, '0')}</Text>
+                <TouchableOpacity
+                  onPress={() => setEditMinute(m => (m + 1) % 60)}
+                  style={styles.smallButton}>
+                  <Text style={styles.smallButtonText}>M+</Text>
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.editorButtons}>
+                <TouchableOpacity
+                  style={[styles.smallActionButton, { backgroundColor: '#4CD964' }]}
+                  onPress={async () => {
+                    await cancelDailyReminder();
+                    const id = await scheduleDailyReminder(editHour, editMinute);
+                    if (id) {
+                      const hh = ((editHour + 11) % 12) + 1;
+                      const mm = editMinute.toString().padStart(2, '0');
+                      const ampm = editHour >= 12 ? 'PM' : 'AM';
+                      setReminderTimeLabel(`Daily at ${hh}:${mm} ${ampm}`);
                     } else {
-                      await cancelDailyReminder();
-                      await scheduleLocalNotification('Reminder disabled', 'You will no longer receive daily reminders');
+                      Alert.alert('Error', 'Could not save reminder time.');
+                      setReminderEnabled(false);
                       setReminderTimeLabel(null);
                     }
-                  }}
-                />
+                    setIsEditingTime(false);
+                  }}>
+                  <Text style={styles.smallActionText}>Save</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.smallActionButton, { backgroundColor: '#FF3B30' }]}
+                  onPress={() => setIsEditingTime(false)}>
+                  <Text style={styles.smallActionText}>Cancel</Text>
+                </TouchableOpacity>
               </View>
             </View>
-            {reminderTimeLabel ? <Text style={[{ marginTop: hp('1%') }, styles.reminderLabel]}>{reminderTimeLabel}</Text> : null}
-            {/* Development-only test button to quickly verify notifications */}
-            {__DEV__ ? (
-              <TouchableOpacity
-                style={[styles.editButton, { marginTop: hp('1%') }]}
-                onPress={async () => {
-                  try {
-                    const id = await scheduleLocalNotification('Test Notification', 'This should appear in ~5s', 5);
-                    console.log('Scheduled test notification id:', id);
-                  } catch (e) {
-                    console.error('Failed to schedule test notification:', e);
-                  }
-                }}
-              >
-                <Text style={styles.buttonText}>Send test notification (5s)</Text>
-              </TouchableOpacity>
-            ) : null}
-            {!isEditingTime ? (
-              <TouchableOpacity style={[styles.editButton, { marginTop: hp('1%') }]} onPress={() => setIsEditingTime(true)}>
-                <Text style={styles.buttonText}>Edit Time</Text>
-              </TouchableOpacity>
-            ) : (
-              <View style={{ marginTop: hp('1%'), alignItems: 'center' }}>
-                <View style={{ alignItems: 'center', marginBottom: hp('1%') }}>
-                  {/* live preview so user immediately sees the selected time */}
-                  <Text style={{ fontSize: wp('5%'), marginBottom: hp('0.5%') }}>
-                    Editing: {(((editHour + 11) % 12) + 1).toString().padStart(2, '0')}:{editMinute.toString().padStart(2, '0')} {editHour >= 12 ? 'PM' : 'AM'}
-                  </Text>
-                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                    <TouchableOpacity onPress={() => setEditHour(h => (h + 23) % 24)} style={[styles.smallButton, { marginRight: 6 }]}>
-                      <Text style={styles.smallButtonText}>-</Text>
-                    </TouchableOpacity>
-                    <Text style={{ fontSize: wp('5%'), marginHorizontal: wp('3%') }}>{editHour.toString().padStart(2, '0')}</Text>
-                    <TouchableOpacity onPress={() => setEditHour(h => (h + 1) % 24)} style={[styles.smallButton, { marginLeft: 6 }]}>
-                      <Text style={styles.smallButtonText}>+</Text>
-                    </TouchableOpacity>
+          )}
 
-                    <View style={{ width: wp('6%') }} />
+          {/* Dev test notification button */}
+          {__DEV__ && (
+            <TouchableOpacity
+              style={styles.testButton}
+              onPress={async () => {
+                try {
+                  const id = await scheduleLocalNotification('Test Notification', 'This should appear in ~5s', 5);
+                  console.log('Scheduled test notification id:', id);
+                } catch (e) {
+                  console.error('Failed to schedule test notification:', e);
+                }
+              }}>
+              <Text style={styles.testButtonText}>Send test notification (5s)</Text>
+            </TouchableOpacity>
+          )}
+        </View>
 
-                    <TouchableOpacity onPress={() => setEditMinute(m => (m + 59) % 60)} style={[styles.smallButton, { marginRight: 6 }]}>
-                      <Text style={styles.smallButtonText}>-</Text>
-                    </TouchableOpacity>
-                    <Text style={{ fontSize: wp('5%'), marginHorizontal: wp('3%') }}>{editMinute.toString().padStart(2, '0')}</Text>
-                    <TouchableOpacity onPress={() => setEditMinute(m => (m + 1) % 60)} style={[styles.smallButton, { marginLeft: 6 }]}>
-                      <Text style={styles.smallButtonText}>+</Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-                <View style={{ flexDirection: 'row' }}>
-                  <TouchableOpacity
-                    style={[styles.editButton, { marginRight: wp('3%') }]}
-                    onPress={async () => {
-                      // Save new time: if already enabled, cancel then reschedule with new time
-                      if (reminderEnabled) {
-                        await cancelDailyReminder();
-                      }
-                      const id = await scheduleDailyReminder(editHour, editMinute);
-                      if (id) {
-                        setReminderEnabled(true);
-                        const hh = ((editHour + 11) % 12) + 1;
-                        const mm = editMinute.toString().padStart(2, '0');
-                        const ampm = editHour >= 12 ? 'PM' : 'AM';
-                        setReminderTimeLabel(`Daily at ${hh}:${mm} ${ampm}`);
-                        await scheduleLocalNotification('Reminder set', `Daily reminder set for ${hh}:${mm} ${ampm}`);
-                      }
-                      setIsEditingTime(false);
-                    }}
-                  >
-                    <Text style={styles.buttonText}>Save</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity style={styles.signOutButton} onPress={() => { setIsEditingTime(false); }}>
-                    <Text style={styles.buttonText}>Cancel</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            )}
+        {/* Footer Buttons */}
+        <View style={styles.bottomButtonContainer}>
+          <TouchableOpacity style={styles.actionButton} onPress={handleEditProfile}>
+            <Text style={styles.actionButtonText}>Info & Questions</Text>
+          </TouchableOpacity>
+          
+          {/* --- THIS IS THE NEW BUTTON --- */}
+          <TouchableOpacity 
+            style={[styles.actionButton, { backgroundColor: '#34A853' }]} 
+            onPress={() => navigation.navigate('AddChildScreen')}
+          >
+            <Text style={styles.actionButtonText}>+ Add Child</Text>
+          </TouchableOpacity>
+          {/* --- END NEW BUTTON --- */}
+
+          <TouchableOpacity
+            style={[styles.actionButton, styles.signOutButton]}
+            onPress={handleSignOut}>
+            <Text style={styles.actionButtonText}>Sign Out</Text>
+          </TouchableOpacity>
         </View>
       </ScrollView>
     </ImageBackground>
   );
 };
 
-const BOX_WIDTH = PixelRatio.roundToNearestPixel(332);
-const BOX_HEIGHT = PixelRatio.roundToNearestPixel(50);
 
 const styles = StyleSheet.create({
-  image: {
-    width: wp('100%'),
-    height: hp('100%'),
+  image: { flex: 1 },
+  loadingContainer: { justifyContent: 'center', alignItems: 'center' },
+  loadingText: {
+    marginTop: hp('2%'),
+    fontSize: wp('5%'),
+    fontFamily: 'FredokaOne-Regular',
+    color: '#fff',
   },
-  scrollContainer: {
-    flexGrow: 1,
-    alignItems: 'center',
-    paddingVertical: hp('3%'),
-  },
+  scrollContainer: { flexGrow: 1, alignItems: 'center', paddingBottom: hp('5%') },
   header: {
     alignItems: 'center',
     paddingVertical: hp('3%'),
@@ -287,11 +441,6 @@ const styles = StyleSheet.create({
     borderColor: '#000',
     width: wp('90%'),
     marginTop: hp('5%'),
-    shadowColor: '#000',
-    shadowOpacity: 0.2,
-    shadowOffset: { width: 2, height: 4 },
-    shadowRadius: 4,
-    elevation: 5,
   },
   profileImage: {
     width: PixelRatio.roundToNearestPixel(120),
@@ -307,17 +456,8 @@ const styles = StyleSheet.create({
     color: '#1E1E1E',
     marginBottom: hp('0.5%'),
   },
-  email: {
-    fontSize: wp('4%'),
-    fontFamily: 'FredokaOne-Regular',
-    color: '#0A0A0A',
-    marginBottom: hp('0.5%'),
-  },
-  joinDate: {
-    fontSize: wp('3.5%'),
-    fontFamily: 'FredokaOne-Regular',
-    color: '#0A0A0A',
-  },
+  email: { fontSize: wp('4%'), fontFamily: 'FredokaOne-Regular', color: '#0A0A0A' },
+  joinDate: { fontSize: wp('3.5%'), fontFamily: 'FredokaOne-Regular', color: '#555' },
   statsContainer: {
     flexDirection: 'row',
     justifyContent: 'space-around',
@@ -328,155 +468,180 @@ const styles = StyleSheet.create({
     borderColor: '#000',
     width: wp('90%'),
     marginTop: hp('2%'),
-    shadowColor: '#000',
-    shadowOpacity: 0.2,
-    shadowOffset: { width: 2, height: 4 },
-    shadowRadius: 4,
-    elevation: 5,
   },
-  statBox: {
-    alignItems: 'center',
-    paddingHorizontal: wp('5%'),
-  },
-  statNumber: {
-    fontSize: wp('7%'),
-    fontFamily: 'FredokaOne-Regular',
-    color: '#1E1E1E',
-  },
-  statLabel: {
-    fontSize: wp('4%'),
-    fontFamily: 'FredokaOne-Regular',
-    color: '#0A0A0A',
-  },
+  statBox: { alignItems: 'center' },
+  statNumber: { fontSize: wp('7%'), fontFamily: 'FredokaOne-Regular' },
+  statLabel: { fontSize: wp('4%'), fontFamily: 'FredokaOne-Regular' },
   section: {
-    backgroundColor: 'rgba(255, 255, 255, 0.8)',
+    backgroundColor: 'rgba(255,255,255,0.8)',
     borderRadius: 30,
     borderWidth: 3,
     borderColor: '#000',
     padding: wp('4%'),
     width: wp('90%'),
     marginTop: hp('2%'),
-    shadowColor: '#000',
-    shadowOpacity: 0.2,
-    shadowOffset: { width: 2, height: 4 },
-    shadowRadius: 4,
-    elevation: 5,
+    alignItems: 'center',
   },
   sectionTitle: {
     fontSize: wp('5.5%'),
     fontFamily: 'FredokaOne-Regular',
     marginBottom: hp('1.5%'),
-    color: '#1E1E1E',
   },
   achievementItem: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: hp('1%'),
     borderBottomWidth: 1,
-    borderBottomColor: '#DDD',
+    borderBottomColor: 'rgba(0,0,0,0.1)',
+    width: '100%',
   },
   achievementStatus: {
     width: wp('4%'),
     height: wp('4%'),
     borderRadius: wp('2%'),
-    marginRight: wp('2.5%'),
+    marginRight: wp('3%'),
     borderWidth: 1,
-    borderColor: '#000',
+    borderColor: '#555',
   },
-  completed: {
-    backgroundColor: '#4CD964',
-  },
-  incomplete: {
-    backgroundColor: '#D9D9D9',
-  },
-  achievementTitle: {
-    fontSize: wp('4.2%'),
-    fontFamily: 'FredokaOne-Regular',
-    color: '#0A0A0A',
-  },
+  completed: { backgroundColor: '#4CD964' },
+  incomplete: { backgroundColor: '#D9D9D9' },
+  achievementTitle: { fontSize: wp('4.2%'), fontFamily: 'FredokaOne-Regular' },
   gamesButton: {
     width: wp('80%'),
-    height: hp('10%'),
-    borderRadius: 30,
+    height: hp('8%'),
+    borderRadius: 25,
     borderWidth: 3,
     borderColor: '#000',
-    backgroundColor: '#D9D9D9',
+    backgroundColor: '#A2D2FF',
     justifyContent: 'center',
     alignItems: 'center',
-    alignSelf: 'center',
-    shadowColor: '#000',
-    shadowOpacity: 0.2,
-    shadowOffset: { width: 2, height: 4 },
-    shadowRadius: 4,
-    elevation: 5,
   },
   gamesButtonText: {
-    color: '#000',
-    fontSize: wp('7%'),
+    color: '#1E1E1E',
+    fontSize: wp('6%'),
     fontFamily: 'FredokaOne-Regular',
   },
-  buttonContainer: {
-    width: wp('90%'),
+  chartButton: {
+    width: wp('80%'),
+    height: hp('8%'),
+    borderRadius: 25,
+    borderWidth: 3,
+    borderColor: '#000',
+    backgroundColor: '#5bc0de',
+    justifyContent: 'center',
     alignItems: 'center',
-    marginTop: hp('2%'),
-    marginBottom: hp('3%'),
   },
-  editButton: {
+  chartButtonText: {
+    color: '#fff',
+    fontSize: wp('5.5%'),
+    fontFamily: 'FredokaOne-Regular',
+  },
+  reminderSection: { paddingBottom: hp('2%') },
+  reminderHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    width: '100%',
+  },
+  reminderTimeContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: hp('1%'),
+    width: '100%',
+  },
+  reminderLabel: { fontSize: wp('4%'), fontFamily: 'FredokaOne-Regular' },
+  editTimeButton: {
+    backgroundColor: '#f0f0f0',
+    paddingVertical: hp('0.8%'),
+    paddingHorizontal: wp('3%'),
+    borderRadius: 15,
+    borderWidth: 1,
+    borderColor: '#ccc',
+  },
+  editTimeButtonText: { fontSize: wp('3.5%'), color: '#333', fontFamily: 'FredokaOne-Regular' },
+  timeEditor: { alignItems: 'center', padding: wp('3%'), backgroundColor: '#f8f9fa', borderRadius: 15, width: '100%' },
+  editingTimeLabel: { fontSize: wp('4.5%'), fontFamily: 'FredokaOne-Regular', marginBottom: hp('1.5%') },
+  timeAdjustRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
+  timeValue: { fontSize: wp('5%'), fontFamily: 'FredokaOne-Regular', marginHorizontal: wp('3%') },
+  smallButton: {
+    width: wp('12%'),
+    height: hp('5%'),
+    borderRadius: 8,
+    borderWidth: 1.5,
+    borderColor: '#adb5bd',
+    backgroundColor: '#e9ecef',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  smallButtonText: { color: '#495057', fontSize: wp('4.5%'), fontWeight: 'bold' },
+  editorButtons: { flexDirection: 'row', justifyContent: 'space-around', width: '80%', marginTop: hp('1%') },
+  smallActionButton: { paddingVertical: hp('1%'), paddingHorizontal: wp('6%'), borderRadius: 20 },
+  smallActionText: { color: '#fff', fontSize: wp('4%'), fontFamily: 'FredokaOne-Regular' },
+  testButton: { backgroundColor: '#6c757d', paddingVertical: hp('1%'), paddingHorizontal: wp('4%'), borderRadius: 15, marginTop: hp('2%') },
+  testButtonText: { color: '#fff', fontSize: wp('3.5%'), fontFamily: 'FredokaOne-Regular' },
+  bottomButtonContainer: { width: wp('90%'), alignItems: 'center', marginTop: hp('2%'), marginBottom: hp('3%') },
+  actionButton: {
     width: wp('70%'),
     height: hp('7%'),
     borderRadius: 30,
     borderWidth: 3,
     borderColor: '#000',
-    backgroundColor: '#D9D9D9',
+    backgroundColor: '#007AFF',
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: hp('2%'),
-    shadowColor: '#000',
-    shadowOpacity: 0.2,
-    shadowOffset: { width: 2, height: 4 },
-    shadowRadius: 4,
-    elevation: 5,
   },
-  signOutButton: {
-    width: wp('70%'),
-    height: hp('7%'),
+  signOutButton: { backgroundColor: '#FF3B30' },
+  actionButtonText: { color: '#fff', fontSize: wp('5%'), fontFamily: 'FredokaOne-Regular' },
+
+  // --- NEW AUTH STYLES ---
+  authContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: wp('5%'),
+  },
+  authBox: {
+    width: wp('90%'),
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
     borderRadius: 30,
     borderWidth: 3,
     borderColor: '#000',
-    backgroundColor: '#D9D9D9',
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOpacity: 0.2,
-    shadowOffset: { width: 2, height: 4 },
-    shadowRadius: 4,
-    elevation: 5,
-  },
-  buttonText: {
-    color: '#000',
-    fontSize: wp('5%'),
-    fontFamily: 'FredokaOne-Regular',
-  },
-  smallButton: {
-    width: wp('10%'),
-    height: hp('5%'),
-    borderRadius: 8,
-    borderWidth: 2,
-    borderColor: '#000',
-    backgroundColor: '#D9D9D9',
-    justifyContent: 'center',
+    padding: wp('6%'),
     alignItems: 'center',
   },
-  smallButtonText: {
-    color: '#000',
-    fontSize: wp('4%'),
-    fontFamily: 'FredokaOne-Regular',
-  },
-  reminderLabel: {
-    fontSize: wp('4%'),
+  authTitle: {
+    fontSize: wp('7%'),
     fontFamily: 'FredokaOne-Regular',
     color: '#1E1E1E',
+    marginBottom: hp('1.5%'),
   },
+  authSubtitle: {
+    fontSize: wp('4%'),
+    fontFamily: 'FredokaOne-Regular',
+    color: '#555',
+    textAlign: 'center',
+    marginBottom: hp('3%'),
+  },
+  authInput: {
+    width: wp('80%'),
+    height: hp('7%'),
+    borderWidth: 2,
+    borderColor: '#000',
+    borderRadius: 25,
+    paddingHorizontal: wp('4%'),
+    fontSize: wp('4.5%'),
+    fontFamily: 'FredokaOne-Regular',
+    backgroundColor: '#fff',
+    marginBottom: hp('2%'),
+    color: '#000', // Ensure text is visible
+  },
+  authButton: {
+    width: wp('80%'),
+    marginBottom: 0,
+  },
+ 
 });
 
 export default Profile;

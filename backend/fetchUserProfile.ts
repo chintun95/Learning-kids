@@ -8,13 +8,23 @@ export async function fetchUserProfile() {
 
   if (!uid) throw new Error('User not authenticated');
 
-  const { data, error } = await supabase
+  // Fetch parent profile
+  const { data: profile, error: profileError } = await supabase
     .from('profiles')
     .select('*')
     .eq('user_id', uid)
     .single();
 
-  if (error) throw error;
+  if (profileError) throw profileError;
 
-  return data;
+  // Fetch children linked to this parent
+  const { data: children, error: childrenError } = await supabase
+    .from('child_profiles')
+    .select('*')
+    .eq('parent_user_id', uid); // column linking children to parent
+
+  if (childrenError) throw childrenError;
+
+  // Return both profile and children in a single object
+  return { profile, children };
 }
