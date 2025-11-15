@@ -1,12 +1,11 @@
 import React, { useState, useCallback } from 'react';
-import { StyleSheet, Text, TouchableOpacity, FlatList, ActivityIndicator, Alert, View } from 'react-native';
+import { StyleSheet, Text, TouchableOpacity, FlatList, ActivityIndicator, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { useChild } from './ChildContext';
 import { fetchUserProfile } from '../backend/fetchUserProfile';
 import { widthPercentageToDP as wp, heightPercentageToDP as hp } from 'react-native-responsive-screen';
 
-// Helper to generate random color
 const getRandomColor = () => {
   const letters = '0123456789ABCDEF';
   let color = '#';
@@ -29,7 +28,6 @@ const ChildSelectScreen = () => {
       setChildren(childData || []);
     } catch (error) {
       Alert.alert('Error', 'Could not fetch child profiles.');
-      console.error(error.message);
     } finally {
       setLoading(false);
     }
@@ -44,6 +42,13 @@ const ChildSelectScreen = () => {
   const handleSelectChild = (child) => {
     setSelectedChild(child);
     navigation.replace('GamePage');
+  };
+
+  const handleEditChild = (child) => {
+    navigation.navigate('AddChildScreen', {
+      childToEdit: child,
+      refreshParent: fetchChildren,
+    });
   };
 
   if (loading) {
@@ -70,7 +75,8 @@ const ChildSelectScreen = () => {
             return (
               <TouchableOpacity
                 style={[styles.childCircle, { backgroundColor: color }]}
-                onPress={() => handleSelectChild(item)}
+                onPress={() => handleSelectChild(item)}       // play
+                onLongPress={() => handleEditChild(item)}      // edit/delete
               >
                 <Text style={styles.childText}>{item.child_name}</Text>
               </TouchableOpacity>
@@ -96,7 +102,7 @@ const ChildSelectScreen = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    justifyContent: 'center', // vertically center everything
+    justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: '#f0f4f8',
   },
@@ -125,6 +131,12 @@ const styles = StyleSheet.create({
     fontSize: wp('5%'),
     textAlign: 'center',
   },
+  emptyText: {
+    fontFamily: 'FredokaOne-Regular',
+    fontSize: wp('4%'),
+    color: '#888',
+    marginTop: hp('2%'),
+  },
   profileButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -142,12 +154,6 @@ const styles = StyleSheet.create({
     fontFamily: 'FredokaOne-Regular',
     fontSize: wp('5%'),
     color: '#000',
-  },
-  emptyText: {
-    fontFamily: 'FredokaOne-Regular',
-    fontSize: wp('4%'),
-    color: '#888',
-    marginTop: hp('2%'),
   },
 });
 

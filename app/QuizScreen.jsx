@@ -6,6 +6,7 @@ import { getAuth } from 'firebase/auth';
 import { supabase } from '../backend/supabase';
 import { fetchQuestions } from '../backend/fetchquestions';
 import { widthPercentageToDP as wp, heightPercentageToDP as hp } from 'react-native-responsive-screen';
+import { useChild } from './ChildContext';
 
 const QuizScreen = () => {
   const navigation = useNavigation();
@@ -18,10 +19,11 @@ const QuizScreen = () => {
   const [isAnswering, setIsAnswering] = useState(false);
   const [feedbackContent, setFeedbackContent] = useState(null);
   const feedbackAnim = useRef(new Animated.Value(0)).current;
+  const { selectedChild } = useChild(); // <-- 2. GET SELECTED CHILD
   // --- END ADD ---
 
   const auth = getAuth();
-  const uid = auth.currentUser?.uid;
+  const uid = auth.currentUser?.uid; // This is the PARENT'S ID
 
   // ✅ Fetch question limit from settings
   const fetchQuestionLimit = useCallback(async () => {
@@ -41,19 +43,27 @@ const QuizScreen = () => {
     }
   }, [uid]);
 
+  // ✅ Load quiz questions
   const loadQuiz = useCallback(async () => {
     if (!uid) {
       Alert.alert("Error", "You must be logged in to play the quiz.");
       navigation.goBack();
       return;
     }
+    // --- This check is now crucial ---
+    if (!selectedChild) {
+      Alert.alert("Error", "No child selected.");
+      navigation.navigate("ChildSelectScreen");
+      return;
+    }
+    // --- End check ---
 
     setLoading(true);
     try {
       const limit = await fetchQuestionLimit();
       setQuestionsPerSession(limit);
 
-      const userQuestions = await fetchQuestions(uid);
+      const userQuestions = await fetchQuestions(uid); // Questions fetched by parent
       if (userQuestions.length === 0) {
         Alert.alert("No Questions", "Please ask your parent to create some questions first!");
         navigation.goBack();
@@ -70,7 +80,7 @@ const QuizScreen = () => {
     } finally {
       setLoading(false);
     }
-  }, [uid, navigation, fetchQuestionLimit]);
+  }, [uid, navigation, fetchQuestionLimit, selectedChild]); // Add selectedChild dependency
 
   useFocusEffect(
     useCallback(() => {
@@ -78,9 +88,12 @@ const QuizScreen = () => {
     }, [loadQuiz])
   );
 
+  // ✅ Handle answer + log to Supabase for ProgressionChart
   const handleAnswer = async (option) => {
+    // --- ADD THESE ---
     if (isAnswering) return; // Don't allow multiple answers
     setIsAnswering(true);
+    // --- END ADD ---
 
     const currentQuestion = questions[currentQuestionIndex];
     if (!currentQuestion) {
@@ -90,19 +103,22 @@ const QuizScreen = () => {
 
     const isCorrect = option === currentQuestion.correct_answer;
 
+    // --- 3. UPDATED LOGIC ---
     // Log answer in Supabase
-    if (uid && currentQuestion.id) {
+    if (uid && selectedChild?.id && currentQuestion.id) {
       const { error } = await supabase.from('answer_log').insert({
-        user_id: uid,
+        user_id: uid, // Parent's ID
+        child_id: selectedChild.id, // Child's ID
         question_id: currentQuestion.id,
         is_correct: isCorrect,
-        game_name: 'Quiz', // Important for ProgressionChart filtering
+        game_name: 'Quiz',
       });
 
       if (error) {
         console.error('Error logging quiz answer:', error.message);
       }
     }
+    // --- END UPDATED LOGIC ---
 
     // --- REPLACE ALERTS WITH THIS ---
     if (isCorrect) {
@@ -133,6 +149,7 @@ const QuizScreen = () => {
         setCurrentQuestionIndex(currentQuestionIndex + 1);
         setIsAnswering(false); // Re-enable buttons
       } else {
+        Alert.alert("Quiz Complete!", "You've finished the quiz!");
         navigation.navigate('GamePage');
         // No need to set isAnswering(false) here since we are navigating away
       }
@@ -206,6 +223,7 @@ const QuizScreen = () => {
 
 export default QuizScreen;
 
+// ... (Styles remain unchanged) ...
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -243,7 +261,6 @@ const styles = StyleSheet.create({
     fontSize: wp('5%'),
   },
 
-  // --- ADD THESE NEW STYLES ---
   feedbackOverlay: {
     position: 'absolute',
     top: 0,
@@ -269,5 +286,4 @@ const styles = StyleSheet.create({
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 2,
   },
-  // --- END ADD ---
 });

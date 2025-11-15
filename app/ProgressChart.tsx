@@ -1,6 +1,6 @@
 // file: app/ProgressionChart.tsx
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   View,
   Text,
@@ -13,8 +13,14 @@ import {
 import { LineChart } from "react-native-chart-kit";
 import { supabase } from "../backend/supabase";
 import { auth } from "../firebase";
+import { useFocusEffect } from '@react-navigation/native';
 
 const screenWidth = Dimensions.get("window").width;
+
+interface ChildProfile {
+  id: string;
+  child_name: string; // <-- FIX: Renamed from 'name'
+}
 
 const ProgressionChart: React.FC = () => {
   const [activeTab, setActiveTab] = useState("Flappy Bird");
@@ -22,29 +28,52 @@ const ProgressionChart: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [questions, setQuestions] = useState<any[]>([]);
 
+  // --- NEW STATE ---
+  const [children, setChildren] = useState<ChildProfile[]>([]);
+  const [selectedChildId, setSelectedChildId] = useState<string>("all"); // 'all' or a child's UUID
+  // --- END NEW STATE ---
+
   const tabs = ["Flappy Bird", "Snake", "Quiz"];
+  const parentUid = auth.currentUser?.uid;
 
+  // 1. Fetch children profiles
+  useFocusEffect(
+    useCallback(() => {
+      const fetchChildren = async () => {
+        if (!parentUid) return;
+        setLoading(true);
+        try {
+          const { data: childData, error } = await supabase
+            .from("child_profiles")
+            .select("id, child_name") // <-- FIX: Changed from 'name'
+            .eq("parent_user_id", parentUid); // Use 'parent_user_id' from your schema
+
+          if (error) throw error;
+          setChildren(childData || []);
+        } catch (error) {
+          console.error("Error fetching children:", error); // This is one of the errors you saw
+        } finally {
+          setLoading(false);
+        }
+      };
+      fetchChildren();
+    }, [parentUid])
+  );
+
+  // 2. Fetch game data when tab or child filter changes
   useEffect(() => {
-    fetchGameData(activeTab);
-  }, [activeTab]);
+    if (parentUid) {
+      fetchGameData(activeTab, selectedChildId);
+    }
+  }, [activeTab, selectedChildId, parentUid]);
 
-  const fetchGameData = async (gameName: string) => {
+  const fetchGameData = async (gameName: string, childId: string) => {
     setLoading(true);
     try {
-      const user = auth.currentUser;
-      if (!user) return;
+      if (!parentUid) return;
 
-      // Get user_id from profiles (Supabase) using Firebase UID
-      const { data: profile, error: profileError } = await supabase
-        .from("profiles")
-        .select("user_id")
-        .eq("user_id", user.uid)
-        .single();
-
-      if (profileError) throw profileError;
-      if (!profile) return;
-
-      const { data: results, error } = await supabase
+      // Base query
+      let query = supabase
         .from("answer_log")
         .select(
           `
@@ -54,14 +83,24 @@ const ProgressionChart: React.FC = () => {
           answered_at,
           game_name,
           question_id,
-          questions ( question )
-        `
+          questions ( question ),
+          child_profiles ( child_name ) 
+        ` // <-- FIX: Changed from 'name' to 'child_name'
         )
-        .eq("user_id", profile.user_id)
-        .eq("game_name", gameName)
-        .order("answered_at", { ascending: true });
+        .eq("user_id", parentUid) // Filter by parent
+        .eq("game_name", gameName);
 
-      if (error) throw error;
+      // Add child filter if not 'all'
+      if (childId !== "all") {
+        query = query.eq("child_id", childId);
+      }
+
+      // Order and execute
+      const { data: results, error } = await query.order("answered_at", {
+        ascending: true,
+      });
+
+      if (error) throw error; // This is the other error you saw
 
       // Filter out deleted/unknown questions
       const validResults = results.filter(
@@ -89,12 +128,13 @@ const ProgressionChart: React.FC = () => {
         ],
       });
 
-      // Prepare question list (newest first) and only include valid questions
+      // Prepare question list (newest first)
       const questionsData = validResults
         .map((r: any) => ({
           question: r.questions?.question,
           is_correct: r.is_correct,
           answered_at: r.answered_at,
+          childName: r.child_profiles?.child_name || "Unknown Child", // <-- FIX: Get child_name
         }))
         .reverse();
 
@@ -110,7 +150,12 @@ const ProgressionChart: React.FC = () => {
     if (loading)
       return <ActivityIndicator size="large" color="#4CAF50" style={{ marginTop: 20 }} />;
     if (!data || data.labels.length === 0)
-      return <Text style={styles.noDataText}>No progress data for {activeTab}</Text>;
+      return (
+        <Text style={styles.noDataText}>
+          No progress data for {activeTab}
+          {selectedChildId !== 'all' && ` for ${children.find(c => c.id === selectedChildId)?.child_name}`} {/* <-- FIX */}
+        </Text>
+      );
 
     return (
       <LineChart
@@ -140,6 +185,12 @@ const ProgressionChart: React.FC = () => {
             { backgroundColor: q.is_correct ? "#E8F5E9" : "#FFEBEE" },
           ]}
         >
+          {/* --- SHOW CHILD NAME --- */}
+          {selectedChildId === 'all' && (
+             <Text style={styles.childNameText}>{q.childName}</Text>
+          )}
+          {/* --- END --- */}
+
           <Text style={styles.questionText}>Q: {q.question}</Text>
           <Text
             style={[
@@ -156,6 +207,49 @@ const ProgressionChart: React.FC = () => {
       ))}
     </ScrollView>
   );
+
+  // --- NEW CHILD FILTER RENDER ---
+  const renderChildFilters = () => (
+    <View style={styles.tabContainer}>
+      <TouchableOpacity
+        onPress={() => setSelectedChildId("all")}
+        style={[
+          styles.tabButton,
+          selectedChildId === "all" && styles.activeTabButton,
+        ]}
+      >
+        <Text
+          style={[
+            styles.tabText,
+            selectedChildId === "all" && styles.activeTabText,
+          ]}
+        >
+          All Children
+        </Text>
+      </TouchableOpacity>
+
+      {children.map((child) => (
+        <TouchableOpacity
+          key={child.id}
+          onPress={() => setSelectedChildId(child.id)}
+          style={[
+            styles.tabButton,
+            selectedChildId === child.id && styles.activeTabButton,
+          ]}
+        >
+          <Text
+            style={[
+              styles.tabText,
+              selectedChildId === child.id && styles.activeTabText,
+            ]}
+          >
+            {child.child_name} {/* <-- FIX */}
+          </Text>
+        </TouchableOpacity>
+      ))}
+    </View>
+  );
+  // --- END NEW RENDER ---
 
   return (
     <View style={styles.container}>
@@ -181,6 +275,11 @@ const ProgressionChart: React.FC = () => {
         ))}
       </View>
 
+      {/* --- ADD CHILD FILTERS --- */}
+      <Text style={styles.filterTitle}>Filter by Child:</Text>
+      {renderChildFilters()}
+      {/* --- END --- */}
+
       <View style={styles.chartContainer}>{renderChart()}</View>
       <Text style={styles.subTitle}>Questions Answered in {activeTab}</Text>
       {renderQuestionList()}
@@ -190,6 +289,7 @@ const ProgressionChart: React.FC = () => {
 
 export default ProgressionChart;
 
+// ... (styles remain unchanged) ...
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -199,6 +299,7 @@ const styles = StyleSheet.create({
   tabContainer: {
     flexDirection: "row",
     justifyContent: "space-around",
+    flexWrap: "wrap", // Allow wrapping
     marginBottom: 10,
     marginTop: 10,
   },
@@ -207,6 +308,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     borderRadius: 20,
     backgroundColor: "#E0E0E0",
+    margin: 4, // Add margin for wrapping
   },
   activeTabButton: {
     backgroundColor: "#4CAF50",
@@ -220,6 +322,13 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontWeight: "bold",
   },
+  filterTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#555',
+    marginLeft: 10,
+    marginTop: 10,
+  },
   chartContainer: {
     alignItems: "center",
     justifyContent: "center",
@@ -229,6 +338,7 @@ const styles = StyleSheet.create({
     marginTop: 30,
     fontSize: 16,
     color: "#999",
+    paddingHorizontal: 20,
   },
   subTitle: {
     fontSize: 18,
@@ -247,6 +357,12 @@ const styles = StyleSheet.create({
     shadowRadius: 3,
     shadowOffset: { width: 0, height: 2 },
     elevation: 2,
+  },
+  childNameText: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: '#00796B',
+    marginBottom: 5,
   },
   questionText: {
     fontSize: 16,

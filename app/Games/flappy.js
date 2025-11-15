@@ -1,5 +1,4 @@
 // file: app/Games/flappy.js
-/* Flappy Bird Clone — enhanced UX (pause, combos, shield revive, power-ups UI, sounds, parallax) */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -9,6 +8,8 @@ import {
   StyleSheet,
   Animated,
   Platform,
+  Alert, 
+  ActivityIndicator,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { GameEngine } from 'react-native-game-engine';
@@ -19,6 +20,8 @@ import Physics from '../../entities/flappy/physics';
 import { fetchQuestions, Question } from '../../backend/fetchquestions';
 import { supabase } from '../../backend/supabase';
 import { getAuth } from 'firebase/auth';
+import { useChild } from '../ChildContext'; 
+import { useNavigation } from '@react-navigation/native'; 
 
 // --- assets (images + optional sounds) ---
 const BG_FAR = require('@/assets/images/fb-game-background.png');
@@ -34,6 +37,8 @@ const POWERUP_DURATION_MS = 10000;
 const COMBO_WINDOW_MS = 2000;
 
 export default function StartFlappyGame() {
+  const navigation = useNavigation(); // <-- ADDED HOOK
+
   // ---- core game state ----
   const [running, setRunning] = useState(false);
   const [paused, setPaused] = useState(false);
@@ -57,7 +62,8 @@ export default function StartFlappyGame() {
   // --- END ADD ---
 
   const auth = getAuth();
-  const uid = auth.currentUser?.uid;
+  const uid = auth.currentUser?.uid; // This is the PARENT'S ID
+  const { selectedChild } = useChild(); // <-- 2. GET SELECTED CHILD
 
   // ---- power-ups & combo ----
   const [powerUp, setPowerUp] = useState(null); // 'double' | 'shield' | null
@@ -117,9 +123,18 @@ export default function StartFlappyGame() {
   useEffect(() => {
     const loadInitialData = async () => {
       if (!uid) {
-        alert("User not logged in.");
+        Alert.alert("User not logged in.", "Navigating to login.");
+        navigation.navigate('LogInPage'); // Ensure navigation prop is passed or use useNavigation
         return;
       }
+      // --- 3. ADDED CHILD CHECK ---
+      if (!selectedChild) {
+        Alert.alert("No child selected", "Navigating to child selection.");
+        navigation.navigate("ChildSelectScreen");
+        return;
+      }
+      // --- END CHECK ---
+
       setIsLoadingData(true);
       try {
         // Fetch question limit from settings
@@ -140,7 +155,7 @@ export default function StartFlappyGame() {
         );
 
         if (!fetchedQuestions || fetchedQuestions.length === 0) {
-          alert("No suitable questions available. Ask your parent to add some Multiple Choice or True/False questions!");
+          Alert.alert("No suitable questions available", "Ask your parent to add some Multiple Choice or True/False questions!");
           setIsLoadingData(false);
           return;
         }
@@ -150,15 +165,16 @@ export default function StartFlappyGame() {
 
       } catch (e) {
         console.error('Error loading questions:', e);
-        alert("Could not load game data. Please try again.");
+        Alert.alert("Error", "Could not load game data. Please try again.");
       } finally {
         setIsLoadingData(false);
       }
     };
 
     loadInitialData();
-  }, [uid]);
+  }, [uid, navigation, selectedChild]); // <-- ADDED selectedChild
 
+  // ... (rest of useEffects remain unchanged) ...
   // restart parallax when difficulty changes during a run
   useEffect(() => {
     if (running && !paused) startParallax();
@@ -258,6 +274,18 @@ export default function StartFlappyGame() {
 
   // ---- start/pause/restart ----
   const handleStartGame = useCallback(() => {
+    if (isLoadingData || allQuestions.length === 0) {
+      Alert.alert("Cannot Start", isLoadingData ? "Loading..." : "No questions available.");
+      return;
+    }
+    // --- 3. ADDED CHILD CHECK ---
+    if (!selectedChild) {
+      Alert.alert("Error", "No child selected.");
+      navigation.navigate("ChildSelectScreen");
+      return;
+    }
+    // --- END CHECK ---
+
     setCurrentPoints(0);
     setDifficulty(1);
     setCombo(1);
@@ -278,7 +306,7 @@ export default function StartFlappyGame() {
     gameEngine.current?.swap(getGameEntities('flappy', 1));
     startParallax();
     safeHaptic(Haptics.selectionAsync);
-  }, [clearPowerUp, startParallax, isLoadingData, allQuestions]);
+  }, [clearPowerUp, startParallax, isLoadingData, allQuestions, selectedChild, navigation]); // <-- ADDED selectedChild/navigation
 
   const handlePauseResume = useCallback(() => {
     if (!running) return;
@@ -315,11 +343,11 @@ export default function StartFlappyGame() {
 
           setCurrentPoints((p) => {
             const next = p + delta;
-            if (next % 5 === 0) setDifficulty((d) => d + 1); // This is for game speed, keep it at 5
+            if (next % 5 === 0) setDifficulty((d) => d + 1); // This is for game speed
             //if (next % 7 === 0) spawnPowerUp();
           
-          // --- MODIFIED: Trigger question every 3 points ---
-          if (next % 3 === 0 && next > 0) {
+          // NEW: Trigger question every 3 points
+          if (next % 3 === 0 && next > 0) { // <-- Changed from 5 to 3
             if (questionsAnsweredCount < questionsToComplete && availableQuestions.length > 0) {
               const randomIndex = Math.floor(Math.random() * availableQuestions.length);
               const questionToAsk = availableQuestions[randomIndex];
@@ -376,11 +404,11 @@ export default function StartFlappyGame() {
     [
         powerUp, difficulty, currentPoints, maxCombo, clearPowerUp, 
         startParallax, stopParallax, spawnPowerUp, 
-        questionsAnsweredCount, questionsToComplete, availableQuestions // Add dependencies
+        questionsAnsweredCount, questionsToComplete, availableQuestions
     ]
   );
 
-  // --- REPLACED aanswerQuestion function ---
+  // --- 4. UPDATED answerQuestion FUNCTION ---
   const answerQuestion = async (isCorrect, selectedOptionKey) => {
     if (isAnswering) return;
     setIsAnswering(true);
@@ -414,9 +442,10 @@ export default function StartFlappyGame() {
       setIsAnswering(false);
 
       // Log answer to database
-      if (uid && currentQuestion) {
+      if (uid && selectedChild?.id && currentQuestion) {
         supabase.from('answer_log').insert({
-          user_id: uid,
+          user_id: uid,              // The parent's ID
+          child_id: selectedChild.id, // The NEW child's ID
           question_id: currentQuestion.id,
           is_correct: isCorrect,
           game_name: 'Flappy Bird'
@@ -444,7 +473,7 @@ export default function StartFlappyGame() {
       }
     });
   };
-  // --- END REPLACEMENT ---
+  // --- END UPDATED FUNCTION ---
 
   // ---- power-up expiry ticking (UI + expiry) ----
   useEffect(() => {
@@ -466,7 +495,8 @@ export default function StartFlappyGame() {
   if (isLoadingData) {
     return (
       <View style={styles.container}>
-        <Text style={styles.title}>Loading Game...</Text>
+        <ActivityIndicator size="large" color="#FFF" />
+        <Text style={[styles.title, {fontSize: 24}]}>Loading Game...</Text>
       </View>
     );
   }
@@ -638,8 +668,9 @@ export default function StartFlappyGame() {
   );
 }
 
+// ... (Styles remain unchanged) ...
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#87CEFA' },
+  container: { flex: 1, backgroundColor: '#87CEFA', justifyContent: 'center', alignItems: 'center' }, // Added center alignment for loading
   engine: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 },
 
   // parallax bg
