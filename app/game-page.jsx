@@ -20,12 +20,13 @@ import { widthPercentageToDP as wp, heightPercentageToDP as hp } from 'react-nat
 import bg from '@/assets/images/app-background.png';
 import Flappy from './Games/flappy';
 import Snake from './SnakeGame';
+import FruitNinjaGame from './Games/FruitNinjaGame';
 
 // --- GAMES DATA ---
 const GAMES = [
   { key: 'flappy', title: 'Flappy', image: require('@/assets/images/kiwi.png'), onPressType: 'embed', tint: '#FF6B6B' },
   { key: 'snake', title: 'Snake', image: require('@/assets/images/snake.png'), onPressType: 'embed', tint: '#4ECDC4' },
-  { key: 'game3', title: 'Watermelon', image: require('@/assets/images/watermelon.png'), onPressType: 'disabled', tint: '#7FB3FF' },
+   { key: 'fruit',  title: 'Fruit Slice', image: require('@/assets/images/watermelon.png'), onPressType: 'embed', tint: '#FF9F1C' },
   { key: 'quiz', title: 'Quiz', image: require('@/assets/images/saftey-sign.png'), onPressType: 'route', routeName: 'QuizScreen', tint: '#FFD166' },
 ];
 
@@ -125,6 +126,7 @@ const GamePage = memo(() => {
   // Embedded games
   if (selectedGame === 'flappy') return <SafeAreaView style={{ flex: 1 }}><HeaderInline onBack={() => setSelectedGame(null)} title="Flappy" /><Flappy /></SafeAreaView>;
   if (selectedGame === 'snake') return <SafeAreaView style={{ flex: 1 }}><HeaderInline onBack={() => setSelectedGame(null)} title="Snake" /><Snake /></SafeAreaView>;
+  if (selectedGame === 'fruit') return <SafeAreaView style={{ flex: 1 }}><HeaderInline onBack={() => setSelectedGame(null)} title="Fruit Slice" /><FruitNinjaGame /></SafeAreaView>;
 
   // Game selection screen
   return (
