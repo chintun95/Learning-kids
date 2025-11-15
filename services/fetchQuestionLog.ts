@@ -4,37 +4,37 @@ import { supabase } from "@/lib/supabase";
 import { Tables } from "@/types/database.types";
 
 /** ---------- Types ---------- **/
-export type AnswerLogRow = Tables<"answer_log">;
+export type QuestionLogRow = Tables<"questionlog">;
 
 /** ---------- Fetch Function ---------- **/
-const fetchAnswerLogs = async (): Promise<AnswerLogRow[]> => {
+const fetchQuestionLogs = async (): Promise<QuestionLogRow[]> => {
   const { data, error } = await supabase
-    .from("answer_log")
+    .from("questionlog")
     .select("*")
-    .order("answered_at", { ascending: false });
+    .order("completedat", { ascending: false });
 
   if (error) throw new Error(error.message);
   return data ?? [];
 };
 
 /** ---------- Hook with Realtime ---------- **/
-export const useFetchAnswerLogs = () => {
+export const useFetchQuestionLogs = () => {
   const queryClient = useQueryClient();
 
   const query = useQuery({
-    queryKey: ["answer_log"],
-    queryFn: fetchAnswerLogs,
+    queryKey: ["questionlog"],
+    queryFn: fetchQuestionLogs,
   });
 
   useEffect(() => {
     const channel = supabase
-      .channel("answer_log-realtime")
+      .channel("questionlog-realtime")
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "answer_log" },
+        { event: "*", schema: "public", table: "questionlog" },
         (payload) => {
-          console.log("📡 AnswerLog change detected:", payload);
-          queryClient.invalidateQueries({ queryKey: ["answer_log"] });
+          console.log("📡 QuestionLog change detected:", payload);
+          queryClient.invalidateQueries({ queryKey: ["questionlog"] });
         }
       )
       .subscribe();

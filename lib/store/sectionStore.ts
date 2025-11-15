@@ -12,13 +12,8 @@ interface SectionState {
   syncing: boolean;
   error: string | null;
 
-  /** Local-first fetch with realtime subscription if online */
   fetchSections: () => Promise<void>;
-
-  /** Manual refresh (forces sync) */
   refreshSections: () => Promise<void>;
-
-  /** Clear local cache + unsubscribe */
   clearAll: () => void;
 }
 
@@ -34,7 +29,9 @@ export const useSectionStore = create<SectionState>()(
     (set, get) => {
       let sectionChannel: ReturnType<typeof supabase.channel> | null = null;
 
-      /** Internal sync helper */
+      /** ---------------------------
+       * Internal Sync Logic
+       * --------------------------- */
       async function syncSections() {
         const online = await isOnline();
         if (!online) {
@@ -46,7 +43,7 @@ export const useSectionStore = create<SectionState>()(
           console.log("🌐 Syncing sections from Supabase...");
           const { data, error } = await supabase
             .from("sections")
-            .select("*")
+            .select("*") // includes lessonid (NEW)
             .order("title", { ascending: true });
 
           if (error) throw error;
@@ -58,7 +55,11 @@ export const useSectionStore = create<SectionState>()(
           });
         } catch (err: any) {
           console.warn("❌ Failed to sync sections:", err.message);
-          set({ syncing: false, loading: false, error: err.message });
+          set({
+            syncing: false,
+            loading: false,
+            error: err.message,
+          });
         }
       }
 
@@ -68,22 +69,27 @@ export const useSectionStore = create<SectionState>()(
         syncing: false,
         error: null,
 
-        /** Local-first fetch */
+        /** ---------------------------
+         * Local-first fetch
+         * --------------------------- */
         fetchSections: async () => {
           const online = await isOnline();
           set({ loading: true, error: null });
 
           try {
+            // If offline: show cached sections
             if (!online) {
               console.log("📴 Offline — serving cached sections.");
               set({ loading: false });
               return;
             }
 
+            // Sync with Supabase
             await syncSections();
 
-            // Setup realtime subscription
+            // Setup realtime subscription once per session
             if (sectionChannel) supabase.removeChannel(sectionChannel);
+
             sectionChannel = supabase
               .channel("sections-store")
               .on(
@@ -99,28 +105,37 @@ export const useSectionStore = create<SectionState>()(
             set({ loading: false });
           } catch (err: any) {
             console.error("❌ Section fetch failed:", err.message);
-            set({ loading: false, error: err.message });
+            set({
+              loading: false,
+              error: err.message,
+            });
           }
         },
 
-        /** Manual refresh */
+        /** ---------------------------
+         * Manual Refresh
+         * --------------------------- */
         refreshSections: async () => {
           set({ syncing: true });
           await syncSections();
         },
 
-        /** Clear all cached data and unsubscribe */
+        /** ---------------------------
+         * Clear Local Cache + Unsubscribe
+         * --------------------------- */
         clearAll: () => {
           if (sectionChannel) {
             supabase.removeChannel(sectionChannel);
             sectionChannel = null;
           }
+
           set({
             sections: [],
             loading: false,
             syncing: false,
             error: null,
           });
+
           console.log("🧹 SectionStore cleared and unsubscribed.");
         },
       };
@@ -128,14 +143,23 @@ export const useSectionStore = create<SectionState>()(
     {
       name: "section-storage",
       storage: createJSONStorage(() => zustandStorage),
+
+      /** ---------------------------
+       * Rehydrate Logic
+       * --------------------------- */
       onRehydrateStorage: () => (state) => {
         if (!state) return;
+
         console.log("♻️ SectionStore rehydrated (local-first mode).");
+
         isOnline().then((online) => {
           if (online) {
+            console.log(
+              "🌐 Online after rehydrate — fetching updated sections."
+            );
             useSectionStore.getState().fetchSections();
           } else {
-            console.log("📴 Rehydrated offline — showing cached sections.");
+            console.log("📴 Rehydrated offline — using cached sections.");
           }
         });
       },

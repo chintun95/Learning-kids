@@ -1,3 +1,5 @@
+/** FULLY FIXED SNAKE GAME — NO ADJACENT QUESTION FOOD + CORRECT ANSWER LOGIC **/
+
 import { useEffect, useState } from "react";
 import {
   StyleSheet,
@@ -10,13 +12,16 @@ import {
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
+
 import { Colors } from "../styles/colors";
 import { Direction, Coordinate } from "../types/types";
 import { checkEatsFood } from "../utils/checkEatsFood";
-import { randomFoodPosition } from "../utils/randomFoodPosition";
+import { generateSafeFoodPosition } from "../utils/randomFoodPosition";
+
 import Snake from "./Snake";
 import Header from "./Header";
 import Score from "./Score";
+
 import { useGameStore } from "@/lib/store/gameStore";
 import { useChildAuthStore } from "@/lib/store/childAuthStore";
 import { useQuestionLogStore } from "@/lib/store/questionLogStore";
@@ -34,6 +39,7 @@ export default function Game() {
   const [snake, setSnake] = useState<Coordinate[]>(SNAKE_INITIAL_POSITION);
   const [food, setFood] = useState<Coordinate>(FOOD_INITIAL_POSITION);
   const [isQuestionFood, setIsQuestionFood] = useState(false);
+
   const [score, setScore] = useState(0);
   const [isGameOver, setIsGameOver] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
@@ -51,77 +57,66 @@ export default function Game() {
     getCurrentScore,
     setCurrentScore,
     resetCurrentScore,
+    getPoints,
+    addPoints,
   } = useGameStore();
-  const { getCurrentChild } = useChildAuthStore();
+
   const { logs: questionLogs } = useQuestionLogStore();
   const { questions } = useQuestionStore();
   const { setExitedSnake } = useSessionStore();
-
   const router = useRouter();
-  const currentChild = getCurrentChild();
-  const highScore = getHighScore();
 
-  /** ---------- Restore persisted current score on mount ---------- **/
+  const highScore = getHighScore();
+  const points = getPoints();
+
+  /** ------------------ DIFFICULTY → POINTS ------------------ **/
+  const getQuestionPoints = () => {
+    const t = currentQuestion?.questiontype?.toLowerCase() ?? "";
+    if (t === "easy") return 5;
+    if (t === "medium") return 10;
+    if (t === "hard") return 15;
+    return 5;
+  };
+
+  /** ------------------ RESTORE SCORE ------------------ **/
   useEffect(() => {
-    const savedScore = getCurrentScore();
-    if (savedScore > 0) {
-      console.log(`🎯 Restoring saved score: ${savedScore}`);
-      setScore(savedScore);
-    }
+    const saved = getCurrentScore();
+    if (saved > 0) setScore(saved);
   }, []);
 
-  /** ---------- Persist current score whenever it changes ---------- **/
   useEffect(() => {
     setCurrentScore(score);
-  }, [score, setCurrentScore]);
+  }, [score]);
 
-  /** ---------- Debug log ---------- **/
+  /** ------------------ GAME LOOP (direction added) ------------------ **/
   useEffect(() => {
-    console.log("🧩 Question Logs:", questionLogs);
-    console.log("🧠 QuestionBank Entries:", questions);
-  }, [questionLogs, questions]);
+    if (!hasStarted || isPaused || isGameOver) return;
 
-  /** ---------- GAME LOOP ---------- **/
-  useEffect(() => {
-    if (!hasStarted || isGameOver) return;
-    const intervalId = setInterval(() => {
-      if (!isPaused) moveSnake();
-    }, MOVE_INTERVAL);
-    return () => clearInterval(intervalId);
-  }, [snake, isGameOver, isPaused, hasStarted]);
+    const id = setInterval(() => moveSnake(), MOVE_INTERVAL);
+    return () => clearInterval(id);
+  }, [snake, direction, isPaused, isGameOver, hasStarted]);
 
-  /** ---------- GAME OVER CHECKS ---------- **/
-  const isOutOfBounds = (head: Coordinate) =>
-    head.x < GAME_BOUNDS.xMin ||
-    head.x > GAME_BOUNDS.xMax ||
-    head.y < GAME_BOUNDS.yMin ||
-    head.y > GAME_BOUNDS.yMax;
-
-  const hasSelfCollision = (head: Coordinate, body: Coordinate[]) =>
-    body.some((segment) => segment.x === head.x && segment.y === head.y);
-
-  /** ---------- MOVE ---------- **/
+  /** ------------------ MOVEMENT ------------------ **/
   const moveSnake = () => {
-    const snakeHead = snake[0];
-    const newHead = { ...snakeHead };
+    const head = snake[0];
+    const newHead = { ...head };
 
-    switch (direction) {
-      case Direction.Up:
-        newHead.y -= 1;
-        break;
-      case Direction.Down:
-        newHead.y += 1;
-        break;
-      case Direction.Left:
-        newHead.x -= 1;
-        break;
-      case Direction.Right:
-        newHead.x += 1;
-        break;
-    }
+    if (direction === Direction.Up) newHead.y -= 1;
+    if (direction === Direction.Down) newHead.y += 1;
+    if (direction === Direction.Left) newHead.x -= 1;
+    if (direction === Direction.Right) newHead.x += 1;
 
-    if (isOutOfBounds(newHead) || hasSelfCollision(newHead, snake)) {
-      console.log("💀 Game Over — collision or out of bounds!");
+    const hitWall =
+      newHead.x < GAME_BOUNDS.xMin ||
+      newHead.x > GAME_BOUNDS.xMax ||
+      newHead.y < GAME_BOUNDS.yMin ||
+      newHead.y > GAME_BOUNDS.yMax;
+
+    const hitSelf = snake.some(
+      (seg) => seg.x === newHead.x && seg.y === newHead.y
+    );
+
+    if (hitWall || hitSelf) {
       setIsGameOver(true);
       return;
     }
@@ -134,140 +129,135 @@ export default function Game() {
     }
   };
 
-  /** ---------- FOOD EATEN ---------- **/
+  /** ------------------ FOOD + SAFE SPAWN ------------------ **/
   const handleFoodEaten = () => {
-    const isMystery = Math.random() < 0.25;
-    setIsQuestionFood(isMystery);
+    const mystery = Math.random() < 0.25;
+    setIsQuestionFood(mystery);
 
-    if (isMystery) {
-      if (questionLogs.length > 0 && questions.length > 0) {
-        const randomLog =
-          questionLogs[Math.floor(Math.random() * questionLogs.length)];
-        const matchedQuestion = questions.find(
-          (q) => q.id === randomLog.completedquestion
-        );
+    if (mystery && questionLogs.length > 0) {
+      const randomLog =
+        questionLogs[Math.floor(Math.random() * questionLogs.length)];
+      const q = questions.find((k) => k.id === randomLog.completedquestion);
 
-        if (matchedQuestion) {
-          setCurrentQuestion(matchedQuestion);
-          setSelectedAnswer(null);
-          setIsPaused(true);
-          setShowQuestionModal(true);
-        } else {
-          console.warn("⚠️ No matching question found for log.");
-          setScore((prev) => prev + SCORE_INCREMENT);
-          setFood(randomFoodPosition(GAME_BOUNDS.xMax, GAME_BOUNDS.yMax));
-        }
-      } else {
-        setScore((prev) => prev + SCORE_INCREMENT);
-        setFood(randomFoodPosition(GAME_BOUNDS.xMax, GAME_BOUNDS.yMax));
+      if (q) {
+        setCurrentQuestion(q);
+        setSelectedAnswer(null);
+        setIsPaused(true);
+        setShowQuestionModal(true);
+        return;
       }
-    } else {
-      setScore((prev) => prev + SCORE_INCREMENT);
-      setFood(randomFoodPosition(GAME_BOUNDS.xMax, GAME_BOUNDS.yMax));
     }
+
+    // normal food
+    setScore((s) => s + SCORE_INCREMENT);
+    setFood(
+      generateSafeFoodPosition(GAME_BOUNDS.xMax, GAME_BOUNDS.yMax, food, snake)
+    );
   };
 
-  /** ---------- QUESTION HANDLING ---------- **/
-  const handleSubmitAnswer = () => {
-    if (!currentQuestion || selectedAnswer === null) return;
+  /** ------------------ FIXED ANSWER LOGIC ------------------ **/
+  const extractLetter = (ans: string): string => {
+    // "A. Crawl low" → "A"
+    return ans.trim().charAt(0).toUpperCase();
+  };
 
-    const correctAnswer = currentQuestion.correctanswer?.trim().toLowerCase();
-    const playerAnswer = selectedAnswer.trim().toLowerCase();
+  const handleSubmitAnswer = () => {
+    if (!currentQuestion || !selectedAnswer) return;
+
+    const correctLetter = currentQuestion.correctanswer.trim().toUpperCase();
+    const playerLetter = extractLetter(selectedAnswer);
 
     setShowQuestionModal(false);
 
-    if (playerAnswer === correctAnswer) {
-      console.log("✅ Correct answer! Ending game.");
-      setScore((prev) => prev + SCORE_INCREMENT * 2);
-      setIsGameOver(true);
+    if (playerLetter === correctLetter) {
+      // CORRECT!
+      addPoints(getQuestionPoints());
+      setIsPaused(false);
+      setScore((s) => s + SCORE_INCREMENT);
     } else {
-      console.log("❌ Incorrect answer. Resuming in 3s...");
-      setTimeout(() => setIsPaused(false), 3000);
+      // WRONG
+      setIsGameOver(true);
     }
   };
 
-  /** ---------- CONTROLS ---------- **/
+  /** ------------------ CONTROLS ------------------ **/
   const panGesture = Gesture.Pan()
-    .onUpdate((event) => {
-      const { translationX, translationY } = event;
-      if (Math.abs(translationX) > Math.abs(translationY)) {
-        setDirection(translationX > 0 ? Direction.Right : Direction.Left);
+    .onUpdate((e) => {
+      if (Math.abs(e.translationX) > Math.abs(e.translationY)) {
+        setDirection(e.translationX > 0 ? Direction.Right : Direction.Left);
       } else {
-        setDirection(translationY > 0 ? Direction.Down : Direction.Up);
+        setDirection(e.translationY > 0 ? Direction.Down : Direction.Up);
       }
     })
     .runOnJS(true);
 
-  /** ---------- RELOAD / RESET ---------- **/
-  const reloadGame = () => {
-    setSnake(SNAKE_INITIAL_POSITION);
-    setFood(randomFoodPosition(GAME_BOUNDS.xMax, GAME_BOUNDS.yMax));
-    setIsQuestionFood(false);
-    setIsGameOver(false);
-    setScore(0);
-    resetCurrentScore(); // ✅ reset persisted current score
-    setDirection(Direction.Right);
-    setIsPaused(false);
-    setHasStarted(false);
-  };
-
-  const pauseGame = () => setIsPaused((prev) => !prev);
-
-  /** ---------- EXIT GAME ---------- **/
+  /** ------------------ EXIT GAME ------------------ **/
   const handleClose = () => {
     setHighScore(score);
-    resetCurrentScore(); // ✅ clear persisted current score on exit
+    resetCurrentScore();
     setExitedSnake(true);
     router.back();
   };
 
-  /** ---------- RENDER ---------- **/
+  /** ------------------ START GAME ------------------ **/
+  const startGame = () => {
+    setFood(
+      generateSafeFoodPosition(
+        GAME_BOUNDS.xMax,
+        GAME_BOUNDS.yMax,
+        FOOD_INITIAL_POSITION,
+        SNAKE_INITIAL_POSITION
+      )
+    );
+    setHasStarted(true);
+  };
+
+  /** ------------------ UI ------------------ **/
   return (
     <GestureDetector gesture={panGesture}>
       <SafeAreaView style={styles.container}>
-        {/* HEADER */}
         <Header
-          reloadGame={reloadGame}
-          pauseGame={pauseGame}
+          reloadGame={() => {
+            setSnake([...SNAKE_INITIAL_POSITION]);
+            setFood(
+              generateSafeFoodPosition(
+                GAME_BOUNDS.xMax,
+                GAME_BOUNDS.yMax,
+                FOOD_INITIAL_POSITION,
+                SNAKE_INITIAL_POSITION
+              )
+            );
+            setScore(0);
+            resetCurrentScore();
+            setDirection(Direction.Right);
+            setIsPaused(false);
+            setIsGameOver(false);
+            setHasStarted(false);
+          }}
+          pauseGame={() => setIsPaused((p) => !p)}
           onClose={handleClose}
           isPaused={isPaused}
         >
           <View style={{ alignItems: "center" }}>
             <Score score={score} />
             <Text style={styles.highScoreText}>🏆 High: {highScore}</Text>
-            {currentChild && (
-              <Text style={styles.childName}>
-                👤 {currentChild.firstName} {currentChild.lastName}
-              </Text>
-            )}
+            <Text style={styles.pointsText}>⭐ Points: {points}</Text>
           </View>
         </Header>
 
         {/* START SCREEN */}
         {!hasStarted && !isGameOver && (
-          <Pressable
-            style={styles.startOverlay}
-            onPress={() => setHasStarted(true)}
-          >
+          <Pressable style={styles.startOverlay} onPress={startGame}>
             <Text style={styles.startTitle}>🐍 Snake Game</Text>
+
             <Text style={styles.rulesHeader}>How to Play:</Text>
-            <Text style={styles.rulesText}>
-              • Swipe up, down, left, or right to move the snake.
-            </Text>
-            <Text style={styles.rulesText}>• Eat 🟡 foods to gain points.</Text>
-            <Text style={styles.rulesText}>
-              • Avoid running into the walls or yourself.
-            </Text>
-            <Text style={styles.rulesText}>
-              • Occasionally, a ❓ will appear — eat it to answer a question!
-            </Text>
-            <Text style={styles.rulesText}>
-              • Choose the correct answer to win instantly.
-            </Text>
-            <Text style={styles.rulesText}>
-              • If you answer incorrectly, the game resumes after 3 seconds.
-            </Text>
-            <Text style={styles.tapToStart}>👉 Tap anywhere to start!</Text>
+            <Text style={styles.rulesText}>• Swipe to move the snake.</Text>
+            <Text style={styles.rulesText}>• Eat 🟡 to gain points.</Text>
+            <Text style={styles.rulesText}>• Eat ❓ to answer a question.</Text>
+            <Text style={styles.rulesText}>✔️ Correct → Continue + Bonus</Text>
+            <Text style={styles.rulesText}>❌ Wrong → Game Over</Text>
+
+            <Text style={styles.tapToStart}>👉 Tap to Start</Text>
           </Pressable>
         )}
 
@@ -275,6 +265,7 @@ export default function Game() {
         {hasStarted && (
           <View style={styles.boundaries}>
             <Snake snake={snake} />
+
             <Text
               style={[styles.foodItem, { top: food.y * 10, left: food.x * 10 }]}
             >
@@ -284,38 +275,32 @@ export default function Game() {
         )}
 
         {/* QUESTION MODAL */}
-        <Modal
-          visible={showQuestionModal}
-          transparent
-          animationType="slide"
-          onRequestClose={() => setShowQuestionModal(false)}
-        >
+        <Modal visible={showQuestionModal} transparent animationType="fade">
           <View style={styles.modalOverlay}>
             <View style={styles.modalBox}>
-              <Text style={styles.modalTitle}>Answer the Question</Text>
+              <Text style={styles.modalTitle}>Answer</Text>
               <Text style={styles.modalQuestion}>
-                {currentQuestion?.question ?? "No question found."}
+                {currentQuestion?.question}
               </Text>
 
               {Array.isArray(currentQuestion?.answerchoices) &&
                 currentQuestion.answerchoices.map(
-                  (option: string, index: number) => (
+                  (opt: string, idx: number) => (
                     <TouchableOpacity
-                      key={index}
+                      key={idx}
                       style={[
                         styles.optionButton,
-                        selectedAnswer === option && styles.optionSelected,
+                        selectedAnswer === opt && styles.optionSelected,
                       ]}
-                      onPress={() => setSelectedAnswer(option)}
+                      onPress={() => setSelectedAnswer(opt)}
                     >
                       <Text
                         style={[
                           styles.optionText,
-                          selectedAnswer === option &&
-                            styles.optionTextSelected,
+                          selectedAnswer === opt && styles.optionTextSelected,
                         ]}
                       >
-                        {option}
+                        {opt}
                       </Text>
                     </TouchableOpacity>
                   )
@@ -324,7 +309,7 @@ export default function Game() {
               <TouchableOpacity
                 style={[
                   styles.submitBtn,
-                  !selectedAnswer && { backgroundColor: "#ccc" },
+                  !selectedAnswer && { backgroundColor: "#777" },
                 ]}
                 onPress={handleSubmitAnswer}
                 disabled={!selectedAnswer}
@@ -349,7 +334,7 @@ export default function Game() {
   );
 }
 
-/** ---------- STYLES ---------- **/
+/* ---------- STYLES ---------- */
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.primary },
   boundaries: {
@@ -362,7 +347,7 @@ const styles = StyleSheet.create({
   },
   foodItem: { position: "absolute", fontSize: 16 },
   highScoreText: { fontSize: 16, fontWeight: "600", color: Colors.primary },
-  childName: { fontSize: 14, color: "#666", marginTop: 4 },
+  pointsText: { fontSize: 14, color: "#666", marginTop: 4 },
   startOverlay: {
     flex: 1,
     justifyContent: "center",
@@ -376,22 +361,12 @@ const styles = StyleSheet.create({
     color: Colors.primary,
     marginBottom: 20,
   },
-  rulesHeader: {
-    fontSize: 20,
-    fontWeight: "bold",
-    color: "#000",
-    marginBottom: 8,
-  },
-  rulesText: {
-    fontSize: 16,
-    color: "#222",
-    marginBottom: 5,
-    textAlign: "center",
-  },
+  rulesHeader: { fontSize: 20, fontWeight: "bold", marginBottom: 8 },
+  rulesText: { fontSize: 16, color: "#222", marginBottom: 5 },
   tapToStart: {
+    marginTop: 20,
     fontSize: 18,
     color: "#4F46E5",
-    marginTop: 20,
     fontWeight: "bold",
   },
   modalOverlay: {
@@ -415,9 +390,9 @@ const styles = StyleSheet.create({
   modalQuestion: { fontSize: 16, marginBottom: 15, textAlign: "center" },
   optionButton: {
     borderWidth: 1,
-    borderColor: "#ccc",
+    borderColor: "#aaa",
     borderRadius: 6,
-    paddingVertical: 10,
+    paddingVertical: 12,
     paddingHorizontal: 15,
     marginBottom: 10,
   },
@@ -425,11 +400,11 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.primary,
     borderColor: Colors.primary,
   },
-  optionText: { fontSize: 16, color: "#333", textAlign: "center" },
+  optionText: { fontSize: 16, textAlign: "center", color: "#333" },
   optionTextSelected: { color: "#fff", fontWeight: "bold" },
   submitBtn: {
     backgroundColor: Colors.primary,
-    paddingVertical: 10,
+    paddingVertical: 12,
     borderRadius: 6,
     marginTop: 10,
   },
@@ -456,5 +431,9 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderRadius: 8,
   },
-  closeText: { color: "#fff", fontSize: 18, fontWeight: "bold" },
+  closeText: {
+    color: "#fff",
+    fontSize: 18,
+    fontWeight: "bold",
+  },
 });

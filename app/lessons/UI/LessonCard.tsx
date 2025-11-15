@@ -23,10 +23,10 @@ interface LessonCardProps {
 }
 
 /**
- * LessonCard (Unlocked)
- * - Displays the lesson and its linked section(s)
- * - Uses current schema: lesson.section_id → sections.id
- * - Expands smoothly
+ * LessonCard
+ * - Displays lesson information
+ * - Shows ALL linked sections using new schema:
+ *      sections.lessonid === lesson.id
  */
 const LessonCard: React.FC<LessonCardProps> = ({ lesson }) => {
   const [expanded, setExpanded] = useState(false);
@@ -38,10 +38,16 @@ const LessonCard: React.FC<LessonCardProps> = ({ lesson }) => {
     setExpanded((prev) => !prev);
   };
 
-  /** ✅ Match section(s) whose ID matches lesson.section_id */
+  /**
+   * NEW MATCHING LOGIC:
+   * -------------------
+   * Each section has:
+   *    section.lessonid → lesson.id
+   * So we find all sections that belong to this lesson.
+   */
   const relatedSections = useMemo(() => {
-    return sections.filter((section) => section.id === lesson.section_id);
-  }, [sections, lesson.section_id]);
+    return sections.filter((sec) => sec.lessonid === lesson.id);
+  }, [sections, lesson.id]);
 
   const handleSectionPress = (sectionId: string) => {
     router.push({

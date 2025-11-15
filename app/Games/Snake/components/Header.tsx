@@ -1,8 +1,8 @@
-import { TouchableOpacity, StyleSheet, View } from "react-native";
-import { Ionicons, FontAwesome } from "@expo/vector-icons";
-import { Colors } from "../styles/colors";
 import { useSessionStore } from "@/lib/store/sessionStore";
-import { useRouter, usePathname } from "expo-router"; 
+import { FontAwesome, Ionicons } from "@expo/vector-icons";
+import { usePathname, useRouter } from "expo-router";
+import { StyleSheet, TouchableOpacity, View } from "react-native";
+import { Colors } from "../styles/colors";
 
 interface HeaderProps {
   reloadGame: () => void;
@@ -35,7 +35,7 @@ export default function Header({
     }
 
     onClose();
-    router.back();
+    router.replace("/Games");
   };
 
   return (

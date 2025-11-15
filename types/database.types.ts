@@ -14,6 +14,42 @@ export type Database = {
   }
   public: {
     Tables: {
+      achievement_definitions: {
+        Row: {
+          created_at: string
+          description: string
+          icon: string
+          id: string
+          key: string
+          name: string
+          points: number | null
+          requirement_type: string
+          requirement_value: number
+        }
+        Insert: {
+          created_at?: string
+          description: string
+          icon: string
+          id?: string
+          key: string
+          name: string
+          points?: number | null
+          requirement_type: string
+          requirement_value: number
+        }
+        Update: {
+          created_at?: string
+          description?: string
+          icon?: string
+          id?: string
+          key?: string
+          name?: string
+          points?: number | null
+          requirement_type?: string
+          requirement_value?: number
+        }
+        Relationships: []
+      }
       Achievements: {
         Row: {
           description: string | null
@@ -38,6 +74,7 @@ export type Database = {
       answer_log: {
         Row: {
           answered_at: string
+          child_id: string | null
           game_name: string | null
           id: string
           is_correct: boolean
@@ -46,6 +83,7 @@ export type Database = {
         }
         Insert: {
           answered_at?: string
+          child_id?: string | null
           game_name?: string | null
           id?: string
           is_correct: boolean
@@ -54,6 +92,7 @@ export type Database = {
         }
         Update: {
           answered_at?: string
+          child_id?: string | null
           game_name?: string | null
           id?: string
           is_correct?: boolean
@@ -61,6 +100,13 @@ export type Database = {
           user_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "answer_log_child_id_fkey"
+            columns: ["child_id"]
+            isOneToOne: false
+            referencedRelation: "child_profiles"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "answer_log_question_id_fkey"
             columns: ["question_id"]
@@ -131,23 +177,55 @@ export type Database = {
           },
         ]
       }
+      child_profiles: {
+        Row: {
+          child_age: number
+          child_name: string
+          created_at: string | null
+          id: string
+          parent_user_id: string
+        }
+        Insert: {
+          child_age: number
+          child_name: string
+          created_at?: string | null
+          id?: string
+          parent_user_id: string
+        }
+        Update: {
+          child_age?: number
+          child_name?: string
+          created_at?: string | null
+          id?: string
+          parent_user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "child_profiles_parent_fkey"
+            columns: ["parent_user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["user_id"]
+          },
+        ]
+      }
       ChildAchievement: {
         Row: {
-          achievementinfo: string
+          achievementearned: string
           childid: string
           dateearned: string
           id: string
           user_id: string | null
         }
         Insert: {
-          achievementinfo: string
+          achievementearned: string
           childid: string
-          dateearned?: string
+          dateearned: string
           id?: string
           user_id?: string | null
         }
         Update: {
-          achievementinfo?: string
+          achievementearned?: string
           childid?: string
           dateearned?: string
           id?: string
@@ -155,8 +233,8 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "childachievement_achievementinfo_fkey"
-            columns: ["achievementinfo"]
+            foreignKeyName: "childachievement_achievementearned_fkey"
+            columns: ["achievementearned"]
             isOneToOne: false
             referencedRelation: "Achievements"
             referencedColumns: ["id"]
@@ -264,7 +342,6 @@ export type Database = {
           description: string | null
           id: string
           lessontype: string | null
-          section_id: string
           title: string
           user_id: string | null
         }
@@ -272,7 +349,6 @@ export type Database = {
           description?: string | null
           id?: string
           lessontype?: string | null
-          section_id: string
           title: string
           user_id?: string | null
         }
@@ -280,19 +356,10 @@ export type Database = {
           description?: string | null
           id?: string
           lessontype?: string | null
-          section_id?: string
           title?: string
           user_id?: string | null
         }
-        Relationships: [
-          {
-            foreignKeyName: "lessonbank_section_id_fkey"
-            columns: ["section_id"]
-            isOneToOne: false
-            referencedRelation: "sections"
-            referencedColumns: ["id"]
-          },
-        ]
+        Relationships: []
       }
       lessonlog: {
         Row: {
@@ -322,13 +389,6 @@ export type Database = {
             columns: ["childid"]
             isOneToOne: false
             referencedRelation: "Child"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "lessonlog_completedlesson_fkey"
-            columns: ["completedlesson"]
-            isOneToOne: false
-            referencedRelation: "lessonbank"
             referencedColumns: ["id"]
           },
         ]
@@ -364,6 +424,7 @@ export type Database = {
         Row: {
           child_age: number
           child_name: string
+          child_profile_id: string | null
           created_at: string | null
           id: string
           parent_name: string
@@ -373,6 +434,7 @@ export type Database = {
         Insert: {
           child_age: number
           child_name: string
+          child_profile_id?: string | null
           created_at?: string | null
           id?: string
           parent_name: string
@@ -382,13 +444,22 @@ export type Database = {
         Update: {
           child_age?: number
           child_name?: string
+          child_profile_id?: string | null
           created_at?: string | null
           id?: string
           parent_name?: string
           phone_number?: string
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "fk_child_profile"
+            columns: ["child_profile_id"]
+            isOneToOne: false
+            referencedRelation: "child_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       questionbank: {
         Row: {
@@ -421,15 +492,7 @@ export type Database = {
           section_id?: string
           user_id?: string | null
         }
-        Relationships: [
-          {
-            foreignKeyName: "questionbank_section_id_fkey"
-            columns: ["section_id"]
-            isOneToOne: false
-            referencedRelation: "sections"
-            referencedColumns: ["id"]
-          },
-        ]
+        Relationships: []
       }
       questionlog: {
         Row: {
@@ -437,6 +500,7 @@ export type Database = {
           completedat: string | null
           completedquestion: string
           id: string
+          iscorrect: boolean
           user_id: string | null
         }
         Insert: {
@@ -444,6 +508,7 @@ export type Database = {
           completedat?: string | null
           completedquestion: string
           id?: string
+          iscorrect?: boolean
           user_id?: string | null
         }
         Update: {
@@ -451,6 +516,7 @@ export type Database = {
           completedat?: string | null
           completedquestion?: string
           id?: string
+          iscorrect?: boolean
           user_id?: string | null
         }
         Relationships: [
@@ -568,20 +634,31 @@ export type Database = {
       sections: {
         Row: {
           id: string
+          lessonid: string | null
           title: string
           user_id: string | null
         }
         Insert: {
           id?: string
+          lessonid?: string | null
           title: string
           user_id?: string | null
         }
         Update: {
           id?: string
+          lessonid?: string | null
           title?: string
           user_id?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "sections_lessonid_fkey"
+            columns: ["lessonid"]
+            isOneToOne: false
+            referencedRelation: "lessonbank"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       Session: {
         Row: {
@@ -652,6 +729,86 @@ export type Database = {
             referencedColumns: ["user_id"]
           },
         ]
+      }
+      user_achievements: {
+        Row: {
+          achievement_key: string
+          created_at: string
+          id: string
+          progress: number | null
+          unlocked_at: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          achievement_key: string
+          created_at?: string
+          id?: string
+          progress?: number | null
+          unlocked_at?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          achievement_key?: string
+          created_at?: string
+          id?: string
+          progress?: number | null
+          unlocked_at?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_achievements_achievement_key_fkey"
+            columns: ["achievement_key"]
+            isOneToOne: false
+            referencedRelation: "achievement_definitions"
+            referencedColumns: ["key"]
+          },
+        ]
+      }
+      user_stats: {
+        Row: {
+          correct_answers: number | null
+          created_at: string
+          current_streak: number | null
+          id: string
+          incorrect_answers: number | null
+          last_login_date: string | null
+          longest_streak: number | null
+          total_games_played: number | null
+          total_questions_answered: number | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          correct_answers?: number | null
+          created_at?: string
+          current_streak?: number | null
+          id?: string
+          incorrect_answers?: number | null
+          last_login_date?: string | null
+          longest_streak?: number | null
+          total_games_played?: number | null
+          total_questions_answered?: number | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          correct_answers?: number | null
+          created_at?: string
+          current_streak?: number | null
+          id?: string
+          incorrect_answers?: number | null
+          last_login_date?: string | null
+          longest_streak?: number | null
+          total_games_played?: number | null
+          total_questions_answered?: number | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
       }
     }
     Views: {

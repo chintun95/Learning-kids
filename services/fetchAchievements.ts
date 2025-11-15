@@ -8,13 +8,13 @@ import { Tables } from "@/types/database.types";
 type ChildAchievementRow = Tables<"ChildAchievement">;
 type AchievementRow = Tables<"Achievements">;
 
-// Combined result with achievement info
+// Combined result with achievement info from Achievements table
 export interface ChildAchievementWithInfo extends ChildAchievementRow {
-  achievement?: Pick<AchievementRow, "title" | "description"> | null;
+  achievement?: Pick<AchievementRow, "id" | "title" | "description"> | null;
 }
 
 /**
- * Fetch all achievements for a given child ID.
+ * Fetch all achievements earned for a given child ID.
  * Includes achievement details (title, description) from Achievements table.
  */
 export async function fetchAchievementsByChildId(
@@ -28,22 +28,30 @@ export async function fetchAchievementsByChildId(
       `
       id,
       dateearned,
-      achievementinfo,
+      achievementearned,
       childid,
       user_id,
-      achievement:achievementinfo (title, description)
+      achievement:Achievements!childachievement_achievementearned_fkey (
+        id,
+        title,
+        description
+      )
     `
     )
     .eq("childid", childId)
     .order("dateearned", { ascending: false });
 
-  if (error) throw new Error(error.message);
-  return data as ChildAchievementWithInfo[];
+  if (error) {
+    console.error("❌ fetchAchievementsByChildId error:", error.message);
+    throw new Error(error.message);
+  }
+
+  return (data ?? []) as ChildAchievementWithInfo[];
 }
 
 /**
  * React Query hook: Fetch achievements for a specific child.
- * Automatically updates when Supabase data changes.
+ * Automatically updates when Supabase data changes in real time.
  */
 export function useAchievementsByChildId(childId?: string) {
   const queryClient = useQueryClient();

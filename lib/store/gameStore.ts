@@ -10,23 +10,26 @@ interface GameState {
   /** Current score mapped by childId */
   currentScores: Record<string, number>;
 
-  /** Get high score for the currently selected child */
+  /** Total points earned mapped by childId */
+  points: Record<string, number>;
+
+  /** Getters */
   getHighScore: () => number;
-
-  /** Get current score for the currently selected child */
   getCurrentScore: () => number;
+  getPoints: () => number;
 
-  /** Set high score for the currently selected child */
+  /** Score setters */
   setHighScore: (score: number) => void;
-
-  /** Set current score for the currently selected child */
   setCurrentScore: (score: number) => void;
 
-  /** Reset current score for the currently selected child */
-  resetCurrentScore: () => void;
+  /** Point setters */
+  addPoints: (amount: number) => void;
+  setPoints: (amount: number) => void;
 
-  /** Reset high score for the currently selected child */
+  /** Resetters */
+  resetCurrentScore: () => void;
   resetHighScore: () => void;
+  resetPoints: () => void;
 }
 
 export const useGameStore = create<GameState>()(
@@ -34,6 +37,7 @@ export const useGameStore = create<GameState>()(
     (set, get) => ({
       highScores: {},
       currentScores: {},
+      points: {},
 
       /** ---------- Getters ---------- **/
       getHighScore: () => {
@@ -48,11 +52,19 @@ export const useGameStore = create<GameState>()(
         return get().currentScores[childId] ?? 0;
       },
 
-      /** ---------- Setters ---------- **/
+      getPoints: () => {
+        const childId = useChildAuthStore.getState().currentChildId;
+        if (!childId) return 0;
+        return get().points[childId] ?? 0;
+      },
+
+      /** ---------- Setters (Scores) ---------- **/
       setHighScore: (score) => {
         const childId = useChildAuthStore.getState().currentChildId;
         if (!childId) return;
+
         const current = get().highScores[childId] ?? 0;
+
         if (score > current) {
           set((state) => ({
             highScores: {
@@ -66,6 +78,7 @@ export const useGameStore = create<GameState>()(
       setCurrentScore: (score) => {
         const childId = useChildAuthStore.getState().currentChildId;
         if (!childId) return;
+
         set((state) => ({
           currentScores: {
             ...state.currentScores,
@@ -74,10 +87,38 @@ export const useGameStore = create<GameState>()(
         }));
       },
 
+      /** ---------- Setters (Points) ---------- **/
+      addPoints: (amount) => {
+        const childId = useChildAuthStore.getState().currentChildId;
+        if (!childId) return;
+
+        const prev = get().points[childId] ?? 0;
+
+        set((state) => ({
+          points: {
+            ...state.points,
+            [childId]: prev + amount,
+          },
+        }));
+      },
+
+      setPoints: (amount) => {
+        const childId = useChildAuthStore.getState().currentChildId;
+        if (!childId) return;
+
+        set((state) => ({
+          points: {
+            ...state.points,
+            [childId]: amount,
+          },
+        }));
+      },
+
       /** ---------- Resetters ---------- **/
       resetCurrentScore: () => {
         const childId = useChildAuthStore.getState().currentChildId;
         if (!childId) return;
+
         set((state) => {
           const copy = { ...state.currentScores };
           delete copy[childId];
@@ -88,10 +129,22 @@ export const useGameStore = create<GameState>()(
       resetHighScore: () => {
         const childId = useChildAuthStore.getState().currentChildId;
         if (!childId) return;
+
         set((state) => {
           const copy = { ...state.highScores };
           delete copy[childId];
           return { highScores: copy };
+        });
+      },
+
+      resetPoints: () => {
+        const childId = useChildAuthStore.getState().currentChildId;
+        if (!childId) return;
+
+        set((state) => {
+          const copy = { ...state.points };
+          delete copy[childId];
+          return { points: copy };
         });
       },
     }),

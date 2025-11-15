@@ -23,6 +23,7 @@ const statusBarHeight =
 
 export default function LessonIndex() {
   const router = useRouter();
+
   const { lessons, fetchLessons, loading } = useLessonStore();
   const { fetchSections, loading: sectionsLoading } = useSectionStore();
 
@@ -46,7 +47,7 @@ export default function LessonIndex() {
 
   return (
     <SafeAreaView style={styles.safeContainer} edges={["top"]}>
-      {/* Header background fills status bar area */}
+      {/* StatusBar filler */}
       <View style={styles.headerBackground} />
 
       <ImageBackground
@@ -55,9 +56,10 @@ export default function LessonIndex() {
         imageStyle={styles.backgroundImage}
         resizeMode="cover"
       >
-        {/* --- Header --- */}
+        {/* Header */}
         <View style={styles.headerBar}>
           <Text style={styles.headerTitle}>Lesson Selection</Text>
+
           <TouchableOpacity onPress={handleClose} style={styles.closeButton}>
             <Ionicons
               name="close"
@@ -67,7 +69,7 @@ export default function LessonIndex() {
           </TouchableOpacity>
         </View>
 
-        {/* --- Lesson List --- */}
+        {/* Lesson List */}
         <ScrollView
           style={styles.scrollContainer}
           contentContainerStyle={styles.scrollContent}
@@ -137,6 +139,7 @@ const styles = StyleSheet.create({
   },
 
   scrollContainer: { flex: 1 },
+
   scrollContent: {
     flexGrow: 1,
     paddingVertical: responsive.screenHeight * 0.03,

@@ -1,16 +1,34 @@
 import { Coordinate } from "../types/types";
 
 /**
- * Ensures the food spawns strictly within the visible play area
- * and never on the outer borders of the game field.
+ * Returns true if two tiles are touching / adjacent
  */
-export function randomFoodPosition(xMax: number, yMax: number): Coordinate {
-  const min = 1; // one step inside from the border
-  const maxX = xMax - 2; // leave space on the right border
-  const maxY = yMax - 2; // leave space on the bottom border
+function isAdjacent(a: Coordinate, b: Coordinate): boolean {
+  return Math.abs(a.x - b.x) <= 1 && Math.abs(a.y - b.y) <= 1;
+}
 
-  const x = Math.floor(Math.random() * (maxX - min + 1)) + min;
-  const y = Math.floor(Math.random() * (maxY - min + 1)) + min;
+/**
+ * Ensure food does NOT spawn:
+ *  - on the snake
+ *  - on the previous food
+ *  - adjacent to previous food
+ */
+export function generateSafeFoodPosition(
+  xMax: number,
+  yMax: number,
+  prevFood: Coordinate,
+  snake: Coordinate[]
+): Coordinate {
+  let pos: Coordinate;
 
-  return { x, y };
+  do {
+    const x = Math.floor(Math.random() * (xMax - 3)) + 2;
+    const y = Math.floor(Math.random() * (yMax - 3)) + 2;
+    pos = { x, y };
+  } while (
+    isAdjacent(pos, prevFood) || // prevent ❓ next to 🟡
+    snake.some((s) => s.x === pos.x && s.y === pos.y) // avoid snake body
+  );
+
+  return pos;
 }

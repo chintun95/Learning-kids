@@ -1,33 +1,33 @@
-import React, { useState, useCallback, useEffect } from "react";
-import {
-  View,
-  Text,
-  FlatList,
-  TouchableOpacity,
-  StyleSheet,
-  StatusBar,
-  Platform,
-  Modal,
-  KeyboardAvoidingView,
-  ImageBackground,
-  useWindowDimensions,
-  ListRenderItemInfo,
-} from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
-import { useRouter } from "expo-router";
-import { Ionicons } from "@expo/vector-icons";
+import InputBox from "@/components/InputBox";
+import ProfileIcon from "@/components/ProfileIcon";
+import SignOutButton from "@/components/SignOutButton";
+import { useChildAchievementStore } from "@/lib/store/childAchievementStore";
 import { useChildAuthStore } from "@/lib/store/childAuthStore";
 import { useSessionStore } from "@/lib/store/sessionStore";
-import { useChildAchievementStore } from "@/lib/store/childAchievementStore";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
-import ProfileIcon from "@/components/ProfileIcon";
-import { responsive } from "@/utils/responsive";
-import SignOutButton from "@/components/SignOutButton";
-import InputBox from "@/components/InputBox";
+import { TablesInsert } from "@/types/database.types"; // adjust if your Supabase types differ
 import { sanitizeInput } from "@/utils/formatter";
 import { useNetworkMonitor } from "@/utils/networkMonitor";
-import { TablesInsert } from "@/types/database.types"; // adjust if your Supabase types differ
+import { responsive } from "@/utils/responsive";
+import { Ionicons } from "@expo/vector-icons";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useRouter } from "expo-router";
+import React, { useCallback, useEffect, useState } from "react";
+import {
+  FlatList,
+  ImageBackground,
+  KeyboardAvoidingView,
+  ListRenderItemInfo,
+  Modal,
+  Platform,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  useWindowDimensions,
+  View,
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 const statusBarHeight =
   Platform.OS === "android" ? StatusBar.currentHeight ?? 0 : 40;
@@ -92,68 +92,89 @@ const ChildIndexScreen: React.FC = () => {
     },
   });
 
-  /** 🏆 Award "Logged In for the First Time" Achievement */
+  /** 🏆 Award "First Login" Achievement (Correct FK + TypeScript safe) */
   const handleFirstTimeLoginAchievement = useCallback(
     async (childId: string): Promise<void> => {
       try {
         if (!childId) return;
-        // Ensure achievements are loaded
-        await fetchChildAchievements(childId);
-        const currentAchievements = achievementsByChild?.[childId] ?? [];
 
-        // Check for existing achievement by achievementinfo
-        const alreadyEarned = currentAchievements.some(
-          (a) =>
-            a.achievementinfo?.trim()?.toLowerCase() ===
-            "logged in for the first time"
+        // Ensure global + child achievements exist
+        await fetchChildAchievements(childId);
+
+        const global = useChildAchievementStore.getState().allAchievements;
+        const childEarned = achievementsByChild?.[childId] ?? [];
+
+        // Find achievement row in Achievements table
+        const firstLoginAchievement = global.find(
+          (a) => a.title.trim().toLowerCase() === "first login"
+        );
+
+        if (!firstLoginAchievement) {
+          console.warn(
+            "⚠️ 'First Login' achievement not found in Achievements table."
+          );
+          return;
+        }
+
+        const achievementId = firstLoginAchievement.id; // UUID (FK)
+
+        // Check if already earned (joined store uses "achievement" object)
+        const alreadyEarned = childEarned.some(
+          (entry) => entry.achievement?.id === achievementId
         );
 
         if (alreadyEarned) return;
 
-        console.log(
-          "🏆 Granting 'Logged In for the first time' achievement..."
-        );
+        console.log("🏆 Adding 'First Login' to ChildAchievement...");
 
+        // Correct Insert type
         const payload: TablesInsert<"ChildAchievement"> = {
           childid: childId,
-          achievementinfo: "Logged In for the first time",
+          achievementearned: achievementId, // ✅ correct FK column
           dateearned: new Date().toISOString(),
+          user_id: null,
         };
 
         const { data, error } = await supabase
           .from("ChildAchievement")
           .insert(payload)
-          .select()
+          .select(
+            `
+            id,
+            achievementearned,
+            childid,
+            dateearned,
+            user_id,
+            achievement:achievementearned (
+              id,
+              title,
+              description
+            )
+          `
+          )
           .single();
 
         if (error) {
-          console.warn("❌ Failed to insert achievement:", error.message);
+          console.warn("❌ Failed to insert ChildAchievement:", error.message);
           return;
         }
 
-        console.log("✅ 'Logged In for the first time' achievement added!");
+        console.log("✅ 'First Login' achievement saved!");
 
-        // Update local cache
+        // Update local store
         useChildAchievementStore.setState((state) => {
-          const prev = state.achievementsByChild?.[childId] ?? [];
+          const prev = state.achievementsByChild[childId] ?? [];
           return {
             achievementsByChild: {
               ...state.achievementsByChild,
-              [childId]: [
-                ...prev,
-                {
-                  ...data,
-                  achievementinfo: "Logged In for the first time",
-                  description: "Signed into profile for the first time",
-                },
-              ],
+              [childId]: [...prev, data],
             },
           };
         });
 
         markFirstTimeComplete();
       } catch (err: any) {
-        console.warn("⚠️ Error handling first-time achievement:", err.message);
+        console.warn("⚠️ Achievement error:", err.message);
       }
     },
     [fetchChildAchievements, achievementsByChild, markFirstTimeComplete]

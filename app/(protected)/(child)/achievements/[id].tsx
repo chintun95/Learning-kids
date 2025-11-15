@@ -1,59 +1,110 @@
-import React, { useState, useMemo, useEffect } from "react";
-import {
-  View,
-  Text,
-  StyleSheet,
-  StatusBar,
-  Platform,
-  TouchableOpacity,
-  FlatList,
-} from "react-native";
+import { useChildAchievementStore } from "@/lib/store/childAchievementStore";
+import type { ChildAchievementWithInfo } from "@/services/fetchAchievements";
+import type { AchievementRow } from "@/services/fetchAllAchievements";
+import { responsive } from "@/utils/responsive";
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { responsive } from "@/utils/responsive";
-import { useChildAchievementStore } from "@/lib/store/childAchievementStore";
+import { useEffect, useMemo, useState } from "react";
+import {
+  FlatList,
+  Platform,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
+
+/** ---------- Types for FlatList items ---------- */
+
+type HeaderItem = {
+  type: "header";
+  id: string;
+  title: string;
+};
+
+type EmptyItem =
+  | { type: "empty-earned"; id: "no-earned" }
+  | { type: "all-earned"; id: "all-earned" };
+
+type AchievementItem = {
+  type: "item";
+  id: string;
+  earned: boolean;
+  dateearned?: string | null;
+  achievement: {
+    title: string;
+    description: string | null;
+  };
+};
+
+type ListItem = HeaderItem | EmptyItem | AchievementItem;
 
 export default function ChildAchievementsScreen() {
   const { id } = useLocalSearchParams();
   const router = useRouter();
   const childId = String(id);
 
-  const { achievementsByChild, fetchChildAchievements, loading } =
-    useChildAchievementStore();
+  const {
+    achievementsByChild,
+    allAchievements,
+    fetchChildAchievements,
+    loading,
+  } = useChildAchievementStore();
 
   const [showEarnedOnly, setShowEarnedOnly] = useState(true);
   const [earnedCollapsed, setEarnedCollapsed] = useState(false);
   const [notEarnedCollapsed, setNotEarnedCollapsed] = useState(false);
 
   useEffect(() => {
-    if (childId) fetchChildAchievements(childId);
+    if (childId) {
+      fetchChildAchievements(childId);
+    }
   }, [childId, fetchChildAchievements]);
 
-  const allAchievements = achievementsByChild[childId] || [];
+  /** ---------- Raw child-earned achievements ---------- */
+  const childAchievements: ChildAchievementWithInfo[] =
+    achievementsByChild[childId] || [];
 
-  // Split and sort achievements
-  const earnedAchievements = useMemo(
+  /** ---------- Earned achievements (with valid date) ---------- */
+  const earnedAchievements = useMemo<ChildAchievementWithInfo[]>(
     () =>
-      [...allAchievements]
-        .filter((a) => a.dateearned)
+      [...childAchievements]
+        .filter((a) => !!a.dateearned)
         .sort(
           (a, b) =>
             new Date(b.dateearned).getTime() - new Date(a.dateearned).getTime()
         ),
-    [allAchievements]
+    [childAchievements]
   );
 
-  const notEarnedAchievements = useMemo(
-    () => [...allAchievements].filter((a) => !a.dateearned),
-    [allAchievements]
-  );
+  /** ---------- Not earned = global achievements - child's earned ---------- */
+  const notEarnedGlobalAchievements = useMemo<AchievementRow[]>(() => {
+    if (!allAchievements || allAchievements.length === 0) return [];
 
-  // Group earned achievements by month-year
-  const groupedEarnedData = useMemo(() => {
-    const groups: Record<string, typeof earnedAchievements> = {};
+    const earnedIds = new Set(
+      childAchievements.map((a) => a.achievementearned)
+    );
+
+    return allAchievements.filter((ach) => !earnedIds.has(ach.id));
+  }, [allAchievements, childAchievements]);
+
+  /** ---------- Group earned by month/year (for Earned-only view) ---------- */
+  const groupedEarnedData = useMemo<ListItem[]>(() => {
+    if (earnedAchievements.length === 0) {
+      return [
+        {
+          type: "empty-earned",
+          id: "no-earned",
+        },
+      ];
+    }
+
+    const groups: Record<string, ChildAchievementWithInfo[]> = {};
+
     earnedAchievements.forEach((a) => {
-      const date = new Date(a.dateearned);
-      const key = date.toLocaleString("default", {
+      const dateObj = new Date(a.dateearned);
+      const key = dateObj.toLocaleString("default", {
         month: "long",
         year: "numeric",
       });
@@ -61,25 +112,55 @@ export default function ChildAchievementsScreen() {
       groups[key].push(a);
     });
 
-    // Flatten into array for FlatList rendering
-    return Object.entries(groups).flatMap(([monthYear, items]) => [
-      { type: "header", id: monthYear, title: monthYear },
-      ...items.map((a) => ({ type: "item", ...a })),
-    ]);
+    const result: ListItem[] = [];
+
+    Object.entries(groups).forEach(([monthYear, items]) => {
+      result.push({
+        type: "header",
+        id: monthYear,
+        title: monthYear,
+      });
+
+      items.forEach((a) => {
+        result.push({
+          type: "item",
+          id: a.id,
+          earned: true,
+          dateearned: a.dateearned,
+          achievement: {
+            title: a.achievement?.title ?? "Untitled Achievement",
+            description: a.achievement?.description ?? null,
+          },
+        });
+      });
+    });
+
+    return result;
   }, [earnedAchievements]);
 
-  // Combined list for "All" toggle
-  const allData = useMemo(() => {
-    const data: any[] = [];
+  /** ---------- Combined All view: Earned + Not Earned ---------- */
+  const allData = useMemo<ListItem[]>(() => {
+    const data: ListItem[] = [];
 
-    data.push({ type: "header", id: "earned-header", title: "Earned" });
+    // --- Earned section ---
+    data.push({
+      type: "header",
+      id: "earned-header",
+      title: "Earned",
+    });
+
     if (!earnedCollapsed) {
       if (earnedAchievements.length > 0) {
         data.push(
-          ...earnedAchievements.map((a) => ({
+          ...earnedAchievements.map<ListItem>((a) => ({
             type: "item",
-            ...a,
+            id: a.id,
             earned: true,
+            dateearned: a.dateearned,
+            achievement: {
+              title: a.achievement?.title ?? "Untitled Achievement",
+              description: a.achievement?.description ?? null,
+            },
           }))
         );
       } else {
@@ -87,14 +168,25 @@ export default function ChildAchievementsScreen() {
       }
     }
 
-    data.push({ type: "header", id: "not-earned-header", title: "Not Earned" });
+    // --- Not Earned section (from global Achievements table) ---
+    data.push({
+      type: "header",
+      id: "not-earned-header",
+      title: "Not Earned",
+    });
+
     if (!notEarnedCollapsed) {
-      if (notEarnedAchievements.length > 0) {
+      if (notEarnedGlobalAchievements.length > 0) {
         data.push(
-          ...notEarnedAchievements.map((a) => ({
+          ...notEarnedGlobalAchievements.map<ListItem>((ach) => ({
             type: "item",
-            ...a,
+            id: ach.id,
             earned: false,
+            dateearned: null,
+            achievement: {
+              title: ach.title,
+              description: ach.description ?? null,
+            },
           }))
         );
       } else {
@@ -105,13 +197,13 @@ export default function ChildAchievementsScreen() {
     return data;
   }, [
     earnedAchievements,
-    notEarnedAchievements,
+    notEarnedGlobalAchievements,
     earnedCollapsed,
     notEarnedCollapsed,
   ]);
 
-  // Render function for FlatList
-  const renderItem = ({ item }: any) => {
+  /** ---------- Render function ---------- */
+  const renderItem = ({ item }: { item: ListItem }) => {
     if (item.type === "header") {
       const isEarned = item.id === "earned-header";
       const isNotEarned = item.id === "not-earned-header";
@@ -119,12 +211,12 @@ export default function ChildAchievementsScreen() {
         <TouchableOpacity
           style={styles.collapsibleHeader}
           onPress={() => {
-            if (isEarned) setEarnedCollapsed(!earnedCollapsed);
-            if (isNotEarned) setNotEarnedCollapsed(!notEarnedCollapsed);
+            if (isEarned) setEarnedCollapsed((prev) => !prev);
+            if (isNotEarned) setNotEarnedCollapsed((prev) => !prev);
           }}
         >
           <Text style={styles.sectionHeaderText}>{item.title}</Text>
-          {isEarned || isNotEarned ? (
+          {(isEarned || isNotEarned) && (
             <Ionicons
               name={
                 (isEarned && earnedCollapsed) ||
@@ -135,7 +227,7 @@ export default function ChildAchievementsScreen() {
               size={responsive.screenWidth * 0.05}
               color="#111827"
             />
-          ) : null}
+          )}
         </TouchableOpacity>
       );
     }
@@ -156,39 +248,42 @@ export default function ChildAchievementsScreen() {
       );
     }
 
-    if (item.type === "item") {
-      return (
-        <View style={styles.achievementCard}>
-          <View style={styles.row}>
-            <Text style={styles.achievementTitle}>
-              {item.achievement?.title ?? "Untitled Achievement"}
-            </Text>
-            {showEarnedOnly ? (
+    // item.type === "item"
+    return (
+      <View style={styles.achievementCard}>
+        <View style={styles.row}>
+          <Text style={styles.achievementTitle}>
+            {item.achievement.title || "Untitled Achievement"}
+          </Text>
+
+          {showEarnedOnly ? (
+            item.dateearned ? (
               <Text style={styles.achievementDate}>
                 {new Date(item.dateearned).toLocaleDateString()}
               </Text>
-            ) : (
-              <Text
-                style={[
-                  styles.statusText,
-                  item.earned ? styles.statusEarned : styles.statusNotEarned,
-                ]}
-              >
-                {item.earned ? "Earned" : "Not Earned"}
-              </Text>
-            )}
-          </View>
-          {item.achievement?.description ? (
-            <Text style={styles.achievementDescription}>
-              {item.achievement.description}
+            ) : null
+          ) : (
+            <Text
+              style={[
+                styles.statusText,
+                item.earned ? styles.statusEarned : styles.statusNotEarned,
+              ]}
+            >
+              {item.earned ? "Earned" : "Not Earned"}
             </Text>
-          ) : null}
+          )}
         </View>
-      );
-    }
 
-    return null;
+        {item.achievement.description ? (
+          <Text style={styles.achievementDescription}>
+            {item.achievement.description}
+          </Text>
+        ) : null}
+      </View>
+    );
   };
+
+  const hasAnyGlobalAchievements = allAchievements.length > 0;
 
   return (
     <View style={styles.container}>
@@ -252,12 +347,14 @@ export default function ChildAchievementsScreen() {
 
       {loading ? (
         <Text style={styles.loadingText}>Loading achievements...</Text>
-      ) : allAchievements.length === 0 ? (
-        <Text style={styles.noAchievementsText}>No achievements found.</Text>
+      ) : !hasAnyGlobalAchievements ? (
+        <Text style={styles.noAchievementsText}>
+          No achievements configured yet.
+        </Text>
       ) : (
         <FlatList
           data={showEarnedOnly ? groupedEarnedData : allData}
-          keyExtractor={(item) => item.id ?? Math.random().toString()}
+          keyExtractor={(item) => item.id}
           renderItem={renderItem}
           showsVerticalScrollIndicator={false}
           contentContainerStyle={{

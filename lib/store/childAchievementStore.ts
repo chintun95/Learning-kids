@@ -1,3 +1,4 @@
+// lib/store/childAchievementStore.ts
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 import NetInfo from "@react-native-community/netinfo";
@@ -7,22 +8,15 @@ import {
   fetchAchievementsByChildId,
   ChildAchievementWithInfo,
 } from "@/services/fetchAchievements";
+import {
+  fetchAllAchievements,
+  AchievementRow,
+} from "@/services/fetchAllAchievements";
 
-interface ChildAchievementState {
-  achievementsByChild: Record<string, ChildAchievementWithInfo[]>;
-  loading: boolean;
-  syncing: boolean;
-  error: string | null;
+/* ===========================================================
+   Utility
+=========================================================== */
 
-  fetchChildAchievements: (childId: string) => Promise<void>;
-  refreshAll: () => Promise<void>;
-  clearAll: () => void;
-
-  /** Completely clears all data and removes persisted cache */
-  resetStore: () => void;
-}
-
-/** Simple UUID format check */
 function isValidUUID(value?: string | null): boolean {
   return (
     !!value &&
@@ -32,177 +26,223 @@ function isValidUUID(value?: string | null): boolean {
   );
 }
 
-/**
- * Local-first store: reads from cache first, syncs when online.
- * Offline-safe: never clears cached data when disconnected.
- */
+/* ===========================================================
+   State
+=========================================================== */
+
+interface ChildAchievementState {
+  /** Global achievements (from Achievements table) */
+  allAchievements: AchievementRow[];
+
+  /** Child earned achievements */
+  achievementsByChild: Record<string, ChildAchievementWithInfo[]>;
+
+  loading: boolean;
+  syncing: boolean;
+  error: string | null;
+
+  /* Actions */
+  loadGlobalAchievementsOnce: () => Promise<void>;
+  fetchChildAchievements: (childId: string) => Promise<void>;
+  refreshAll: () => Promise<void>;
+  clearAll: () => void;
+  resetStore: () => void;
+}
+
+/* ===========================================================
+   Store
+=========================================================== */
+
 export const useChildAchievementStore = create<ChildAchievementState>()(
   persist(
     (set, get) => {
-      const activeChannels: Record<
+      let achievementRealtimeChannel: ReturnType<
+        typeof supabase.channel
+      > | null = null;
+      const childChannels: Record<
         string,
         ReturnType<typeof supabase.channel>
       > = {};
 
-      /** Internal helper: safely sync with Supabase when online */
-      async function syncChildAchievements(childId: string) {
-        if (!isValidUUID(childId)) {
-          console.warn(`⚠️ Skipping sync — invalid childId:`, childId);
-          return;
-        }
+      /* ----------------------------
+         GLOBAL: Load Achievements Once
+      ---------------------------- */
+      async function loadGlobalAchievementsOnce() {
+        const { allAchievements } = get();
 
-        const netState = await NetInfo.fetch();
-        if (!netState.isConnected) {
-          console.log(`📴 Offline — using cached achievements for ${childId}`);
+        // Already have global achievements → do NOT re-fetch
+        if (allAchievements.length > 0) return;
+
+        const net = await NetInfo.fetch();
+        if (!net.isConnected) {
+          console.log("📴 Offline — cannot fetch global achievements.");
           return;
         }
 
         try {
-          console.log(`🌐 Syncing achievements for child ${childId}...`);
-          const latest = await fetchAchievementsByChildId(childId);
-          set((state) => ({
-            achievementsByChild: {
-              ...state.achievementsByChild,
-              [childId]: latest,
-            },
-            syncing: false,
-          }));
+          console.log("🌐 Fetching global achievements (first time)...");
+          const all = await fetchAllAchievements();
+          set({ allAchievements: all });
+
+          // Subscribe to global achievement changes
+          if (achievementRealtimeChannel) {
+            supabase.removeChannel(achievementRealtimeChannel);
+          }
+
+          achievementRealtimeChannel = supabase
+            .channel("achievements-global-realtime")
+            .on(
+              "postgres_changes",
+              {
+                event: "*",
+                schema: "public",
+                table: "Achievements",
+              },
+              async () => {
+                console.log("🔄 Global achievements changed — refreshing...");
+                const updated = await fetchAllAchievements();
+                set({ allAchievements: updated });
+              }
+            )
+            .subscribe();
         } catch (err: any) {
-          console.warn(
-            `❌ Failed to sync achievements for ${childId}:`,
-            err.message
-          );
-          set({ syncing: false });
+          console.error("❌ Failed to fetch global achievements:", err);
+          set({ error: err.message });
         }
       }
 
+      /* ----------------------------
+         CHILD-SPECIFIC ACHIEVEMENTS
+      ---------------------------- */
+      async function fetchChildAchievements(childId: string) {
+        if (!isValidUUID(childId)) {
+          console.warn("⚠️ Invalid childId — skipping fetch.");
+          return;
+        }
+
+        // Always ensure global achievements are available
+        await get().loadGlobalAchievementsOnce();
+
+        set({ loading: true, error: null });
+
+        try {
+          const earned = await fetchAchievementsByChildId(childId);
+
+          set((state) => ({
+            achievementsByChild: {
+              ...state.achievementsByChild,
+              [childId]: earned,
+            },
+            loading: false,
+          }));
+
+          const net = await NetInfo.fetch();
+          if (net.isConnected) {
+            // Subscribe to child's updates
+            if (childChannels[childId]) {
+              supabase.removeChannel(childChannels[childId]);
+            }
+
+            const channel = supabase
+              .channel(`child-achievements-${childId}`)
+              .on(
+                "postgres_changes",
+                {
+                  event: "*",
+                  schema: "public",
+                  table: "ChildAchievement",
+                  filter: `childid=eq.${childId}`,
+                },
+                async () => {
+                  console.log(
+                    "🔁 ChildAchievement updated — refreshing child list..."
+                  );
+                  const updatedEarned = await fetchAchievementsByChildId(
+                    childId
+                  );
+                  set((state) => ({
+                    achievementsByChild: {
+                      ...state.achievementsByChild,
+                      [childId]: updatedEarned,
+                    },
+                  }));
+                }
+              )
+              .subscribe();
+
+            childChannels[childId] = channel;
+          }
+        } catch (error: any) {
+          console.error("❌ Failed to fetch child achievements:", error);
+          set({ error: error.message, loading: false });
+        }
+      }
+
+      /* ----------------------------
+         REFRESH ALL CHILDREN THAT ARE LOADED
+      ---------------------------- */
+      async function refreshAll() {
+        const { achievementsByChild } = get();
+        const childIds = Object.keys(achievementsByChild).filter(isValidUUID);
+
+        if (childIds.length === 0) return;
+
+        set({ syncing: true });
+
+        for (const childId of childIds) {
+          await fetchChildAchievements(childId);
+        }
+
+        set({ syncing: false });
+      }
+
+      /* ----------------------------
+         CLEAR CACHE
+      ---------------------------- */
+      function clearAll() {
+        Object.values(childChannels).forEach((ch) =>
+          supabase.removeChannel(ch)
+        );
+        if (achievementRealtimeChannel)
+          supabase.removeChannel(achievementRealtimeChannel);
+
+        set({
+          allAchievements: [],
+          achievementsByChild: {},
+          error: null,
+          loading: false,
+          syncing: false,
+        });
+      }
+
+      /* ----------------------------
+         HARD RESET STORE
+      ---------------------------- */
+      function resetStore() {
+        clearAll();
+        zustandStorage.removeItem("child-achievement-storage");
+      }
+
+      /* ----------------------------
+         Exposed Store
+      ---------------------------- */
       return {
+        allAchievements: [],
         achievementsByChild: {},
         loading: false,
         syncing: false,
         error: null,
 
-        /** Local-first fetch (uses cache immediately, syncs in background) */
-        fetchChildAchievements: async (childId: string) => {
-          if (!isValidUUID(childId)) {
-            console.warn("⚠️ Invalid or missing childId — skipping fetch.");
-            return;
-          }
-
-          set({ loading: true, error: null });
-          try {
-            // Load cache instantly
-            const cached = get().achievementsByChild[childId];
-            if (cached?.length) {
-              console.log(`💾 Loaded cached achievements for ${childId}`);
-              set({ loading: false });
-            }
-
-            // Sync in background if online
-            syncChildAchievements(childId);
-
-            // Manage realtime subscription if online
-            const netState = await NetInfo.fetch();
-            if (netState.isConnected) {
-              if (activeChannels[childId]) {
-                supabase.removeChannel(activeChannels[childId]);
-              }
-
-              const channel = supabase
-                .channel(`child-achievements-store-${childId}`)
-                .on(
-                  "postgres_changes",
-                  {
-                    event: "*",
-                    schema: "public",
-                    table: "ChildAchievement",
-                    filter: `childid=eq.${childId}`,
-                  },
-                  () => syncChildAchievements(childId)
-                )
-                .subscribe();
-
-              activeChannels[childId] = channel;
-            }
-
-            set({ loading: false });
-          } catch (err: any) {
-            console.error("❌ Local-first fetch failed:", err.message);
-            set({
-              error: err.message ?? "Failed to fetch achievements",
-              loading: false,
-            });
-          }
-        },
-
-        /** Refresh all currently loaded child achievements */
-        refreshAll: async () => {
-          const { achievementsByChild } = get();
-          const childIds = Object.keys(achievementsByChild).filter(isValidUUID);
-          if (childIds.length === 0) return;
-
-          set({ syncing: true });
-          for (const id of childIds) {
-            await syncChildAchievements(id);
-          }
-          set({ syncing: false });
-        },
-
-        /** Clear all cached data + subscriptions */
-        clearAll: () => {
-          Object.values(activeChannels).forEach((channel) =>
-            supabase.removeChannel(channel)
-          );
-          set({
-            achievementsByChild: {},
-            error: null,
-            loading: false,
-            syncing: false,
-          });
-        },
-
-        /** ✅ Completely reset the store and remove MMKV data */
-        resetStore: () => {
-          console.log("🧹 Resetting childAchievementStore...");
-          Object.values(activeChannels).forEach((channel) =>
-            supabase.removeChannel(channel)
-          );
-          for (const key of Object.keys(activeChannels)) {
-            delete activeChannels[key];
-          }
-
-          set({
-            achievementsByChild: {},
-            error: null,
-            loading: false,
-            syncing: false,
-          });
-
-          // Remove persisted data from MMKV
-          zustandStorage.removeItem("child-achievement-storage");
-        },
+        loadGlobalAchievementsOnce,
+        fetchChildAchievements,
+        refreshAll,
+        clearAll,
+        resetStore,
       };
     },
     {
       name: "child-achievement-storage",
       storage: createJSONStorage(() => zustandStorage),
-      onRehydrateStorage: () => (state) => {
-        if (!state) return;
-        // Clean up invalid keys and re-subscribe safely
-        const { achievementsByChild, fetchChildAchievements } =
-          useChildAchievementStore.getState();
-
-        Object.keys(achievementsByChild || {}).forEach((childId) => {
-          if (isValidUUID(childId)) {
-            fetchChildAchievements(childId);
-          } else {
-            console.log(`🧹 Removing invalid key from cache: ${childId}`);
-            delete achievementsByChild[childId];
-          }
-        });
-
-        console.log("♻️ ChildAchievementStore rehydrated (local-first mode).");
-      },
     }
   )
 );

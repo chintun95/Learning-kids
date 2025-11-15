@@ -28,12 +28,14 @@ import {
 import { useCreateParent } from "@/services/createParent";
 import { fetchParentByEmail } from "@/services/fetchParent";
 import { useAuthStore } from "@/lib/store/authStore";
+import { useRouter } from "expo-router";
 
 const statusBarHeight =
   Platform.OS === "android" ? StatusBar.currentHeight ?? 0 : 40;
 
 export default function ProtectedParentIndex() {
   const { user } = useUser();
+  const router = useRouter();
   const [showModal, setShowModal] = useState(false);
   const [syncingParent, setSyncingParent] = useState(false);
 
@@ -121,7 +123,6 @@ export default function ProtectedParentIndex() {
 
   return (
     <SafeAreaView style={styles.safeContainer} edges={["top"]}>
-      {/* Header background fills the status bar area */}
       <View style={styles.headerBackground} />
 
       <ImageBackground
@@ -132,7 +133,6 @@ export default function ProtectedParentIndex() {
       >
         {/* --- Fixed Header Area --- */}
         <View style={{ zIndex: 2 }}>
-          {/* --- Welcome Banner --- */}
           <View style={styles.banner}>
             <Text style={styles.welcomeText}>
               Welcome 👋,{" "}
@@ -142,7 +142,7 @@ export default function ProtectedParentIndex() {
             </Text>
           </View>
 
-          {/* --- Children Header (Fixed) --- */}
+          {/* Header: Children Under Account */}
           <View style={styles.childrenHeaderContainer}>
             <Text style={styles.childrenHeaderText}>
               Children Under Account
@@ -166,7 +166,7 @@ export default function ProtectedParentIndex() {
           }}
           showsVerticalScrollIndicator={false}
         >
-          {/* --- Loading and Error States --- */}
+          {/* Loading + Error */}
           {isLoading && (
             <View style={{ paddingVertical: responsive.screenWidth * 0.05 }}>
               <ActivityIndicator />
@@ -181,12 +181,29 @@ export default function ProtectedParentIndex() {
             </View>
           )}
 
-          {/* --- Add Child Button --- */}
+          {/* --- Add Child Button (Only if < threshold) --- */}
           {!isLoading && !isError && childCount < CHILD_THRESHOLD && (
             <AddChild />
           )}
 
-          {/* --- No Children Fallback --- */}
+          {/* --- NEW: Always Visible “Create Question” Button --- */}
+          <TouchableOpacity
+            style={styles.createQuestionBtn}
+            onPress={() => router.push("/(protected)/(parent)/add-question")}
+          >
+            <Ionicons
+              name="create-outline"
+              size={responsive.buttonFontSize * 1.5}
+              color="#000"
+              style={styles.createIcon}
+            />
+            <Text style={styles.createQuestionText}>Create Question</Text>
+          </TouchableOpacity>
+
+          {/* Separator */}
+          <View style={styles.separator} />
+
+          {/* No Children Message */}
           {!isLoading && !isError && childCount === 0 && (
             <View style={styles.noChildContainer}>
               <Text style={styles.noChildText}>
@@ -195,7 +212,7 @@ export default function ProtectedParentIndex() {
             </View>
           )}
 
-          {/* --- Child List --- */}
+          {/* Child List */}
           {!isLoading && !isError && childCount > 0 && (
             <FlatList
               data={children as ChildCardModel[]}
@@ -209,7 +226,7 @@ export default function ProtectedParentIndex() {
           )}
         </ScrollView>
 
-        {/* --- Status Indicator Modal --- */}
+        {/* Status Info Modal */}
         <Modal
           visible={showModal}
           transparent
@@ -251,19 +268,18 @@ export default function ProtectedParentIndex() {
   );
 }
 
+/* ---------------- Styles ---------------- */
 const styles = StyleSheet.create({
   safeContainer: { flex: 1, backgroundColor: "#fff" },
   background: { flex: 1, width: "100%", height: "100%" },
-  backgroundImage: { transform: [{ scale: 1.2 }] }, // Zoomed like profile
-  container: { flex: 1 },
+  backgroundImage: { transform: [{ scale: 1.2 }] },
 
-  // New overlay to extend header color into the status bar area
   headerBackground: {
     position: "absolute",
     top: 0,
     left: 0,
     right: 0,
-    height: statusBarHeight + 40, // covers the status bar area
+    height: statusBarHeight + 40,
     backgroundColor: "rgba(217,217,217,0.85)",
     zIndex: 1,
   },
@@ -278,7 +294,6 @@ const styles = StyleSheet.create({
     borderBottomLeftRadius: 20,
     borderBottomRightRadius: 20,
     alignItems: "center",
-    justifyContent: "center",
     shadowColor: "#000",
     shadowOpacity: 0.25,
     shadowRadius: 4,
@@ -301,13 +316,50 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginTop: responsive.screenHeight * 0.02,
     marginHorizontal: responsive.screenWidth * 0.05,
-    zIndex: 2,
   },
   childrenHeaderText: {
     fontSize: responsive.isNarrowScreen ? 16 : 18,
     fontFamily: "Fredoka-Medium",
     color: "#111827",
   },
+
+  createQuestionBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(217,217,217,0.85)",
+    borderRadius: responsive.screenWidth * 0.04,
+    borderWidth: 2,
+    borderColor: "#999",
+    paddingVertical: responsive.screenHeight * 0.02,
+    paddingHorizontal: responsive.screenWidth * 0.05,
+    marginTop: responsive.screenHeight * 0.015,
+    marginHorizontal: responsive.screenWidth * 0.05,
+    shadowColor: "#000",
+    shadowOpacity: 0.25,
+    shadowRadius: 5,
+    elevation: 4,
+  },
+  createIcon: {
+    marginRight: responsive.screenWidth * 0.03,
+  },
+  createQuestionText: {
+    fontFamily: "Fredoka-Bold",
+    fontSize: responsive.buttonFontSize * 1.05,
+    color: "#000",
+    textAlign: "center",
+  },
+
+  separator: {
+    width: "85%",
+    height: 2,
+    backgroundColor: "#999",
+    alignSelf: "center",
+    marginTop: responsive.screenHeight * 0.02,
+    marginBottom: responsive.screenHeight * 0.02,
+    opacity: 0.6,
+  },
+
   noChildContainer: {
     alignItems: "center",
     justifyContent: "center",
@@ -319,6 +371,7 @@ const styles = StyleSheet.create({
     fontFamily: "Fredoka-Regular",
     fontStyle: "italic",
   },
+
   modalOverlay: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.3)",
