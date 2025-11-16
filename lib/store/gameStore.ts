@@ -1,37 +1,109 @@
-import { create } from "zustand";
-import { createJSONStorage, persist } from "zustand/middleware";
+// lib/store/gameStore.ts
 import { zustandStorage } from "@/lib/mmkv-storage";
 import { useChildAuthStore } from "@/lib/store/childAuthStore";
+import { supabase } from "@/lib/supabase";
+import NetInfo from "@react-native-community/netinfo";
+import { create } from "zustand";
+import { createJSONStorage, persist } from "zustand/middleware";
+
+export type GameType = "snake" | "flappy";
 
 interface GameState {
-  /** High scores mapped by childId */
-  highScores: Record<string, number>;
+  highScores: Record<string, Record<GameType, number>>;
+  currentScores: Record<string, Record<GameType, number>>;
+  points: Record<string, Record<GameType, number>>;
 
-  /** Current score mapped by childId */
-  currentScores: Record<string, number>;
+  getHighScore: (game: GameType) => number;
+  getCurrentScore: (game: GameType) => number;
+  getPoints: (game: GameType) => number;
 
-  /** Total points earned mapped by childId */
-  points: Record<string, number>;
+  setHighScore: (game: GameType, score: number) => Promise<void>;
+  setCurrentScore: (game: GameType, score: number) => void;
 
-  /** Getters */
-  getHighScore: () => number;
-  getCurrentScore: () => number;
-  getPoints: () => number;
+  addPoints: (game: GameType, amount: number) => Promise<void>;
+  setPoints: (game: GameType, amount: number) => Promise<void>;
 
-  /** Score setters */
-  setHighScore: (score: number) => void;
-  setCurrentScore: (score: number) => void;
+  resetCurrentScore: (game: GameType) => void;
+  resetHighScore: (game: GameType) => void;
+  resetPoints: (game: GameType) => void;
 
-  /** Point setters */
-  addPoints: (amount: number) => void;
-  setPoints: (amount: number) => void;
-
-  /** Resetters */
-  resetCurrentScore: () => void;
-  resetHighScore: () => void;
-  resetPoints: () => void;
+  syncGameDataToSupabase: (childId: string, game: GameType) => Promise<void>;
 }
 
+/* -------------------------------------------------------
+   Utility
+------------------------------------------------------- */
+function ensureChildGameMap(
+  map: Record<string, Record<GameType, number>>,
+  childId: string,
+  game: GameType,
+  defaultValue: number
+) {
+  if (!map[childId]) {
+    map[childId] = {} as Record<GameType, number>;
+  }
+  if (map[childId][game] === undefined) {
+    map[childId][game] = defaultValue;
+  }
+}
+
+/* -------------------------------------------------------
+   Online check
+------------------------------------------------------- */
+async function isOnline(): Promise<boolean> {
+  const state = await NetInfo.fetch();
+  return !!state.isConnected;
+}
+
+/* -------------------------------------------------------
+   SUPABASE UPSERT — with completedAt + logging
+------------------------------------------------------- */
+async function upsertGameToSupabase(params: {
+  childId: string;
+  game: GameType;
+  score: number;
+  highscore: number;
+  points: number;
+}) {
+  const { childId, game, score, highscore, points } = params;
+
+  const completedAt = new Date().toISOString();
+
+  console.log(
+    "%c🟣 SYNC → Supabase (gamestore)",
+    "color:#9b59b6;font-weight:bold;",
+    { game, score, highscore, points, completedAt, childId }
+  );
+
+  const { error } = await supabase.from("gamestore").upsert(
+    {
+      gametitle: game,
+      score,
+      highscore,
+      points,
+      childid: childId,
+      completedat: completedAt,
+    },
+    { onConflict: "childid,gametitle" }
+  );
+
+  if (error) {
+    console.log(
+      "%c🔴 ERROR syncing gamestore",
+      "color:red;font-weight:bold;",
+      error
+    );
+  } else {
+    console.log(
+      "%c🟢 SYNC SUCCESS — gamestore updated!",
+      "color:#27ae60;font-weight:bold;"
+    );
+  }
+}
+
+/* -------------------------------------------------------
+   ZUSTAND STORE
+------------------------------------------------------- */
 export const useGameStore = create<GameState>()(
   persist(
     (set, get) => ({
@@ -39,112 +111,228 @@ export const useGameStore = create<GameState>()(
       currentScores: {},
       points: {},
 
-      /** ---------- Getters ---------- **/
-      getHighScore: () => {
+      /* -------------------------------
+         GETTERS
+      ------------------------------- */
+      getHighScore: (game) => {
         const childId = useChildAuthStore.getState().currentChildId;
-        if (!childId) return 0;
-        return get().highScores[childId] ?? 0;
+        return childId ? get().highScores[childId]?.[game] ?? 0 : 0;
       },
 
-      getCurrentScore: () => {
+      getCurrentScore: (game) => {
         const childId = useChildAuthStore.getState().currentChildId;
-        if (!childId) return 0;
-        return get().currentScores[childId] ?? 0;
+        return childId ? get().currentScores[childId]?.[game] ?? 0 : 0;
       },
 
-      getPoints: () => {
+      getPoints: (game) => {
         const childId = useChildAuthStore.getState().currentChildId;
-        if (!childId) return 0;
-        return get().points[childId] ?? 0;
+        return childId ? get().points[childId]?.[game] ?? 0 : 0;
       },
 
-      /** ---------- Setters (Scores) ---------- **/
-      setHighScore: (score) => {
+      /* -------------------------------
+         SET HIGH SCORE
+      ------------------------------- */
+      setHighScore: async (game, score) => {
         const childId = useChildAuthStore.getState().currentChildId;
         if (!childId) return;
 
-        const current = get().highScores[childId] ?? 0;
+        const state = get();
+        ensureChildGameMap(state.highScores, childId, game, 0);
 
-        if (score > current) {
-          set((state) => ({
+        const prevHigh = state.highScores[childId][game];
+
+        if (score > prevHigh) {
+          console.log(
+            "%c🔵 LOCAL: Updating high score",
+            "color:#3498db;font-weight:bold;",
+            { game, score }
+          );
+
+          set((s) => ({
             highScores: {
-              ...state.highScores,
-              [childId]: score,
+              ...s.highScores,
+              [childId]: { ...s.highScores[childId], [game]: score },
             },
           }));
         }
+
+        if (await isOnline()) {
+          await upsertGameToSupabase({
+            childId,
+            game,
+            score: state.currentScores[childId]?.[game] ?? 0,
+            highscore: score,
+            points: state.points[childId]?.[game] ?? 0,
+          });
+        }
       },
 
-      setCurrentScore: (score) => {
+      /* -------------------------------
+         SET CURRENT SCORE
+      ------------------------------- */
+      setCurrentScore: (game, score) => {
         const childId = useChildAuthStore.getState().currentChildId;
         if (!childId) return;
 
-        set((state) => ({
+        console.log(
+          "%c🔵 LOCAL: Setting current score",
+          "color:#3498db;font-weight:bold;",
+          { game, score }
+        );
+
+        set((s) => ({
           currentScores: {
-            ...state.currentScores,
-            [childId]: score,
+            ...s.currentScores,
+            [childId]: { ...(s.currentScores[childId] ?? {}), [game]: score },
           },
         }));
       },
 
-      /** ---------- Setters (Points) ---------- **/
-      addPoints: (amount) => {
+      /* -------------------------------
+         ADD POINTS
+      ------------------------------- */
+      addPoints: async (game, amount) => {
         const childId = useChildAuthStore.getState().currentChildId;
         if (!childId) return;
 
-        const prev = get().points[childId] ?? 0;
+        const previous = get().points[childId]?.[game] ?? 0;
+        const newVal = previous + amount;
 
-        set((state) => ({
+        console.log(
+          "%c🔵 LOCAL: Adding points",
+          "color:#3498db;font-weight:bold;",
+          { game, amount, newTotal: newVal }
+        );
+
+        set((s) => ({
           points: {
-            ...state.points,
-            [childId]: prev + amount,
+            ...s.points,
+            [childId]: { ...(s.points[childId] ?? {}), [game]: newVal },
           },
         }));
+
+        if (await isOnline()) {
+          await upsertGameToSupabase({
+            childId,
+            game,
+            score: get().currentScores[childId]?.[game] ?? 0,
+            highscore: get().highScores[childId]?.[game] ?? 0,
+            points: newVal,
+          });
+        }
       },
 
-      setPoints: (amount) => {
+      /* -------------------------------
+         SET POINTS ABSOLUTE
+      ------------------------------- */
+      setPoints: async (game, amount) => {
         const childId = useChildAuthStore.getState().currentChildId;
         if (!childId) return;
 
-        set((state) => ({
+        console.log(
+          "%c🔵 LOCAL: Setting points",
+          "color:#3498db;font-weight:bold;",
+          { game, amount }
+        );
+
+        set((s) => ({
           points: {
-            ...state.points,
-            [childId]: amount,
+            ...s.points,
+            [childId]: { ...(s.points[childId] ?? {}), [game]: amount },
           },
         }));
+
+        if (await isOnline()) {
+          await upsertGameToSupabase({
+            childId,
+            game,
+            score: get().currentScores[childId]?.[game] ?? 0,
+            highscore: get().highScores[childId]?.[game] ?? 0,
+            points: amount,
+          });
+        }
       },
 
-      /** ---------- Resetters ---------- **/
-      resetCurrentScore: () => {
+      /* -------------------------------
+         RESETTERS
+      ------------------------------- */
+      resetCurrentScore: (game) => {
         const childId = useChildAuthStore.getState().currentChildId;
         if (!childId) return;
 
-        set((state) => {
-          const copy = { ...state.currentScores };
-          delete copy[childId];
-          return { currentScores: copy };
+        console.log(
+          "%c🔵 LOCAL: Reset current score",
+          "color:#3498db;font-weight:bold;",
+          { game }
+        );
+
+        set((s) => {
+          const copy = { ...(s.currentScores[childId] ?? {}) };
+          delete copy[game];
+          return { currentScores: { ...s.currentScores, [childId]: copy } };
         });
       },
 
-      resetHighScore: () => {
+      resetHighScore: (game) => {
         const childId = useChildAuthStore.getState().currentChildId;
         if (!childId) return;
 
-        set((state) => {
-          const copy = { ...state.highScores };
-          delete copy[childId];
-          return { highScores: copy };
+        console.log(
+          "%c🔵 LOCAL: Reset high score",
+          "color:#3498db;font-weight:bold;",
+          { game }
+        );
+
+        set((s) => {
+          const copy = { ...(s.highScores[childId] ?? {}) };
+          delete copy[game];
+          return { highScores: { ...s.highScores, [childId]: copy } };
         });
       },
 
-      resetPoints: () => {
+      resetPoints: (game) => {
         const childId = useChildAuthStore.getState().currentChildId;
         if (!childId) return;
 
-        set((state) => {
-          const copy = { ...state.points };
-          delete copy[childId];
-          return { points: copy };
+        console.log(
+          "%c🔵 LOCAL: Reset points",
+          "color:#3498db;font-weight:bold;",
+          { game }
+        );
+
+        set((s) => {
+          const copy = { ...(s.points[childId] ?? {}) };
+          delete copy[game];
+          return { points: { ...s.points, [childId]: copy } };
+        });
+      },
+
+      /* -------------------------------
+         MANUAL SYNC
+      ------------------------------- */
+      syncGameDataToSupabase: async (childId, game) => {
+        console.log(
+          "%c🟣 SYNC: Manual syncGameDataToSupabase() called",
+          "color:#9b59b6;font-weight:bold;",
+          { childId, game }
+        );
+
+        if (!(await isOnline())) {
+          console.log(
+            "%c⚠ Offline — skipping sync",
+            "color:orange;font-weight:bold;"
+          );
+          return;
+        }
+
+        const state = get();
+
+        await upsertGameToSupabase({
+          childId,
+          game,
+          score: state.currentScores[childId]?.[game] ?? 0,
+          highscore: state.highScores[childId]?.[game] ?? 0,
+          points: state.points[childId]?.[game] ?? 0,
         });
       },
     }),

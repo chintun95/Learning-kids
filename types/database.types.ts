@@ -337,6 +337,47 @@ export type Database = {
           },
         ]
       }
+      gamestore: {
+        Row: {
+          childid: string
+          completedat: string | null
+          gametitle: string
+          highscore: number | null
+          id: string
+          points: number | null
+          score: number | null
+          user_id: string | null
+        }
+        Insert: {
+          childid: string
+          completedat?: string | null
+          gametitle: string
+          highscore?: number | null
+          id?: string
+          points?: number | null
+          score?: number | null
+          user_id?: string | null
+        }
+        Update: {
+          childid?: string
+          completedat?: string | null
+          gametitle?: string
+          highscore?: number | null
+          id?: string
+          points?: number | null
+          score?: number | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "gamestore_childid_fkey"
+            columns: ["childid"]
+            isOneToOne: false
+            referencedRelation: "Child"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       lessonbank: {
         Row: {
           description: string | null
@@ -492,7 +533,15 @@ export type Database = {
           section_id?: string
           user_id?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "questionbank_section_id_fkey"
+            columns: ["section_id"]
+            isOneToOne: false
+            referencedRelation: "sections"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       questionlog: {
         Row: {

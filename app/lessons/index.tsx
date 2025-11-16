@@ -1,4 +1,4 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useMemo } from "react";
 import {
   View,
   Text,
@@ -14,27 +14,121 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { responsive } from "@/utils/responsive";
+
+import { supabase } from "@/lib/supabase";
+
 import { useLessonStore } from "@/lib/store/lessonStore";
 import { useSectionStore } from "@/lib/store/sectionStore";
+import { useLessonLogStore } from "@/lib/store/lessonLogStore";
+import { useChildAuthStore } from "@/lib/store/childAuthStore";
+import { useChildAchievementStore } from "@/lib/store/childAchievementStore";
+
 import LessonCard from "@/app/lessons/UI/LessonCard";
 
 const statusBarHeight =
   Platform.OS === "android" ? StatusBar.currentHeight ?? 0 : 40;
 
+// ---------------------------------------------
+// 🔥 MAP EACH LESSON → ITS COMPLETION ACHIEVEMENT
+// ---------------------------------------------
+const LESSON_TO_ACHIEVEMENT: Record<string, string> = {
+  // Replace with your real lesson IDs
+  "fire-safety": "45fd27f1-29e5-4105-90f1-f88114581821",
+  "earthquake-safety": "178ce2df-f484-4538-99c6-2db346911b4a",
+  "health-hygiene": "5d0295ac-c6ad-4fa0-a3f5-79f1450a688b",
+  "public-safety": "e74faae2-35ed-4ae0-859c-e584fe66bed9",
+  "intro-safety": "a282b5c2-371b-4f04-864a-3d1bc626e28e",
+};
+
 export default function LessonIndex() {
   const router = useRouter();
 
   const { lessons, fetchLessons, loading } = useLessonStore();
-  const { fetchSections, loading: sectionsLoading } = useSectionStore();
+  const {
+    fetchSections,
+    sections,
+    loading: sectionsLoading,
+  } = useSectionStore();
+  const { logs: lessonLogs } = useLessonLogStore();
 
+  const currentChildId = useChildAuthStore((s) => s.currentChildId);
+
+  const {
+    allAchievements,
+    achievementsByChild,
+    loadGlobalAchievementsOnce,
+    fetchChildAchievements,
+  } = useChildAchievementStore();
+
+  /** ---------------------------------------------
+   * Load required data on mount
+   --------------------------------------------- */
   useEffect(() => {
     fetchLessons();
     fetchSections();
+    loadGlobalAchievementsOnce();
+    if (currentChildId) fetchChildAchievements(currentChildId);
   }, []);
 
-  const handleClose = () => {
-    router.back();
+  /** ---------------------------------------------
+   * Memo: which achievements child already has
+   --------------------------------------------- */
+  const childEarned = useMemo(() => {
+    if (!currentChildId) return new Set<string>();
+    return new Set(
+      achievementsByChild[currentChildId]?.map((a) => a.achievement?.id) || []
+    );
+  }, [achievementsByChild, currentChildId]);
+
+  /** ---------------------------------------------
+   * Check if a lesson is completed
+   --------------------------------------------- */
+  const isLessonCompleted = (lessonId: string): boolean => {
+    return lessonLogs.some(
+      (l) => l.childid === currentChildId && l.completedlesson === lessonId
+    );
   };
+
+  /** ---------------------------------------------
+   * Award a child an achievement (safe, once)
+   --------------------------------------------- */
+  const awardAchievement = async (achievementId: string) => {
+    if (!currentChildId) return;
+    if (childEarned.has(achievementId)) return;
+
+    const achievement = allAchievements.find((a) => a.id === achievementId);
+    if (!achievement) return;
+
+    await supabase.from("ChildAchievement").insert({
+      id: crypto.randomUUID(),
+      achievementearned: achievementId,
+      childid: currentChildId,
+      dateearned: new Date().toISOString(),
+      user_id: null,
+    });
+
+    fetchChildAchievements(currentChildId);
+  };
+
+  /** ---------------------------------------------
+   * Award achievements when lessons are completed
+   --------------------------------------------- */
+  useEffect(() => {
+    if (!currentChildId || lessons.length === 0) return;
+
+    lessons.forEach((lesson) => {
+      if (!isLessonCompleted(lesson.id)) return;
+
+      const achievementId = LESSON_TO_ACHIEVEMENT[lesson.id];
+      if (achievementId) {
+        awardAchievement(achievementId);
+      }
+    });
+  }, [lessonLogs, lessons, currentChildId]);
+
+  /** --------------------------------------------- */
+
+  const handleClose = () => router.back();
 
   if (loading || sectionsLoading) {
     return (
@@ -47,7 +141,6 @@ export default function LessonIndex() {
 
   return (
     <SafeAreaView style={styles.safeContainer} edges={["top"]}>
-      {/* StatusBar filler */}
       <View style={styles.headerBackground} />
 
       <ImageBackground
@@ -56,10 +149,8 @@ export default function LessonIndex() {
         imageStyle={styles.backgroundImage}
         resizeMode="cover"
       >
-        {/* Header */}
         <View style={styles.headerBar}>
           <Text style={styles.headerTitle}>Lesson Selection</Text>
-
           <TouchableOpacity onPress={handleClose} style={styles.closeButton}>
             <Ionicons
               name="close"
@@ -69,9 +160,7 @@ export default function LessonIndex() {
           </TouchableOpacity>
         </View>
 
-        {/* Lesson List */}
         <ScrollView
-          style={styles.scrollContainer}
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
         >
@@ -116,9 +205,6 @@ const styles = StyleSheet.create({
     borderBottomRightRadius: 20,
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: "#000",
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
     elevation: 3,
     zIndex: 2,
   },
@@ -137,8 +223,6 @@ const styles = StyleSheet.create({
     transform: [{ translateY: -responsive.screenHeight * 0.015 }],
     padding: 6,
   },
-
-  scrollContainer: { flex: 1 },
 
   scrollContent: {
     flexGrow: 1,

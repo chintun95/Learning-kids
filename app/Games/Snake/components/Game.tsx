@@ -1,33 +1,33 @@
-/** FULLY FIXED SNAKE GAME — NO ADJACENT QUESTION FOOD + CORRECT ANSWER LOGIC **/
-
-import { useEffect, useState } from "react";
+import { useRouter } from "expo-router";
+import { useEffect, useRef, useState } from "react";
 import {
-  StyleSheet,
-  View,
-  Text,
   Modal,
-  TouchableOpacity,
   Pressable,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useRouter } from "expo-router";
 
 import { Colors } from "../styles/colors";
-import { Direction, Coordinate } from "../types/types";
+import { Coordinate, Direction } from "../types/types";
 import { checkEatsFood } from "../utils/checkEatsFood";
 import { generateSafeFoodPosition } from "../utils/randomFoodPosition";
 
-import Snake from "./Snake";
 import Header from "./Header";
 import Score from "./Score";
+import Snake from "./Snake";
 
-import { useGameStore } from "@/lib/store/gameStore";
+// ---------- STORES ----------
 import { useChildAuthStore } from "@/lib/store/childAuthStore";
+import { useGameStore } from "@/lib/store/gameStore";
 import { useQuestionLogStore } from "@/lib/store/questionLogStore";
 import { useQuestionStore } from "@/lib/store/questionStore";
 import { useSessionStore } from "@/lib/store/sessionStore";
 
+// ---------- CONSTANTS ----------
 const SNAKE_INITIAL_POSITION = [{ x: 5, y: 5 }];
 const FOOD_INITIAL_POSITION = { x: 5, y: 20 };
 const GAME_BOUNDS = { xMin: 0, xMax: 35, yMin: 0, yMax: 63 };
@@ -35,68 +35,69 @@ const MOVE_INTERVAL = 50;
 const SCORE_INCREMENT = 10;
 
 export default function Game() {
+  const router = useRouter();
+
+  // 🟩 Child
+  const childId = useChildAuthStore.getState().currentChildId;
+
+  // 🟥 Prevent duplicated syncs
+  const hasSyncedRef = useRef(false);
+
+  // GAME STATE -----------------------------------------
   const [direction, setDirection] = useState(Direction.Right);
   const [snake, setSnake] = useState<Coordinate[]>(SNAKE_INITIAL_POSITION);
   const [food, setFood] = useState<Coordinate>(FOOD_INITIAL_POSITION);
+
   const [isQuestionFood, setIsQuestionFood] = useState(false);
-
-  const [score, setScore] = useState(0);
-  const [isGameOver, setIsGameOver] = useState(false);
-  const [isPaused, setIsPaused] = useState(false);
+  const [score, setScore] = useState(0); // LOCAL SCORE ONLY
+  const [points, setPointsLocal] = useState(0); // LOCAL POINTS ONLY
   const [hasStarted, setHasStarted] = useState(false);
+  const [isPaused, setIsPaused] = useState(false);
+  const [isGameOver, setIsGameOver] = useState(false);
 
-  // Question modal
+  // QUESTION
   const [showQuestionModal, setShowQuestionModal] = useState(false);
   const [currentQuestion, setCurrentQuestion] = useState<any>(null);
   const [selectedAnswer, setSelectedAnswer] = useState<string | null>(null);
+  const [countdown, setCountdown] = useState<number | null>(null);
 
-  // Stores
+  // STORES (SYNC ONLY ON EXIT)
   const {
     getHighScore,
     setHighScore,
-    getCurrentScore,
     setCurrentScore,
-    resetCurrentScore,
-    getPoints,
-    addPoints,
+    setPoints: storeSetPoints,
+    syncGameDataToSupabase,
   } = useGameStore();
 
-  const { logs: questionLogs } = useQuestionLogStore();
-  const { questions } = useQuestionStore();
+  const { logs: questionLogs, fetchQuestionLogs } = useQuestionLogStore();
+  const { questions, fetchQuestions } = useQuestionStore();
   const { setExitedSnake } = useSessionStore();
-  const router = useRouter();
 
-  const highScore = getHighScore();
-  const points = getPoints();
+  // Load stored high score only
+  const highScore = getHighScore("snake");
 
-  /** ------------------ DIFFICULTY → POINTS ------------------ **/
-  const getQuestionPoints = () => {
-    const t = currentQuestion?.questiontype?.toLowerCase() ?? "";
-    if (t === "easy") return 5;
-    if (t === "medium") return 10;
-    if (t === "hard") return 15;
-    return 5;
-  };
-
-  /** ------------------ RESTORE SCORE ------------------ **/
+  // ----------------------------------------------------
+  // INITIAL LOAD
+  // ----------------------------------------------------
   useEffect(() => {
-    const saved = getCurrentScore();
-    if (saved > 0) setScore(saved);
+    fetchQuestions();
+    fetchQuestionLogs();
   }, []);
 
+  // ----------------------------------------------------
+  // GAME LOOP
+  // ----------------------------------------------------
   useEffect(() => {
-    setCurrentScore(score);
-  }, [score]);
+    if (!hasStarted || isPaused || isGameOver || countdown !== null) return;
 
-  /** ------------------ GAME LOOP (direction added) ------------------ **/
-  useEffect(() => {
-    if (!hasStarted || isPaused || isGameOver) return;
+    const intervalId = setInterval(moveSnake, MOVE_INTERVAL);
+    return () => clearInterval(intervalId);
+  }, [snake, direction, isPaused, isGameOver, hasStarted, countdown]);
 
-    const id = setInterval(() => moveSnake(), MOVE_INTERVAL);
-    return () => clearInterval(id);
-  }, [snake, direction, isPaused, isGameOver, hasStarted]);
-
-  /** ------------------ MOVEMENT ------------------ **/
+  // ----------------------------------------------------
+  // MOVEMENT
+  // ----------------------------------------------------
   const moveSnake = () => {
     const head = snake[0];
     const newHead = { ...head };
@@ -129,58 +130,132 @@ export default function Game() {
     }
   };
 
-  /** ------------------ FOOD + SAFE SPAWN ------------------ **/
-  const handleFoodEaten = () => {
-    const mystery = Math.random() < 0.25;
-    setIsQuestionFood(mystery);
+  // ----------------------------------------------------
+  // FOOD
+  // ----------------------------------------------------
+  const spawnNextFood = () => {
+    const validQuestions =
+      questions.length > 0 && questionLogs.length > 0 && Math.random() < 0.25;
 
-    if (mystery && questionLogs.length > 0) {
-      const randomLog =
-        questionLogs[Math.floor(Math.random() * questionLogs.length)];
-      const q = questions.find((k) => k.id === randomLog.completedquestion);
+    setIsQuestionFood(validQuestions);
 
-      if (q) {
-        setCurrentQuestion(q);
-        setSelectedAnswer(null);
-        setIsPaused(true);
-        setShowQuestionModal(true);
-        return;
-      }
-    }
-
-    // normal food
-    setScore((s) => s + SCORE_INCREMENT);
-    setFood(
-      generateSafeFoodPosition(GAME_BOUNDS.xMax, GAME_BOUNDS.yMax, food, snake)
+    const nextFood = generateSafeFoodPosition(
+      GAME_BOUNDS.xMax,
+      GAME_BOUNDS.yMax,
+      food,
+      snake
     );
+
+    setFood(nextFood);
   };
 
-  /** ------------------ FIXED ANSWER LOGIC ------------------ **/
-  const extractLetter = (ans: string): string => {
-    // "A. Crawl low" → "A"
-    return ans.trim().charAt(0).toUpperCase();
+  const handleFoodEaten = () => {
+    const qFood = isQuestionFood;
+    setScore((s) => s + SCORE_INCREMENT);
+
+    spawnNextFood();
+
+    if (!qFood) return;
+
+    const randomLog =
+      questionLogs[Math.floor(Math.random() * questionLogs.length)];
+
+    const q = questions.find((x) => x.id === randomLog.completedquestion);
+
+    if (q) {
+      setCurrentQuestion(q);
+      setSelectedAnswer(null);
+      setIsPaused(true);
+      setShowQuestionModal(true);
+    }
+  };
+
+  // ----------------------------------------------------
+  // QUESTION LOGIC
+  // ----------------------------------------------------
+  const extractLetter = (str: string) => str.trim().charAt(0).toUpperCase();
+  const getQuestionPoints = () => {
+    const t = currentQuestion?.questiontype?.toLowerCase() ?? "";
+    if (t === "medium") return 10;
+    if (t === "hard") return 15;
+    return 5;
   };
 
   const handleSubmitAnswer = () => {
     if (!currentQuestion || !selectedAnswer) return;
 
-    const correctLetter = currentQuestion.correctanswer.trim().toUpperCase();
-    const playerLetter = extractLetter(selectedAnswer);
+    const correct = extractLetter(currentQuestion.correctanswer);
+    const player = extractLetter(selectedAnswer);
 
     setShowQuestionModal(false);
 
-    if (playerLetter === correctLetter) {
-      // CORRECT!
-      addPoints(getQuestionPoints());
-      setIsPaused(false);
+    if (correct === player) {
+      setPointsLocal((p) => p + getQuestionPoints());
       setScore((s) => s + SCORE_INCREMENT);
+
+      let t = 3;
+      setCountdown(t);
+
+      const timer = setInterval(() => {
+        t -= 1;
+        if (t <= 0) {
+          clearInterval(timer);
+          setCountdown(null);
+          setIsPaused(false);
+        } else {
+          setCountdown(t);
+        }
+      }, 1000);
     } else {
-      // WRONG
       setIsGameOver(true);
     }
   };
 
-  /** ------------------ CONTROLS ------------------ **/
+  // ----------------------------------------------------
+  // EXIT GAME → SYNC HERE ONLY
+  // ----------------------------------------------------
+  const handleClose = async () => {
+    if (!childId) return;
+
+    if (!hasSyncedRef.current) {
+      hasSyncedRef.current = true;
+
+      await setHighScore("snake", score);
+      await setCurrentScore("snake", score);
+      await storeSetPoints("snake", points);
+
+      await syncGameDataToSupabase(childId, "snake");
+    }
+
+    setExitedSnake(true);
+    router.back();
+  };
+
+  // ----------------------------------------------------
+  // START GAME
+  // ----------------------------------------------------
+  const startGame = async () => {
+    await fetchQuestions();
+    await fetchQuestionLogs();
+
+    const initialFood = generateSafeFoodPosition(
+      GAME_BOUNDS.xMax,
+      GAME_BOUNDS.yMax,
+      FOOD_INITIAL_POSITION,
+      SNAKE_INITIAL_POSITION
+    );
+
+    const allowQ = questions.length > 0 && questionLogs.length > 0;
+
+    setFood(initialFood);
+    setIsQuestionFood(allowQ && Math.random() < 0.25);
+
+    setHasStarted(true);
+  };
+
+  // ----------------------------------------------------
+  // GESTURE CONTROL
+  // ----------------------------------------------------
   const panGesture = Gesture.Pan()
     .onUpdate((e) => {
       if (Math.abs(e.translationX) > Math.abs(e.translationY)) {
@@ -191,48 +266,21 @@ export default function Game() {
     })
     .runOnJS(true);
 
-  /** ------------------ EXIT GAME ------------------ **/
-  const handleClose = () => {
-    setHighScore(score);
-    resetCurrentScore();
-    setExitedSnake(true);
-    router.back();
-  };
-
-  /** ------------------ START GAME ------------------ **/
-  const startGame = () => {
-    setFood(
-      generateSafeFoodPosition(
-        GAME_BOUNDS.xMax,
-        GAME_BOUNDS.yMax,
-        FOOD_INITIAL_POSITION,
-        SNAKE_INITIAL_POSITION
-      )
-    );
-    setHasStarted(true);
-  };
-
-  /** ------------------ UI ------------------ **/
+  // ----------------------------------------------------
+  // UI
+  // ----------------------------------------------------
   return (
     <GestureDetector gesture={panGesture}>
       <SafeAreaView style={styles.container}>
         <Header
           reloadGame={() => {
             setSnake([...SNAKE_INITIAL_POSITION]);
-            setFood(
-              generateSafeFoodPosition(
-                GAME_BOUNDS.xMax,
-                GAME_BOUNDS.yMax,
-                FOOD_INITIAL_POSITION,
-                SNAKE_INITIAL_POSITION
-              )
-            );
             setScore(0);
-            resetCurrentScore();
             setDirection(Direction.Right);
             setIsPaused(false);
             setIsGameOver(false);
             setHasStarted(false);
+            setShowQuestionModal(false);
           }}
           pauseGame={() => setIsPaused((p) => !p)}
           onClose={handleClose}
@@ -249,23 +297,14 @@ export default function Game() {
         {!hasStarted && !isGameOver && (
           <Pressable style={styles.startOverlay} onPress={startGame}>
             <Text style={styles.startTitle}>🐍 Snake Game</Text>
-
-            <Text style={styles.rulesHeader}>How to Play:</Text>
-            <Text style={styles.rulesText}>• Swipe to move the snake.</Text>
-            <Text style={styles.rulesText}>• Eat 🟡 to gain points.</Text>
-            <Text style={styles.rulesText}>• Eat ❓ to answer a question.</Text>
-            <Text style={styles.rulesText}>✔️ Correct → Continue + Bonus</Text>
-            <Text style={styles.rulesText}>❌ Wrong → Game Over</Text>
-
             <Text style={styles.tapToStart}>👉 Tap to Start</Text>
           </Pressable>
         )}
 
-        {/* GAME AREA */}
+        {/* GAME */}
         {hasStarted && (
           <View style={styles.boundaries}>
             <Snake snake={snake} />
-
             <Text
               style={[styles.foodItem, { top: food.y * 10, left: food.x * 10 }]}
             >
@@ -278,9 +317,9 @@ export default function Game() {
         <Modal visible={showQuestionModal} transparent animationType="fade">
           <View style={styles.modalOverlay}>
             <View style={styles.modalBox}>
-              <Text style={styles.modalTitle}>Answer</Text>
+              <Text style={styles.modalTitle}>Answer the Question</Text>
               <Text style={styles.modalQuestion}>
-                {currentQuestion?.question}
+                {currentQuestion?.question ?? ""}
               </Text>
 
               {Array.isArray(currentQuestion?.answerchoices) &&
@@ -288,11 +327,11 @@ export default function Game() {
                   (opt: string, idx: number) => (
                     <TouchableOpacity
                       key={idx}
+                      onPress={() => setSelectedAnswer(opt)}
                       style={[
                         styles.optionButton,
                         selectedAnswer === opt && styles.optionSelected,
                       ]}
-                      onPress={() => setSelectedAnswer(opt)}
                     >
                       <Text
                         style={[
@@ -307,12 +346,12 @@ export default function Game() {
                 )}
 
               <TouchableOpacity
+                disabled={!selectedAnswer}
+                onPress={handleSubmitAnswer}
                 style={[
                   styles.submitBtn,
-                  !selectedAnswer && { backgroundColor: "#777" },
+                  !selectedAnswer && { backgroundColor: "#888" },
                 ]}
-                onPress={handleSubmitAnswer}
-                disabled={!selectedAnswer}
               >
                 <Text style={styles.submitText}>Submit</Text>
               </TouchableOpacity>
@@ -320,10 +359,21 @@ export default function Game() {
           </View>
         </Modal>
 
+        {/* COUNTDOWN */}
+        {countdown !== null && (
+          <View style={styles.countdownOverlay}>
+            <Text style={styles.countdownText}>{countdown}</Text>
+          </View>
+        )}
+
         {/* GAME OVER */}
         {isGameOver && (
           <View style={styles.gameOverOverlay}>
-            <Text style={styles.gameOverText}>Game Over</Text>
+            <Text style={styles.gameOverTitle}>Game Over</Text>
+            <Text style={styles.gameOverText}>🏆 High: {highScore}</Text>
+            <Text style={styles.gameOverText}>🎯 Score: {score}</Text>
+            <Text style={styles.gameOverText}>⭐ Points: {points}</Text>
+
             <TouchableOpacity style={styles.closeButton} onPress={handleClose}>
               <Text style={styles.closeText}>Exit Game</Text>
             </TouchableOpacity>
@@ -347,31 +397,20 @@ const styles = StyleSheet.create({
   },
   foodItem: { position: "absolute", fontSize: 16 },
   highScoreText: { fontSize: 16, fontWeight: "600", color: Colors.primary },
-  pointsText: { fontSize: 14, color: "#666", marginTop: 4 },
+  pointsText: { fontSize: 14, color: "#444", marginTop: 4 },
+
   startOverlay: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
     backgroundColor: Colors.background,
-    paddingHorizontal: 20,
   },
-  startTitle: {
-    fontSize: 36,
-    fontWeight: "bold",
-    color: Colors.primary,
-    marginBottom: 20,
-  },
-  rulesHeader: { fontSize: 20, fontWeight: "bold", marginBottom: 8 },
-  rulesText: { fontSize: 16, color: "#222", marginBottom: 5 },
-  tapToStart: {
-    marginTop: 20,
-    fontSize: 18,
-    color: "#4F46E5",
-    fontWeight: "bold",
-  },
+  startTitle: { fontSize: 36, fontWeight: "bold", color: Colors.primary },
+  tapToStart: { fontSize: 20, marginTop: 20, color: "#4F46E5" },
+
   modalOverlay: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.6)",
+    backgroundColor: "rgba(0,0,0,0.65)",
     justifyContent: "center",
     alignItems: "center",
   },
@@ -381,59 +420,53 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     padding: 20,
   },
-  modalTitle: {
-    fontSize: 20,
-    fontWeight: "bold",
-    marginBottom: 10,
-    textAlign: "center",
-  },
-  modalQuestion: { fontSize: 16, marginBottom: 15, textAlign: "center" },
+  modalTitle: { fontSize: 22, fontWeight: "bold", textAlign: "center" },
+  modalQuestion: { fontSize: 18, marginVertical: 15, color: "#111" },
+
   optionButton: {
     borderWidth: 1,
     borderColor: "#aaa",
     borderRadius: 6,
     paddingVertical: 12,
-    paddingHorizontal: 15,
     marginBottom: 10,
   },
   optionSelected: {
     backgroundColor: Colors.primary,
     borderColor: Colors.primary,
   },
-  optionText: { fontSize: 16, textAlign: "center", color: "#333" },
+  optionText: { textAlign: "center", fontSize: 16, color: "#333" },
   optionTextSelected: { color: "#fff", fontWeight: "bold" },
+
   submitBtn: {
     backgroundColor: Colors.primary,
-    paddingVertical: 12,
+    padding: 12,
     borderRadius: 6,
-    marginTop: 10,
   },
-  submitText: { color: "#fff", fontWeight: "bold", textAlign: "center" },
-  gameOverOverlay: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
+  submitText: { color: "#fff", textAlign: "center", fontWeight: "700" },
+
+  countdownOverlay: {
+    ...StyleSheet.absoluteFillObject,
     backgroundColor: "rgba(0,0,0,0.7)",
     justifyContent: "center",
     alignItems: "center",
   },
-  gameOverText: {
-    fontSize: 36,
-    color: "#fff",
-    fontWeight: "bold",
-    marginBottom: 20,
+  countdownText: { fontSize: 80, fontWeight: "bold", color: "#fff" },
+
+  gameOverOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(0,0,0,0.8)",
+    justifyContent: "center",
+    alignItems: "center",
   },
+  gameOverTitle: { fontSize: 42, fontWeight: "bold", color: "#fff" },
+  gameOverText: { fontSize: 24, color: "#FFD700" },
+
   closeButton: {
     backgroundColor: "#EF4444",
     paddingHorizontal: 25,
     paddingVertical: 12,
     borderRadius: 8,
+    marginTop: 20,
   },
-  closeText: {
-    color: "#fff",
-    fontSize: 18,
-    fontWeight: "bold",
-  },
+  closeText: { color: "#fff", fontSize: 18, fontWeight: "bold" },
 });

@@ -77,7 +77,7 @@ export const Physics = (
         bird.position.x
     ) {
       top.scored = true;
-      dispatch({ type: "score" }); // 🔥 tell GameEngine to increment score
+      dispatch({ type: "score" });
     }
   }
 

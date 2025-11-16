@@ -4,6 +4,7 @@ import { supabase } from "@/lib/supabase";
 import { zustandStorage } from "@/lib/mmkv-storage";
 import { Tables } from "@/types/database.types";
 import { useNetworkStore } from "@/lib/networkStore";
+import { useQuestionLogStore } from "@/lib/store/questionLogStore";
 
 export type LessonLog = Tables<"lessonlog">;
 
@@ -14,10 +15,17 @@ interface LessonLogState {
   lastSynced: string | null;
 
   fetchLessonLogs: () => Promise<void>;
-  addLessonLog: (newLog: LessonLog) => void;
+  addLessonLog: (newLog: LessonLog) => Promise<void>;
   updateLessonLog: (id: string, updated: Partial<LessonLog>) => void;
   removeLessonLog: (id: string) => void;
   clearLogs: () => void;
+
+  /** NEW: Auto-completion helpers */
+  isLessonLogged: (lessonId: string, childId: string) => boolean;
+  checkAndAutoCompleteLesson: (
+    lessonId: string,
+    childId: string
+  ) => Promise<void>;
 }
 
 export const useLessonLogStore = create<LessonLogState>()(
@@ -28,7 +36,9 @@ export const useLessonLogStore = create<LessonLogState>()(
       error: null,
       lastSynced: null,
 
-      /** ---------- FETCH ---------- **/
+      /* ========================================================
+         FETCH LESSON LOGS
+      ======================================================== */
       fetchLessonLogs: async () => {
         const { isConnected } = useNetworkStore.getState();
         if (!isConnected) {
@@ -37,6 +47,7 @@ export const useLessonLogStore = create<LessonLogState>()(
         }
 
         set({ loading: true, error: null });
+
         try {
           const { data, error } = await supabase
             .from("lessonlog")
@@ -45,9 +56,8 @@ export const useLessonLogStore = create<LessonLogState>()(
 
           if (error) throw new Error(error.message);
 
-          // remove duplicates if any
           const uniqueLogs = Array.from(
-            new Map(data?.map((log) => [log.id, log])).values()
+            new Map((data ?? []).map((log) => [log.id, log])).values()
           );
 
           set({
@@ -60,46 +70,45 @@ export const useLessonLogStore = create<LessonLogState>()(
         }
       },
 
-      /** ---------- ADD ---------- **/
-      addLessonLog: (newLog) => {
-        const existing = get().logs.find(
+      /* ========================================================
+         ADD LESSON LOG (LOCAL FIRST)
+      ======================================================== */
+      addLessonLog: async (newLog) => {
+        // Prevent duplicates
+        const exists = get().logs.some(
           (l) =>
             l.completedlesson === newLog.completedlesson &&
             l.childid === newLog.childid
         );
-        if (existing) {
-          console.log(
-            "⚠️ Lesson log already exists locally — skipping duplicate insert"
-          );
+
+        if (exists) {
+          console.log("⚠️ Lesson already logged — skipping");
           return;
         }
 
-        set((state) => ({ logs: [newLog, ...state.logs] }));
+        set((state) => ({
+          logs: [newLog, ...state.logs],
+        }));
 
         const { isConnected } = useNetworkStore.getState();
-        if (isConnected) {
-          supabase
-            .from("lessonlog")
-            .insert([newLog])
-            .then(({ error }) => {
-              if (error)
-                console.warn(
-                  "⚠️ Failed to sync new lesson log:",
-                  error.message
-                );
-              else console.log("✅ Synced lesson log to Supabase");
-            });
-        } else {
-          console.log("📴 Offline — stored lesson log locally for sync later.");
+
+        if (!isConnected) {
+          console.log("📴 Offline — saved lesson log locally.");
+          return;
         }
+
+        const { error } = await supabase.from("lessonlog").insert([newLog]);
+
+        if (error) console.warn("⚠️ Failed to sync lessonlog:", error.message);
+        else console.log("✅ Synced lesson log to Supabase");
       },
 
-      /** ---------- UPDATE ---------- **/
+      /* ========================================================
+         UPDATE LESSON LOG
+      ======================================================== */
       updateLessonLog: (id, updated) => {
         set((state) => ({
-          logs: state.logs.map((log) =>
-            log.id === id ? { ...log, ...updated } : log
-          ),
+          logs: state.logs.map((l) => (l.id === id ? { ...l, ...updated } : l)),
         }));
 
         const { isConnected } = useNetworkStore.getState();
@@ -108,9 +117,13 @@ export const useLessonLogStore = create<LessonLogState>()(
         }
       },
 
-      /** ---------- REMOVE ---------- **/
+      /* ========================================================
+         REMOVE LESSON LOG
+      ======================================================== */
       removeLessonLog: (id) => {
-        set((state) => ({ logs: state.logs.filter((l) => l.id !== id) }));
+        set((state) => ({
+          logs: state.logs.filter((l) => l.id !== id),
+        }));
 
         const { isConnected } = useNetworkStore.getState();
         if (isConnected) {
@@ -119,6 +132,45 @@ export const useLessonLogStore = create<LessonLogState>()(
       },
 
       clearLogs: () => set({ logs: [] }),
+
+      /* ========================================================
+         NEW FUNCTIONS — INTEGRATION WITH questionLogStore
+      ======================================================== */
+
+      /** Check if lesson is already logged */
+      isLessonLogged: (lessonId, childId) => {
+        return get().logs.some(
+          (log) => log.completedlesson === lessonId && log.childid === childId
+        );
+      },
+
+      /** Auto-insert into lessonlog when all sections are completed */
+      checkAndAutoCompleteLesson: async (lessonId, childId) => {
+        const questionLogStore = useQuestionLogStore.getState();
+
+        const isCompleted = questionLogStore.isLessonCompleted(lessonId);
+
+        if (!isCompleted) return;
+
+        // avoid duplicates
+        if (get().isLessonLogged(lessonId, childId)) {
+          console.log("✔ Lesson already completed — skip logging");
+          return;
+        }
+
+        console.log(`🏆 Auto-marking lesson ${lessonId} complete!`);
+
+        // build lessonlog row
+        const newLog: LessonLog = {
+          id: crypto.randomUUID(),
+          childid: childId,
+          completedlesson: lessonId,
+          completedat: new Date().toISOString(),
+          user_id: null,
+        };
+
+        await get().addLessonLog(newLog);
+      },
     }),
     {
       name: "lessonlog-storage",

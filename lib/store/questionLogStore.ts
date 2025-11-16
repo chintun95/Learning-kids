@@ -1,14 +1,17 @@
+// lib/store/questionLogStore.ts
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 import { supabase } from "@/lib/supabase";
 import { zustandStorage } from "@/lib/mmkv-storage";
 import { Tables, TablesInsert, TablesUpdate } from "@/types/database.types";
 import { useNetworkStore } from "@/lib/networkStore";
+import { useQuestionStore } from "@/lib/store/questionStore";
+import { useSectionStore } from "@/lib/store/sectionStore"; // ✅ NEW FIX
 
 /** ---------- Types ---------- **/
-export type QuestionLog = Tables<"questionlog">; // READ rows
-export type QuestionLogInsert = TablesInsert<"questionlog">; // INSERT rows
-export type QuestionLogUpdate = TablesUpdate<"questionlog">; // UPDATE rows
+export type QuestionLog = Tables<"questionlog">;
+export type QuestionLogInsert = TablesInsert<"questionlog">;
+export type QuestionLogUpdate = TablesUpdate<"questionlog">;
 
 interface QuestionLogState {
   logs: QuestionLog[];
@@ -21,6 +24,17 @@ interface QuestionLogState {
   updateQuestionLog: (id: string, updated: QuestionLogUpdate) => Promise<void>;
   removeQuestionLog: (id: string) => Promise<void>;
   clearLogs: () => void;
+
+  /** ---------- NEW COMPLETION HELPERS ---------- **/
+  getCompletedQuestionIds: () => Set<string>;
+  getCompletedQuestionCount: (sectionId: string) => number;
+  isSectionCompleted: (sectionId: string) => boolean;
+  getLessonSectionCompletion: (lessonId: string) => {
+    completed: number;
+    total: number;
+    allCompleted: boolean;
+  };
+  isLessonCompleted: (lessonId: string) => boolean;
 }
 
 export const useQuestionLogStore = create<QuestionLogState>()(
@@ -31,15 +45,12 @@ export const useQuestionLogStore = create<QuestionLogState>()(
       error: null,
       lastSynced: null,
 
-      /** ------------------------------------------------------------------
-       *   FETCH QUESTION LOGS FROM SUPABASE
-       * ------------------------------------------------------------------ **/
+      /* =========================================
+         FETCH LOGS
+      ========================================= */
       fetchQuestionLogs: async () => {
         const { isConnected } = useNetworkStore.getState();
-        if (!isConnected) {
-          console.log("📴 Offline — using cached Question Logs");
-          return;
-        }
+        if (!isConnected) return;
 
         set({ loading: true, error: null });
 
@@ -56,19 +67,15 @@ export const useQuestionLogStore = create<QuestionLogState>()(
             lastSynced: new Date().toISOString(),
             loading: false,
           });
-
-          console.log("✅ Question Logs synced from Supabase.");
         } catch (err: any) {
           set({ error: err.message, loading: false });
-          console.warn("⚠️ Failed fetching question logs:", err.message);
         }
       },
 
-      /** ------------------------------------------------------------------
-       *   ADD QUESTION LOG (LOCAL FIRST, SYNC IF ONLINE)
-       * ------------------------------------------------------------------ **/
+      /* =========================================
+         ADD LOG
+      ========================================= */
       addQuestionLog: async (newLog) => {
-        // Local insert first
         const localId = newLog.id ?? crypto.randomUUID();
 
         const enrichedLog: QuestionLog = {
@@ -80,92 +87,108 @@ export const useQuestionLogStore = create<QuestionLogState>()(
           user_id: newLog.user_id ?? null,
         };
 
-        set((state) => ({
-          logs: [enrichedLog, ...state.logs],
-        }));
+        // local insert
+        set((state) => ({ logs: [enrichedLog, ...state.logs] }));
 
         const { isConnected } = useNetworkStore.getState();
+        if (!isConnected) return;
 
-        if (!isConnected) {
-          console.log("📴 Offline — queued question log locally.");
-          return;
-        }
+        const { error } = await supabase
+          .from("questionlog")
+          .insert([{ ...newLog, id: localId }]);
 
-        // Push to DB
-        const { error } = await supabase.from("questionlog").insert([
-          {
-            ...newLog,
-            id: localId,
-          },
-        ]);
-
-        if (error) {
-          console.warn("⚠️ Failed to sync question log:", error.message);
-        } else {
-          console.log("✅ Question log synced to Supabase:", enrichedLog.id);
-        }
+        if (error)
+          console.warn("⚠️ Failed to sync questionlog:", error.message);
       },
 
-      /** ------------------------------------------------------------------
-       *   UPDATE QUESTION LOG
-       * ------------------------------------------------------------------ **/
+      /* =========================================
+         UPDATE LOG
+      ========================================= */
       updateQuestionLog: async (id, updated) => {
-        // Local update
         set((state) => ({
-          logs: state.logs.map((log) =>
-            log.id === id ? { ...log, ...updated } : log
-          ),
+          logs: state.logs.map((l) => (l.id === id ? { ...l, ...updated } : l)),
         }));
 
         const { isConnected } = useNetworkStore.getState();
-        if (!isConnected) {
-          console.log("📴 Offline — updated locally only.");
-          return;
-        }
+        if (!isConnected) return;
 
-        const { error } = await supabase
-          .from("questionlog")
-          .update(updated)
-          .eq("id", id);
-
-        if (error) {
-          console.warn("⚠️ Failed updating question log:", error.message);
-        } else {
-          console.log("🔄 Synced update to Supabase:", id);
-        }
+        await supabase.from("questionlog").update(updated).eq("id", id);
       },
 
-      /** ------------------------------------------------------------------
-       *   REMOVE QUESTION LOG
-       * ------------------------------------------------------------------ **/
+      /* =========================================
+         REMOVE LOG
+      ========================================= */
       removeQuestionLog: async (id) => {
-        // Local delete
         set((state) => ({
-          logs: state.logs.filter((log) => log.id !== id),
+          logs: state.logs.filter((l) => l.id !== id),
         }));
 
         const { isConnected } = useNetworkStore.getState();
-        if (!isConnected) {
-          console.log("📴 Offline — deleted locally only.");
-          return;
-        }
+        if (!isConnected) return;
 
-        const { error } = await supabase
-          .from("questionlog")
-          .delete()
-          .eq("id", id);
-
-        if (error) {
-          console.warn("⚠️ Failed deleting question log:", error.message);
-        } else {
-          console.log("🗑️ Deleted question log remotely:", id);
-        }
+        await supabase.from("questionlog").delete().eq("id", id);
       },
 
-      /** ------------------------------------------------------------------
-       *   CLEAR LOCAL LOGS
-       * ------------------------------------------------------------------ **/
       clearLogs: () => set({ logs: [] }),
+
+      /* ================================================================
+         NEW COMPLETION TRACKING LOGIC
+      ================================================================ */
+
+      /** Return set of completed question IDs */
+      getCompletedQuestionIds: () => {
+        return new Set(get().logs.map((log) => log.completedquestion));
+      },
+
+      /** Count of completed questions in a section */
+      getCompletedQuestionCount: (sectionId: string) => {
+        const allQuestions = useQuestionStore.getState().questions;
+        const completed = get().getCompletedQuestionIds();
+
+        return allQuestions.filter(
+          (q) => q.section_id === sectionId && completed.has(q.id)
+        ).length;
+      },
+
+      /** Section is complete if all section questions are answered */
+      isSectionCompleted: (sectionId: string) => {
+        const allQuestions = useQuestionStore.getState().questions;
+
+        const sectionQs = allQuestions.filter(
+          (q) => q.section_id === sectionId
+        );
+
+        if (sectionQs.length === 0) return false;
+
+        const completed = get().getCompletedQuestionIds();
+
+        return sectionQs.every((q) => completed.has(q.id));
+      },
+
+      /** Lesson-level completion overview */
+      getLessonSectionCompletion: (lessonId: string) => {
+        const sections = useSectionStore
+          .getState()
+          .sections.filter((s) => s.lessonid === lessonId);
+
+        const total = sections.length;
+        let completedCount = 0;
+
+        for (const sec of sections) {
+          if (get().isSectionCompleted(sec.id)) completedCount++;
+        }
+
+        return {
+          completed: completedCount,
+          total,
+          allCompleted: completedCount === total,
+        };
+      },
+
+      /** Lesson is complete when all sections are complete */
+      isLessonCompleted: (lessonId: string) => {
+        return get().getLessonSectionCompletion(lessonId).allCompleted;
+      },
     }),
     {
       name: "questionlog-storage",

@@ -16,9 +16,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useQueryClient } from "@tanstack/react-query";
 import StatusIndicator from "./StatusIndicator";
 import { responsive } from "@/utils/responsive";
-import { isToday, parseISO, compareDesc } from "date-fns";
 import { deleteChildAndAssociations } from "@/services/deleteChild";
-import { useSessionsByChildId } from "@/services/fetchSession";
 import { ChildCardModel } from "@/services/fetchChildren";
 
 if (Platform.OS === "android") {
@@ -33,10 +31,9 @@ export default function ChildCard({ child }: ChildCardProps) {
   const [expanded, setExpanded] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleting, setDeleting] = useState(false);
+
   const router = useRouter();
   const queryClient = useQueryClient();
-
-  const { data: sessions, isLoading, error } = useSessionsByChildId(child.id);
 
   const toggleExpand = () => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
@@ -65,7 +62,6 @@ export default function ChildCard({ child }: ChildCardProps) {
     try {
       setDeleting(true);
       await deleteChildAndAssociations(child.id);
-      console.log(`✅ Child deleted: ${child.firstName} ${child.lastName}`);
 
       queryClient.invalidateQueries({
         predicate: (query) =>
@@ -76,23 +72,11 @@ export default function ChildCard({ child }: ChildCardProps) {
       setShowDeleteModal(false);
       Alert.alert("Deleted", `${child.firstName} has been removed.`);
     } catch (err: any) {
-      console.error("❌ Failed to delete child:", err.message);
       Alert.alert("Error", "Failed to delete child. Please try again.");
     } finally {
       setDeleting(false);
     }
   };
-
-  const todaysSessions =
-    sessions
-      ?.filter((s) => s.date && isToday(parseISO(s.date)))
-      ?.sort((a, b) =>
-        compareDesc(
-          parseISO(`${a.date}T${a.starttime}`),
-          parseISO(`${b.date}T${b.starttime}`)
-        )
-      )
-      .slice(0, 3) ?? [];
 
   return (
     <View style={styles.cardWrapper}>
@@ -108,11 +92,13 @@ export default function ChildCard({ child }: ChildCardProps) {
           <Text style={styles.nameText}>
             {child.firstName} {child.lastName}
           </Text>
+
           <TouchableOpacity onPress={handleManageChild}>
             <Text style={styles.manageText}>Manage Child Data</Text>
           </TouchableOpacity>
         </View>
 
+        {/* Expand & Delete Buttons */}
         <View style={styles.buttonsContainer}>
           <TouchableOpacity onPress={toggleExpand} style={styles.expandButton}>
             <Text style={styles.expandButtonText}>{expanded ? "▲" : "▼"}</Text>
@@ -131,32 +117,22 @@ export default function ChildCard({ child }: ChildCardProps) {
         </View>
       </View>
 
+      {/* EXPANDED AREA — NEW CONTENT */}
       {expanded && (
         <View style={styles.drawer}>
           <Text style={[styles.drawerText, styles.drawerTitle]}>
-            Today's Activity
+            Progress Chart
           </Text>
 
-          {isLoading ? (
-            <ActivityIndicator color="#000" />
-          ) : error ? (
-            <Text style={styles.drawerText}>Failed to load sessions</Text>
-          ) : todaysSessions.length === 0 ? (
-            <Text style={styles.drawerText}>No current activity</Text>
-          ) : (
-            todaysSessions.map((session) => (
-              <View key={session.id} style={styles.sessionRow}>
-                <Text style={styles.drawerText}>{session.activitytype}</Text>
-                <Text style={[styles.drawerText, { color: "#000" }]}>
-                  {session.sessionstatus}
-                </Text>
-              </View>
-            ))
-          )}
+          <TouchableOpacity
+            onPress={() => router.push(`/progress-chart/${child.id}`)}
+          >
+            <Text style={styles.chartLink}>Click to view chart</Text>
+          </TouchableOpacity>
         </View>
       )}
 
-      {/* Delete Confirmation Modal */}
+      {/* Delete Modal */}
       <Modal
         visible={showDeleteModal}
         transparent
@@ -181,9 +157,9 @@ export default function ChildCard({ child }: ChildCardProps) {
               <>
                 <Text style={styles.modalTitle}>
                   You are about to remove {child.firstName} from your account.
-                  {"\n"}
-                  Are you sure?
+                  {"\n"}Are you sure?
                 </Text>
+
                 <View style={styles.modalButtons}>
                   <TouchableOpacity
                     style={[styles.modalButton, styles.yesButton]}
@@ -191,6 +167,7 @@ export default function ChildCard({ child }: ChildCardProps) {
                   >
                     <Text style={styles.modalButtonText}>Yes</Text>
                   </TouchableOpacity>
+
                   <TouchableOpacity
                     style={[styles.modalButton, styles.noButton]}
                     onPress={() => setShowDeleteModal(false)}
@@ -274,10 +251,11 @@ const styles = StyleSheet.create({
     fontFamily: "Fredoka-SemiBold",
     marginBottom: responsive.screenHeight * 0.01,
   },
-  sessionRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginVertical: responsive.screenHeight * 0.005,
+  chartLink: {
+    color: "#000",
+    textDecorationLine: "underline",
+    fontFamily: "Fredoka-Medium",
+    fontSize: responsive.buttonFontSize * 0.85,
   },
   modalOverlay: {
     flex: 1,

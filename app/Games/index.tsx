@@ -1,22 +1,28 @@
-import React, { useEffect } from "react";
-import {
-  View,
-  Text,
-  StyleSheet,
-  Platform,
-  StatusBar,
-  ImageBackground,
-  TouchableOpacity,
-  Image,
-  ScrollView,
-} from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+/** UPDATED Games/index — adds “First Time Playing Flappy/Snake” achievement exactly once **/
+
+import { responsive } from "@/utils/responsive";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { responsive } from "@/utils/responsive";
-import { useSessionStore } from "@/lib/store/sessionStore";
+import { useCallback, useEffect } from "react";
+import {
+  Image,
+  ImageBackground,
+  Platform,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+
 import { useChildAuthStore } from "@/lib/store/childAuthStore";
 import { useGameStore } from "@/lib/store/gameStore";
+import { useSessionStore } from "@/lib/store/sessionStore";
+
+import { useChildAchievementStore } from "@/lib/store/childAchievementStore";
+import { supabase } from "@/lib/supabase";
 
 const statusBarHeight =
   Platform.OS === "android" ? StatusBar.currentHeight ?? 0 : 40;
@@ -38,7 +44,68 @@ export default function GamesIndex() {
 
   const currentChildId = useChildAuthStore((state) => state.currentChildId);
 
-  /** ---------- Handle exited game detection ---------- **/
+  const { allAchievements, achievementsByChild, fetchChildAchievements } =
+    useChildAchievementStore();
+
+  /* -------------------------------------------------------
+     UTIL: Add Achievement Once
+  ------------------------------------------------------- */
+  const addAchievementOnce = useCallback(
+    async (achievementTitle: string) => {
+      if (!currentChildId) return;
+
+      // Ensure child achievements loaded
+      if (!achievementsByChild[currentChildId]) {
+        await fetchChildAchievements(currentChildId);
+      }
+
+      const childAchievements = achievementsByChild[currentChildId] ?? [];
+
+      // Find the achievement in global list
+      const achievement = allAchievements.find(
+        (a) => a.title === achievementTitle
+      );
+      if (!achievement) {
+        console.warn(
+          `⚠ Achievement '${achievementTitle}' not found in global list.`
+        );
+        return;
+      }
+
+      const alreadyHas = childAchievements.some(
+        (a) => a.achievement?.id === achievement.id
+      );
+
+      if (alreadyHas) {
+        console.log(`✅ Child already has achievement '${achievementTitle}'`);
+        return;
+      }
+
+      console.log(`🏆 Adding achievement '${achievementTitle}' to child...`);
+
+      // Insert into database; store auto-syncs into Zustand
+      const { error } = await supabase.from("ChildAchievement").insert({
+        achievementearned: achievement.id,
+        childid: currentChildId,
+        dateearned: new Date().toISOString(),
+        user_id: null,
+      });
+
+      if (error) {
+        console.error("❌ Failed to add achievement:", error);
+      }
+    },
+    [
+      currentChildId,
+      allAchievements,
+      achievementsByChild,
+      fetchChildAchievements,
+    ]
+  );
+
+  /* -------------------------------------------------------
+     Handle Exited Games (session cleanup)
+  ------------------------------------------------------- */
   useEffect(() => {
     const handleExitedGames = async () => {
       if (exitedFlappyGame) {
@@ -79,8 +146,10 @@ export default function GamesIndex() {
     router.back();
   };
 
-  /** ---------- Game Selection Handler ---------- **/
-  const handleSelectGame = (
+  /* -------------------------------------------------------
+     Handle Selecting Game (with achievement unlock)
+  ------------------------------------------------------- */
+  const handleSelectGame = async (
     gameName: string,
     route: "/Games/Flappy" | "/Games/Snake"
   ) => {
@@ -89,18 +158,28 @@ export default function GamesIndex() {
       return;
     }
 
+    // Reset exit flags
     setExitedFlappyGame(false);
     setExitedSnake(false);
 
+    // Unlock appropriate first-time achievement only once
+    if (gameName === "Snake") {
+      await addAchievementOnce("First Time Playing Snake");
+    } else if (gameName === "Flappy Bird") {
+      await addAchievementOnce("First Time Playing Flappy Bird");
+    }
+
+    // Start the actual play session
     startChildSession(currentChildId, "game");
     setSessionDetails(`Playing ${gameName}`);
-
     router.push(route);
   };
 
+  /* -------------------------------------------------------
+     UI
+  ------------------------------------------------------- */
   return (
     <SafeAreaView style={styles.safeContainer} edges={["top"]}>
-      {/* Header background */}
       <View style={styles.headerBackground} />
 
       <ImageBackground
@@ -121,14 +200,13 @@ export default function GamesIndex() {
           </TouchableOpacity>
         </View>
 
-        {/* --- Info Message --- */}
+        {/* Info message */}
         <View style={styles.infoMessageWrapper}>
           <Text style={styles.infoMessage}>
             Questions only appear in games if a lesson or section is completed.
           </Text>
         </View>
 
-        {/* --- Game Options --- */}
         <ScrollView
           contentContainerStyle={styles.scrollContainer}
           showsVerticalScrollIndicator={false}
@@ -166,7 +244,9 @@ export default function GamesIndex() {
   );
 }
 
-/** ---------- Styles ---------- **/
+/* -------------------------------------------------------
+   Styles
+------------------------------------------------------- */
 const styles = StyleSheet.create({
   safeContainer: { flex: 1, backgroundColor: "#fff" },
 
@@ -215,7 +295,8 @@ const styles = StyleSheet.create({
     transform: [{ translateY: -responsive.screenHeight * 0.015 }],
     padding: 6,
   },
-  infoMessageWrapper: { 
+
+  infoMessageWrapper: {
     width: "100%",
     alignItems: "center",
     paddingHorizontal: responsive.screenWidth * 0.08,
