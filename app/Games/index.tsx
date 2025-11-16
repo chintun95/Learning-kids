@@ -1,5 +1,4 @@
-/** UPDATED Games/index — adds “First Time Playing Flappy/Snake” achievement exactly once **/
-
+// app/Games/index.tsx
 import { responsive } from "@/utils/responsive";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
@@ -20,7 +19,6 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useChildAuthStore } from "@/lib/store/childAuthStore";
 import { useGameStore } from "@/lib/store/gameStore";
 import { useSessionStore } from "@/lib/store/sessionStore";
-
 import { useChildAchievementStore } from "@/lib/store/childAchievementStore";
 import { supabase } from "@/lib/supabase";
 
@@ -30,6 +28,9 @@ const statusBarHeight =
 export default function GamesIndex() {
   const router = useRouter();
 
+  /** ----------------------------------------------------------
+   * SESSION STORE
+   ---------------------------------------------------------- */
   const {
     startChildSession,
     setSessionDetails,
@@ -40,60 +41,47 @@ export default function GamesIndex() {
     endSession,
   } = useSessionStore();
 
-  const { getCurrentScore, getHighScore, resetCurrentScore } = useGameStore();
+  /** ----------------------------------------------------------
+   * GAME STORE
+   ---------------------------------------------------------- */
+  const { getHighScore, getPoints, resetCurrentScore } = useGameStore();
 
   const currentChildId = useChildAuthStore((state) => state.currentChildId);
 
+  /** ----------------------------------------------------------
+   * ACHIEVEMENTS STORE
+   ---------------------------------------------------------- */
   const { allAchievements, achievementsByChild, fetchChildAchievements } =
     useChildAchievementStore();
 
-  /* -------------------------------------------------------
-     UTIL: Add Achievement Once
-  ------------------------------------------------------- */
+  /** ----------------------------------------------------------
+   * ADD ACHIEVEMENT ONCE
+   ---------------------------------------------------------- */
   const addAchievementOnce = useCallback(
     async (achievementTitle: string) => {
       if (!currentChildId) return;
 
-      // Ensure child achievements loaded
       if (!achievementsByChild[currentChildId]) {
         await fetchChildAchievements(currentChildId);
       }
 
       const childAchievements = achievementsByChild[currentChildId] ?? [];
 
-      // Find the achievement in global list
       const achievement = allAchievements.find(
         (a) => a.title === achievementTitle
       );
-      if (!achievement) {
-        console.warn(
-          `⚠ Achievement '${achievementTitle}' not found in global list.`
-        );
-        return;
-      }
+      if (!achievement) return;
 
       const alreadyHas = childAchievements.some(
         (a) => a.achievement?.id === achievement.id
       );
+      if (alreadyHas) return;
 
-      if (alreadyHas) {
-        console.log(`✅ Child already has achievement '${achievementTitle}'`);
-        return;
-      }
-
-      console.log(`🏆 Adding achievement '${achievementTitle}' to child...`);
-
-      // Insert into database; store auto-syncs into Zustand
-      const { error } = await supabase.from("ChildAchievement").insert({
+      await supabase.from("ChildAchievement").insert({
         achievementearned: achievement.id,
         childid: currentChildId,
         dateearned: new Date().toISOString(),
-        user_id: null,
       });
-
-      if (error) {
-        console.error("❌ Failed to add achievement:", error);
-      }
     },
     [
       currentChildId,
@@ -103,28 +91,32 @@ export default function GamesIndex() {
     ]
   );
 
-  /* -------------------------------------------------------
-     Handle Exited Games (session cleanup)
-  ------------------------------------------------------- */
+  /** ----------------------------------------------------------
+   * HANDLE EXITED GAMES
+   ---------------------------------------------------------- */
   useEffect(() => {
     const handleExitedGames = async () => {
       if (exitedFlappyGame) {
-        console.log("🟡 Exited Flappy Bird detected — ending session...");
-        const latestScore = Math.max(getCurrentScore(), getHighScore());
-        setSessionDetails(`Played Flappy Bird; Score ${latestScore}`);
+        const latestHigh = getHighScore("flappy");
+        const points = getPoints("flappy");
 
+        setSessionDetails(
+          `Played Flappy Bird — Score ${latestHigh}, Points ${points}`
+        );
         await endSession();
-        resetCurrentScore();
+        resetCurrentScore("flappy");
         setExitedFlappyGame(false);
       }
 
       if (exitedSnake) {
-        console.log("🟢 Exited Snake detected — ending session...");
-        const latestScore = Math.max(getCurrentScore(), getHighScore());
-        setSessionDetails(`Played Snake; Score ${latestScore}`);
+        const latestHigh = getHighScore("snake");
+        const points = getPoints("snake");
 
+        setSessionDetails(
+          `Played Snake — Score ${latestHigh}, Points ${points}`
+        );
         await endSession();
-        resetCurrentScore();
+        resetCurrentScore("snake");
         setExitedSnake(false);
       }
     };
@@ -133,51 +125,44 @@ export default function GamesIndex() {
   }, [
     exitedFlappyGame,
     exitedSnake,
+    getHighScore,
+    getPoints,
+    resetCurrentScore,
     endSession,
     setExitedFlappyGame,
     setExitedSnake,
     setSessionDetails,
-    getCurrentScore,
-    getHighScore,
-    resetCurrentScore,
   ]);
 
-  const handleClose = () => {
-    router.back();
-  };
+  const handleClose = () => router.back();
 
-  /* -------------------------------------------------------
-     Handle Selecting Game (with achievement unlock)
-  ------------------------------------------------------- */
+  /** ----------------------------------------------------------
+   * SELECT GAME
+   ---------------------------------------------------------- */
   const handleSelectGame = async (
     gameName: string,
-    route: "/Games/Flappy" | "/Games/Snake"
+    route: "/Games/Flappy" | "/Games/Snake" | "/Games/Fruit-Ninja/FruitNinja"
   ) => {
-    if (!currentChildId) {
-      console.warn("⚠️ No child selected — cannot start game session.");
-      return;
-    }
+    if (!currentChildId) return;
 
-    // Reset exit flags
     setExitedFlappyGame(false);
     setExitedSnake(false);
 
-    // Unlock appropriate first-time achievement only once
     if (gameName === "Snake") {
       await addAchievementOnce("First Time Playing Snake");
     } else if (gameName === "Flappy Bird") {
       await addAchievementOnce("First Time Playing Flappy Bird");
     }
 
-    // Start the actual play session
     startChildSession(currentChildId, "game");
     setSessionDetails(`Playing ${gameName}`);
+
     router.push(route);
   };
 
-  /* -------------------------------------------------------
-     UI
-  ------------------------------------------------------- */
+  /** ----------------------------------------------------------
+   * UI
+   ---------------------------------------------------------- */
   return (
     <SafeAreaView style={styles.safeContainer} edges={["top"]}>
       <View style={styles.headerBackground} />
@@ -188,9 +173,10 @@ export default function GamesIndex() {
         imageStyle={styles.backgroundImage}
         resizeMode="cover"
       >
-        {/* --- Header --- */}
+        {/* ---------- HEADER ---------- */}
         <View style={styles.headerBar}>
           <Text style={styles.headerTitle}>Select Game</Text>
+
           <TouchableOpacity onPress={handleClose} style={styles.closeButton}>
             <Ionicons
               name="close"
@@ -200,13 +186,13 @@ export default function GamesIndex() {
           </TouchableOpacity>
         </View>
 
-        {/* Info message */}
         <View style={styles.infoMessageWrapper}>
           <Text style={styles.infoMessage}>
             Questions only appear in games if a lesson or section is completed.
           </Text>
         </View>
 
+        {/* ---------- GAME CARDS ---------- */}
         <ScrollView
           contentContainerStyle={styles.scrollContainer}
           showsVerticalScrollIndicator={false}
@@ -238,15 +224,32 @@ export default function GamesIndex() {
               <Text style={styles.gameTitle}>Snake</Text>
             </TouchableOpacity>
           </View>
+
+          <TouchableOpacity
+            style={[styles.gameCard, { alignSelf: "center", marginTop: 20 }]}
+            onPress={() =>
+              handleSelectGame("Fruit Ninja", "/Games/Fruit-Ninja/FruitNinja")
+            }
+          >
+            <Image
+              source={require("@/app/Games/assets/watermelon.png")}
+              style={[
+                styles.gameImage,
+                { height: responsive.screenHeight * 0.14 },
+              ]}
+              resizeMode="contain"
+            />
+            <Text style={styles.gameTitle}>Fruit Ninja</Text>
+          </TouchableOpacity>
         </ScrollView>
       </ImageBackground>
     </SafeAreaView>
   );
 }
 
-/* -------------------------------------------------------
-   Styles
-------------------------------------------------------- */
+/* ----------------------------------------------------------
+ *  STYLES
+ * --------------------------------------------------------- */
 const styles = StyleSheet.create({
   safeContainer: { flex: 1, backgroundColor: "#fff" },
 
@@ -274,9 +277,6 @@ const styles = StyleSheet.create({
     borderBottomRightRadius: 20,
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: "#000",
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
     elevation: 3,
     zIndex: 2,
   },
