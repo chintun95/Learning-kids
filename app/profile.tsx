@@ -1,7 +1,5 @@
 // app/profile.tsx
 
-// app/profile.tsx
-
 import React, { useEffect, useState, useCallback } from 'react';
 import {
   View,
@@ -55,20 +53,15 @@ const Profile: React.FC = () => {
   const [editMinute, setEditMinute] = useState(0);
   const [loadingProfile, setLoadingProfile] = useState(true);
 
-  // --- ADDED STATE FOR PASSWORD GATE ---
   const [password, setPassword] = useState('');
   const [isAuthenticating, setIsAuthenticating] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  // --- END OF ADDED STATE ---
 
-  
   useFocusEffect(
     useCallback(() => {
-     
-      setIsAuthenticated(false); // Require auth every time
-      setPassword('');          // Clear password field
+      setIsAuthenticated(false);
+      setPassword('');
       setLoadingProfile(true);
-      // --- END OF MODIFIED LOGIC ---
 
       const user = auth.currentUser;
       if (user) {
@@ -118,12 +111,12 @@ const Profile: React.FC = () => {
   };
 
   const handleEditProfile = () => navigation.navigate('EditProfilePage');
-  const handleGames = () => navigation.navigate('GamePage');
 
-  // ✅ Chart navigation
+  // ✅ UPDATED: Navigate to child selector instead of GamePage
+  const handleGames = () => navigation.navigate('ChildSelectScreen');
+
   const handleViewChart = () => navigation.navigate('ProgressChart');
 
-  // --- ADDED PASSWORD VERIFICATION FUNCTION ---
   const handleReAuthentication = async () => {
     const user = auth.currentUser;
     if (!user || !user.email) {
@@ -141,16 +134,18 @@ const Profile: React.FC = () => {
     try {
       const credential = EmailAuthProvider.credential(user.email, password);
       await reauthenticateWithCredential(user, credential);
-      setIsAuthenticated(true); // <-- Grant access
+      setIsAuthenticated(true);
       setPassword('');
     } catch (error: any) {
-      Alert.alert("Authentication Failed", "The password you entered is incorrect. Please try again.");
+      Alert.alert(
+        "Authentication Failed",
+        "The password you entered is incorrect. Please try again."
+      );
       console.error("Re-authentication error:", error);
     } finally {
       setIsAuthenticating(false);
     }
   };
-  // --- END OF ADDED FUNCTION ---
 
   if (loadingProfile) {
     return (
@@ -163,7 +158,6 @@ const Profile: React.FC = () => {
     );
   }
 
-  // --- ADDED PASSWORD PROMPT RENDER ---
   if (!isAuthenticated) {
     return (
       <ImageBackground
@@ -174,6 +168,7 @@ const Profile: React.FC = () => {
           <View style={styles.authBox}>
             <Text style={styles.authTitle}>Verify Your Identity</Text>
             <Text style={styles.authSubtitle}>Please enter your password to view your profile.</Text>
+
             <TextInput
               style={styles.authInput}
               placeholder="Password"
@@ -183,6 +178,7 @@ const Profile: React.FC = () => {
               onChangeText={setPassword}
               autoCapitalize="none"
             />
+
             <TouchableOpacity 
               style={[styles.actionButton, styles.authButton]} 
               onPress={handleReAuthentication} 
@@ -194,25 +190,26 @@ const Profile: React.FC = () => {
                 <Text style={styles.actionButtonText}>Continue</Text>
               )}
             </TouchableOpacity>
+
             <TouchableOpacity 
               style={[styles.actionButton, styles.signOutButton, {marginTop: 10, backgroundColor: '#6c757d'}]} 
               onPress={() => navigation.goBack()}
             >
               <Text style={styles.actionButtonText}>Back</Text>
             </TouchableOpacity>
+
           </View>
         </ScrollView>
       </ImageBackground>
     );
   }
-  // --- END OF ADDED RENDER ---
 
-  // This part below will only render if isAuthenticated is true
   return (
     <ImageBackground
       source={require('../assets/images/app-background.png')}
       style={styles.image}>
       <ScrollView contentContainerStyle={styles.scrollContainer}>
+        
         {/* Header */}
         <View style={styles.header}>
           <Image
@@ -263,15 +260,15 @@ const Profile: React.FC = () => {
           </TouchableOpacity>
         </View>
 
-        {/* Games */}
+        {/* Games → now Child Selector */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Games</Text>
+          <Text style={styles.sectionTitle}>Pick a child</Text>
           <TouchableOpacity style={styles.gamesButton} onPress={handleGames}>
-            <Text style={styles.gamesButtonText}>Play Games</Text>
+            <Text style={styles.gamesButtonText}>Select Child</Text>
           </TouchableOpacity>
         </View>
 
-        {/* 🔔 Daily Reminder Section */}
+        {/* Daily Reminder */}
         <View style={[styles.section, styles.reminderSection]}>
           <View style={styles.reminderHeader}>
             <Text style={styles.sectionTitle}>Daily Reminder</Text>
@@ -321,13 +318,16 @@ const Profile: React.FC = () => {
                 {editMinute.toString().padStart(2, '0')}{' '}
                 {editHour >= 12 ? 'PM' : 'AM'}
               </Text>
+
               <View style={styles.timeAdjustRow}>
                 <TouchableOpacity
                   onPress={() => setEditHour(h => (h + 23) % 24)}
                   style={styles.smallButton}>
                   <Text style={styles.smallButtonText}>H-</Text>
                 </TouchableOpacity>
+
                 <Text style={styles.timeValue}>{editHour.toString().padStart(2, '0')}</Text>
+
                 <TouchableOpacity
                   onPress={() => setEditHour(h => (h + 1) % 24)}
                   style={styles.smallButton}>
@@ -341,7 +341,9 @@ const Profile: React.FC = () => {
                   style={styles.smallButton}>
                   <Text style={styles.smallButtonText}>M-</Text>
                 </TouchableOpacity>
+
                 <Text style={styles.timeValue}>{editMinute.toString().padStart(2, '0')}</Text>
+
                 <TouchableOpacity
                   onPress={() => setEditMinute(m => (m + 1) % 60)}
                   style={styles.smallButton}>
@@ -369,6 +371,7 @@ const Profile: React.FC = () => {
                   }}>
                   <Text style={styles.smallActionText}>Save</Text>
                 </TouchableOpacity>
+
                 <TouchableOpacity
                   style={[styles.smallActionButton, { backgroundColor: '#FF3B30' }]}
                   onPress={() => setIsEditingTime(false)}>
@@ -377,50 +380,34 @@ const Profile: React.FC = () => {
               </View>
             </View>
           )}
-
-          {/* Dev test notification button */}
-          {__DEV__ && (
-            <TouchableOpacity
-              style={styles.testButton}
-              onPress={async () => {
-                try {
-                  const id = await scheduleLocalNotification('Test Notification', 'This should appear in ~5s', 5);
-                  console.log('Scheduled test notification id:', id);
-                } catch (e) {
-                  console.error('Failed to schedule test notification:', e);
-                }
-              }}>
-              <Text style={styles.testButtonText}>Send test notification (5s)</Text>
-            </TouchableOpacity>
-          )}
         </View>
 
         {/* Footer Buttons */}
         <View style={styles.bottomButtonContainer}>
+
           <TouchableOpacity style={styles.actionButton} onPress={handleEditProfile}>
             <Text style={styles.actionButtonText}>Info & Questions</Text>
           </TouchableOpacity>
-          
-          {/* --- THIS IS THE NEW BUTTON --- */}
+
           <TouchableOpacity 
             style={[styles.actionButton, { backgroundColor: '#34A853' }]} 
             onPress={() => navigation.navigate('AddChildScreen')}
           >
             <Text style={styles.actionButtonText}>+ Add Child</Text>
           </TouchableOpacity>
-          {/* --- END NEW BUTTON --- */}
 
           <TouchableOpacity
             style={[styles.actionButton, styles.signOutButton]}
             onPress={handleSignOut}>
             <Text style={styles.actionButtonText}>Sign Out</Text>
           </TouchableOpacity>
+
         </View>
+
       </ScrollView>
     </ImageBackground>
   );
 };
-
 
 const styles = StyleSheet.create({
   image: { flex: 1 },
@@ -578,8 +565,6 @@ const styles = StyleSheet.create({
   editorButtons: { flexDirection: 'row', justifyContent: 'space-around', width: '80%', marginTop: hp('1%') },
   smallActionButton: { paddingVertical: hp('1%'), paddingHorizontal: wp('6%'), borderRadius: 20 },
   smallActionText: { color: '#fff', fontSize: wp('4%'), fontFamily: 'FredokaOne-Regular' },
-  testButton: { backgroundColor: '#6c757d', paddingVertical: hp('1%'), paddingHorizontal: wp('4%'), borderRadius: 15, marginTop: hp('2%') },
-  testButtonText: { color: '#fff', fontSize: wp('3.5%'), fontFamily: 'FredokaOne-Regular' },
   bottomButtonContainer: { width: wp('90%'), alignItems: 'center', marginTop: hp('2%'), marginBottom: hp('3%') },
   actionButton: {
     width: wp('70%'),
@@ -594,8 +579,6 @@ const styles = StyleSheet.create({
   },
   signOutButton: { backgroundColor: '#FF3B30' },
   actionButtonText: { color: '#fff', fontSize: wp('5%'), fontFamily: 'FredokaOne-Regular' },
-
-  // --- NEW AUTH STYLES ---
   authContainer: {
     flex: 1,
     justifyContent: 'center',
@@ -635,13 +618,12 @@ const styles = StyleSheet.create({
     fontFamily: 'FredokaOne-Regular',
     backgroundColor: '#fff',
     marginBottom: hp('2%'),
-    color: '#000', // Ensure text is visible
+    color: '#000',
   },
   authButton: {
     width: wp('80%'),
     marginBottom: 0,
   },
- 
 });
 
 export default Profile;

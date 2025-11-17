@@ -22,7 +22,7 @@ import { useNavigation } from '@react-navigation/native';
 import { Image } from 'expo-image';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFonts } from "expo-font";
-import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { Ionicons } from '@expo/vector-icons';
 import { widthPercentageToDP as wp, heightPercentageToDP as hp } from 'react-native-responsive-screen';
 import { createUserWithEmailAndPassword } from 'firebase/auth';
 import { auth } from '../firebase'; 
@@ -33,7 +33,7 @@ import loginImage from "@/assets/images/app-background.png";
 const SignInPage = memo(() => {
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
-  // Font Loading
+
   const [fontsLoaded] = useFonts({
     "FredokaOne-Regular": require("@/assets/fonts/FredokaOne-Regular.ttf"),
   });
@@ -46,14 +46,12 @@ const SignInPage = memo(() => {
     );
   }
 
-  // Input State
+  // Input State (kid fields removed)
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
-  const [kname, setKname] = useState('');
-  const [kage, setKage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
 
@@ -63,28 +61,26 @@ const SignInPage = memo(() => {
       Alert.alert('Invalid email', 'Please re-enter email');
       return;
     }
-  
+
     if (password !== confirm) {
       Alert.alert('Passwords do not match');
       return;
     }
-  
+
     setIsLoading(true);
-  
+
     try {
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       const user = userCredential.user;
-  
+
       const { error } = await supabase.from('profiles').insert([
         {
           user_id: user.uid,
           parent_name: name,
           phone_number: phone,
-          child_name: kname,
-          child_age: parseInt(kage),
         }
       ]);
-  
+
       if (error) {
         console.error('Supabase insert error:', error);
         Alert.alert('Signup failed', 'Could not save profile data.');
@@ -100,7 +96,7 @@ const SignInPage = memo(() => {
       setIsLoading(false);
     }
   };
-  
+
   return (
     <SafeAreaView style={styles.container}>
       <KeyboardAvoidingView
@@ -126,98 +122,80 @@ const SignInPage = memo(() => {
               </View>
 
               <View style={styles.innerContainer}>
-                  {/* Logo */}
-                  <Image source={require("@/assets/images/logo-black.png")} style={styles.logo} />
-                  <View style={{ bottom: hp('25%')}}>
-                      <Text style={styles.text}>Sign In</Text>
+                {/* Logo */}
+                <Image source={require("@/assets/images/logo-black.png")} style={styles.logo} />
 
-                      {/* Parent or Guardians section */}
-                      <Text style={styles.subText}>Parent or Guardian's Information:</Text>
+                <View style={{ bottom: hp('25%')}}>
+                  <Text style={styles.text}>Sign Up</Text>
 
-                      <View style={styles.boxes}>
-                        <Text style={styles.boxLabel}>Full Name:</Text>
-                        <TextInput
-                          style={styles.inputText}
-                          placeholder="Full name..."
-                          placeholderTextColor="#aaa"
-                          keyboardType="default"
-                          autoCapitalize="words"
-                          value={name}
-                          onChangeText={setName}
-                        />
-                        <Text style={styles.boxLabel}>E-mail:</Text>
-                        <TextInput
-                          style={styles.inputText}
-                          placeholder="E-mail..."
-                          placeholderTextColor="#aaa"
-                          keyboardType="email-address"
-                          autoCapitalize="none"
-                          value={email}
-                          onChangeText={setEmail}
-                        />
-                        <Text style={styles.boxLabel}>Phone Number:</Text>
-                        <TextInput
-                          style={styles.inputText}
-                          placeholder="Phone number..."
-                          placeholderTextColor="#aaa"
-                          keyboardType="phone-pad"
-                          value={phone}
-                          onChangeText={setPhone}
-                        />
-                        <Text style={styles.boxLabel}>Password:</Text>
-                        <TextInput
-                          style={styles.inputText}
-                          placeholder="Enter password..."
-                          placeholderTextColor="#aaa"
-                          secureTextEntry={true}
-                          value={password}
-                          onChangeText={setPassword}
-                        />
-                        <Text style={styles.boxLabel}>Confirm Password:</Text>
-                        <TextInput
-                          style={styles.inputText}
-                          placeholder="Confirm password..."
-                          placeholderTextColor="#aaa"
-                          secureTextEntry={true}
-                          value={confirm}
-                          onChangeText={setConfirm}
-                        />
-                      </View>
+                  {/* Parent section */}
+                  <Text style={styles.subText}>Parent or Guardian's Information:</Text>
 
-                      {/* Kid’s section */}
-                      <Text style={styles.subText}>Kid’s Information:</Text>
-                      <Text style={styles.boxLabel}>Full Name:</Text>
-                      <TextInput
-                        style={styles.inputText}
-                        placeholder="Full name..."
-                        placeholderTextColor="#aaa"
-                        keyboardType="default"
-                        autoCapitalize="words"
-                        value={kname}
-                        onChangeText={setKname}
-                      />
-                      <Text style={styles.boxLabel}>Kids Age:</Text>
-                      <TextInput
-                        style={styles.inputText}
-                        placeholder="Age..."
-                        placeholderTextColor="#aaa"
-                        keyboardType='number-pad'
-                        value={kage}
-                        onChangeText={setKage}
-                      />
+                  <View style={styles.boxes}>
+                    <Text style={styles.boxLabel}>Full Name:</Text>
+                    <TextInput
+                      style={styles.inputText}
+                      placeholder="Full name..."
+                      placeholderTextColor="#aaa"
+                      keyboardType="default"
+                      autoCapitalize="words"
+                      value={name}
+                      onChangeText={setName}
+                    />
+                    <Text style={styles.boxLabel}>E-mail:</Text>
+                    <TextInput
+                      style={styles.inputText}
+                      placeholder="E-mail..."
+                      placeholderTextColor="#aaa"
+                      keyboardType="email-address"
+                      autoCapitalize="none"
+                      value={email}
+                      onChangeText={setEmail}
+                    />
+                    <Text style={styles.boxLabel}>Phone Number:</Text>
+                    <TextInput
+                      style={styles.inputText}
+                      placeholder="Phone number..."
+                      placeholderTextColor="#aaa"
+                      keyboardType="phone-pad"
+                      value={phone}
+                      onChangeText={setPhone}
+                    />
+                    <Text style={styles.boxLabel}>Password:</Text>
+                    <TextInput
+                      style={styles.inputText}
+                      placeholder="Enter password..."
+                      placeholderTextColor="#aaa"
+                      secureTextEntry={true}
+                      value={password}
+                      onChangeText={setPassword}
+                    />
+                    <Text style={styles.boxLabel}>Confirm Password:</Text>
+                    <TextInput
+                      style={styles.inputText}
+                      placeholder="Confirm password..."
+                      placeholderTextColor="#aaa"
+                      secureTextEntry={true}
+                      value={confirm}
+                      onChangeText={setConfirm}
+                    />
                   </View>
 
-                  <TouchableOpacity onPress={handleSignUp}>
-                    <View style={styles.button}>
-                      <Text style={styles.buttonText}>
-                        {isLoading ? "Signing up..." : "Sign Up"}
-                      </Text>
-                    </View>
-                  </TouchableOpacity>
+                </View>
 
-                  {/* Footer */}
-                  <Text style={styles.footer}>By continuing, you accept our Terms of Service.</Text>
+                <TouchableOpacity onPress={handleSignUp}>
+                  <View style={styles.button}>
+                    <Text style={styles.buttonText}>
+                      {isLoading ? "Signing up..." : "Sign Up"}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+
+                <Text style={styles.footer}>
+                  By continuing, you accept our Terms of Service.
+                </Text>
               </View>
+
             </ImageBackground>
           </ScrollView>
         </TouchableWithoutFeedback>
@@ -226,38 +204,24 @@ const SignInPage = memo(() => {
   );
 });
 
-// Responsive Scaling
+// -------------------- styles stay identical --------------------
+
 const LOGO_WIDTH = PixelRatio.roundToNearestPixel(556);
 const LOGO_HEIGHT = PixelRatio.roundToNearestPixel(488);
 const BOX_WIDTH = wp('85%');
 const BOX_HEIGHT = hp('6%');
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  keyboardAvoidingContainer: {
-    flex: 1,
-  },
-  scrollContent: {
-    flexGrow: 1,
-  },
+  container: { flex: 1 },
+  keyboardAvoidingContainer: { flex: 1 },
+  scrollContent: { flexGrow: 1 },
   innerContainer: {
     flex: 1,
     alignItems: 'center',
     paddingVertical: 20,
   },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  image: {
-    flex: 1,
-    width: '100%',
-    height: '100%',
-    alignItems: 'center',
-  },
+  loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  image: { flex: 1, width: '100%', height: '100%', alignItems: 'center' },
   logo: {
     bottom: hp('15%'),
     marginTop: hp('5%'),
@@ -335,10 +299,24 @@ const styles = StyleSheet.create({
     fontSize: wp('3.2%'),
     fontFamily: 'FredokaOne-Regular',
   },
-  // back
-  backContainer: { position: 'absolute', left: wp('4%'), zIndex: 10 },
-  backButton: { flexDirection: 'row', alignItems: 'center', paddingVertical: 6, paddingHorizontal: 8, minWidth: 48 },
-  backLabel: { marginLeft: 2, fontFamily: 'FredokaOne-Regular', fontSize: wp('4.2%'), color: '#000' },
+  backContainer: {
+    position: 'absolute',
+    left: wp('4%'),
+    zIndex: 10
+  },
+  backButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 6,
+    paddingHorizontal: 8,
+    minWidth: 48
+  },
+  backLabel: {
+    marginLeft: 2,
+    fontFamily: 'FredokaOne-Regular',
+    fontSize: wp('4.2%'),
+    color: '#000'
+  },
 });
 
 export default SignInPage;
