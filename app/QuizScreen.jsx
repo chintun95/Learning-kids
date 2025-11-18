@@ -122,9 +122,14 @@ const QuizScreen = () => {
 
     // --- REPLACE ALERTS WITH THIS ---
     if (isCorrect) {
-      setFeedbackContent({ icon: '🎉👍', text: 'Great job!' });
+      setFeedbackContent({ icon: '🎉👍', text: 'Great job!', correctAnswer: null });
     } else {
-      setFeedbackContent({ icon: '❌', text: 'Incorrect' });
+      const correctAnswerText = currentQuestion.options[currentQuestion.correct_answer];
+      setFeedbackContent({ 
+        icon: '❌', 
+        text: 'Incorrect', 
+        correctAnswer: `Correct answer: ${currentQuestion.correct_answer.toUpperCase()}: ${correctAnswerText}` 
+      });
     }
 
     // --- REPLACE setTimeout WITH ANIMATION ---
@@ -213,6 +218,9 @@ const QuizScreen = () => {
           {feedbackContent.text ? (
             <Text style={styles.feedbackText}>{feedbackContent.text}</Text>
           ) : null}
+          {feedbackContent.correctAnswer ? (
+            <Text style={styles.correctAnswerText}>{feedbackContent.correctAnswer}</Text>
+          ) : null}
         </Animated.View>
       )}
       {/* --- END ADD --- */}
@@ -285,5 +293,17 @@ const styles = StyleSheet.create({
     textShadowColor: 'rgba(0, 0, 0, 0.5)',
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 2,
+  },
+  correctAnswerText: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#4CAF50',
+    marginTop: 15,
+    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 10,
+    textAlign: 'center',
+    maxWidth: '90%',
   },
 });
