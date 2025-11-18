@@ -6,7 +6,7 @@
 
 import React, { useState, memo } from 'react'
 import { StyleSheet, Text, View, ImageBackground,PixelRatio, TextInput,
-   Pressable,TouchableOpacity, ActivityIndicator, Alert } from 'react-native'
+   Pressable,TouchableOpacity, ActivityIndicator, Alert, Modal, ScrollView } from 'react-native'
 import loginImage from "@/assets/images/app-background.png"
 import { Image } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -35,6 +35,7 @@ const LogInPage = memo(() => {
     const [password, setPassword] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const [errorMessage, setErrorMessage] = useState("");
+    const [showTerms, setShowTerms] = useState(false);
 
     if (!fontsLoaded) {
       return <Text>Loading fonts...</Text>;
@@ -124,25 +125,72 @@ const LogInPage = memo(() => {
       >
         <Text style={styles.otherText}>Don’t have an account? Sign Up</Text>
       </Pressable>
-      
-      {/* Social Login Icons */}
-      <Text style={styles.otherText1}>Or continue with:</Text>
-      <View style={styles.iconContainer}>
-        <Pressable onPress={() => navigation.navigate('ChildSelectScreen')}>
-          <Image style={styles.icon} source={require('@/assets/images/google-icon.png')} />
-        </Pressable>
-
-        <Pressable onPress={() => navigation.navigate('ProfilePage')}>
-          <Image style={styles.icon} source={require('@/assets/images/apple-icon.png')} />
-        </Pressable>
-
-        <Pressable onPress={() => navigation.navigate('GamesTemp')}>
-          <Image style={styles.icon} source={require('@/assets/images/facebook-icon.png')} />
-        </Pressable>
-      </View>
 
       {/* Footer */}
-      <Text style={styles.footer}>By continuing, you accept our Terms of Service</Text>
+      <Text style={styles.footer}>
+        By continuing, you accept our{' '}
+        <Text style={styles.termsLink} onPress={() => setShowTerms(true)}>
+          Terms of Service
+        </Text>
+      </Text>
+
+      {/* Terms of Service Modal */}
+      <Modal
+        visible={showTerms}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setShowTerms(false)}
+      >
+        <SafeAreaView style={styles.modalContainer}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Terms of Service</Text>
+            <TouchableOpacity onPress={() => setShowTerms(false)} style={styles.closeButton}>
+              <Text style={styles.closeButtonText}>✕</Text>
+            </TouchableOpacity>
+          </View>
+          <ScrollView style={styles.modalContent}>
+            <Text style={styles.termsText}>
+              <Text style={styles.termsHeading}>1. Acceptance of Terms{"\n\n"}</Text>
+              By accessing and using this Learning Kids application, you accept and agree to be bound by the terms and provision of this agreement.
+              {"\n\n"}
+              <Text style={styles.termsHeading}>2. Description of Service{"\n\n"}</Text>
+              Learning Kids provides educational games and activities for children. The service includes quiz games, progress tracking, and parental controls.
+              {"\n\n"}
+              <Text style={styles.termsHeading}>3. User Accounts{"\n\n"}</Text>
+              You are responsible for maintaining the confidentiality of your account and password. You agree to accept responsibility for all activities that occur under your account.
+              {"\n\n"}
+              <Text style={styles.termsHeading}>4. Privacy and Data Protection{"\n\n"}</Text>
+              We collect and store information about you and your child's progress to provide personalized learning experiences. We do not share personal information with third parties without your consent.
+              {"\n\n"}
+              <Text style={styles.termsHeading}>5. Children's Privacy{"\n\n"}</Text>
+              This app is designed for children with parental supervision. Parents are responsible for monitoring their children's use of the application.
+              {"\n\n"}
+              <Text style={styles.termsHeading}>6. User Conduct{"\n\n"}</Text>
+              You agree not to use the service for any unlawful purpose or in any way that could damage, disable, or impair the service.
+              {"\n\n"}
+              <Text style={styles.termsHeading}>7. Content{"\n\n"}</Text>
+              All content provided through the app, including text, graphics, and games, is owned by Learning Kids or its licensors and is protected by copyright laws.
+              {"\n\n"}
+              <Text style={styles.termsHeading}>8. Modifications to Service{"\n\n"}</Text>
+              We reserve the right to modify or discontinue the service at any time without notice.
+              {"\n\n"}
+              <Text style={styles.termsHeading}>9. Limitation of Liability{"\n\n"}</Text>
+              Learning Kids shall not be liable for any indirect, incidental, special, or consequential damages resulting from the use or inability to use the service.
+              {"\n\n"}
+              <Text style={styles.termsHeading}>10. Changes to Terms{"\n\n"}</Text>
+              We reserve the right to update these terms at any time. Continued use of the service constitutes acceptance of modified terms.
+              {"\n\n"}
+              <Text style={styles.termsHeading}>11. Contact Information{"\n\n"}</Text>
+              For questions about these Terms of Service, please contact us through the app settings.
+              {"\n\n"}
+              <Text style={styles.termsFooter}>Last Updated: November 2025</Text>
+            </Text>
+          </ScrollView>
+          <TouchableOpacity style={styles.acceptButton} onPress={() => setShowTerms(false)}>
+            <Text style={styles.acceptButtonText}>Close</Text>
+          </TouchableOpacity>
+        </SafeAreaView>
+      </Modal>
     </SafeAreaView>
   );
 });
@@ -240,27 +288,6 @@ const styles = StyleSheet.create({
     fontSize: wp('4.4%'), // Scales with screen size
     fontFamily: 'FredokaOne-Regular',
   },
-  otherText1: {
-    position: 'absolute',
-    top: hp('80%'),
-    textAlign: 'center',
-    color: '#0A0A0A',
-    fontSize: wp('3.8%'), // Scales with screen size
-    fontFamily: 'FredokaOne-Regular',
-  },
-  iconContainer:{
-    position: 'absolute',
-    top: hp('81%'),
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginTop: 25,
-  },
-  icon:{
-    width: 60,
-    height: 60,
-    marginHorizontal: 15,
-  },
   footer:{
     position: 'absolute',
     top: hp('95%'),
@@ -268,7 +295,67 @@ const styles = StyleSheet.create({
     color: '#0A0A0A',
     fontSize: wp('2.8%'), // Scales with screen size
     fontFamily: 'FredokaOne-Regular',
-  }
+  },
+  termsLink: {
+    color: '#4A90E2',
+    textDecorationLine: 'underline',
+    fontFamily: 'FredokaOne-Regular',
+  },
+  modalContainer: {
+    flex: 1,
+    backgroundColor: '#fff',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: wp('4%'),
+    borderBottomWidth: 1,
+    borderBottomColor: '#ddd',
+  },
+  modalTitle: {
+    fontSize: wp('6%'),
+    fontFamily: 'FredokaOne-Regular',
+    color: '#1E1E1E',
+  },
+  closeButton: {
+    padding: wp('2%'),
+  },
+  closeButtonText: {
+    fontSize: wp('7%'),
+    color: '#666',
+  },
+  modalContent: {
+    flex: 1,
+    padding: wp('5%'),
+  },
+  termsText: {
+    fontSize: wp('3.8%'),
+    lineHeight: wp('6%'),
+    color: '#333',
+  },
+  termsHeading: {
+    fontFamily: 'FredokaOne-Regular',
+    fontSize: wp('4.2%'),
+    color: '#1E1E1E',
+  },
+  termsFooter: {
+    fontStyle: 'italic',
+    color: '#666',
+    fontSize: wp('3.2%'),
+  },
+  acceptButton: {
+    margin: wp('4%'),
+    backgroundColor: '#4A90E2',
+    padding: wp('4%'),
+    borderRadius: 25,
+    alignItems: 'center',
+  },
+  acceptButtonText: {
+    color: '#fff',
+    fontSize: wp('4.5%'),
+    fontFamily: 'FredokaOne-Regular',
+  },
 
 });
 
