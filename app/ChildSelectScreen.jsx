@@ -1,6 +1,7 @@
 import React, { useState, useCallback } from 'react';
-import { StyleSheet, Text, TouchableOpacity, FlatList, ActivityIndicator, Alert } from 'react-native';
+import { StyleSheet, Text, TouchableOpacity, FlatList, ActivityIndicator, Alert, Modal, View, TextInput } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { useChild } from './ChildContext';
 import { fetchUserProfile } from '../backend/fetchUserProfile';
@@ -20,6 +21,12 @@ const ChildSelectScreen = () => {
   const { setSelectedChild } = useChild();
   const [children, setChildren] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [showPinModal, setShowPinModal] = useState(false);
+  const [pinInput, setPinInput] = useState('');
+  const [pinError, setPinError] = useState(false);
+
+  // Default PIN - in production, this should be stored securely
+  const DEFAULT_PIN = '1234';
 
   const fetchChildren = useCallback(async () => {
     setLoading(true);
@@ -49,6 +56,35 @@ const ChildSelectScreen = () => {
       childToEdit: child,
       refreshParent: fetchChildren,
     });
+  };
+
+  const handleProfilePress = () => {
+    setShowPinModal(true);
+    setPinInput('');
+    setPinError(false);
+  };
+
+  const handlePinSubmit = async () => {
+    // Get stored PIN or use default
+    const storedPin = await AsyncStorage.getItem('parentPin');
+    const validPin = storedPin || DEFAULT_PIN;
+
+    if (pinInput === validPin) {
+      setShowPinModal(false);
+      setPinInput('');
+      setPinError(false);
+      navigation.navigate('ProfilePage');
+    } else {
+      setPinError(true);
+      setPinInput('');
+      // Shake animation or feedback could be added here
+    }
+  };
+
+  const handlePinCancel = () => {
+    setShowPinModal(false);
+    setPinInput('');
+    setPinError(false);
   };
 
   if (loading) {
@@ -90,11 +126,62 @@ const ChildSelectScreen = () => {
       {/* Profile Button */}
       <TouchableOpacity
         style={styles.profileButton}
-        onPress={() => navigation.navigate('ProfilePage')}
+        onPress={handleProfilePress}
       >
         <Text style={styles.profileEmoji}>👩‍👩‍👦‍👦</Text>
         <Text style={styles.profileText}>Profile</Text>
       </TouchableOpacity>
+
+      {/* PIN Verification Modal */}
+      <Modal
+        visible={showPinModal}
+        animationType="fade"
+        transparent={true}
+        onRequestClose={handlePinCancel}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.pinModal}>
+            <Text style={styles.pinTitle}>🔒 Parent Access</Text>
+            <Text style={styles.pinSubtitle}>Enter PIN to continue</Text>
+            
+            {pinError && (
+              <Text style={styles.errorText}>Incorrect PIN. Try again.</Text>
+            )}
+
+            <TextInput
+              style={[styles.pinInput, pinError && styles.pinInputError]}
+              value={pinInput}
+              onChangeText={setPinInput}
+              keyboardType="number-pad"
+              secureTextEntry={true}
+              maxLength={4}
+              placeholder="••••"
+              placeholderTextColor="#ccc"
+              autoFocus={true}
+              onSubmitEditing={handlePinSubmit}
+            />
+
+            <View style={styles.pinButtons}>
+              <TouchableOpacity
+                style={[styles.pinButton, styles.cancelButton]}
+                onPress={handlePinCancel}
+              >
+                <Text style={styles.cancelButtonText}>Cancel</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.pinButton, styles.submitButton]}
+                onPress={handlePinSubmit}
+                disabled={pinInput.length !== 4}
+              >
+                <Text style={styles.submitButtonText}>Enter</Text>
+              </TouchableOpacity>
+            </View>
+
+            <Text style={styles.hintText}>Default PIN: 1234</Text>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 };
@@ -154,6 +241,93 @@ const styles = StyleSheet.create({
     fontFamily: 'FredokaOne-Regular',
     fontSize: wp('5%'),
     color: '#000',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  pinModal: {
+    backgroundColor: '#fff',
+    borderRadius: 20,
+    padding: wp('6%'),
+    width: wp('80%'),
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  pinTitle: {
+    fontSize: wp('7%'),
+    fontFamily: 'FredokaOne-Regular',
+    color: '#1E1E1E',
+    marginBottom: hp('1%'),
+  },
+  pinSubtitle: {
+    fontSize: wp('4%'),
+    color: '#666',
+    marginBottom: hp('3%'),
+  },
+  pinInput: {
+    width: '80%',
+    height: hp('7%'),
+    borderWidth: 2,
+    borderColor: '#4A90E2',
+    borderRadius: 10,
+    fontSize: wp('8%'),
+    textAlign: 'center',
+    fontFamily: 'FredokaOne-Regular',
+    backgroundColor: '#F5F5F5',
+    marginBottom: hp('2%'),
+  },
+  pinInputError: {
+    borderColor: '#FF3B30',
+    backgroundColor: '#FFE5E5',
+  },
+  errorText: {
+    color: '#FF3B30',
+    fontSize: wp('3.5%'),
+    fontFamily: 'FredokaOne-Regular',
+    marginBottom: hp('1%'),
+  },
+  pinButtons: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    width: '100%',
+    marginTop: hp('2%'),
+    gap: wp('3%'),
+  },
+  pinButton: {
+    flex: 1,
+    height: hp('6%'),
+    borderRadius: 25,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  cancelButton: {
+    backgroundColor: '#E0E0E0',
+  },
+  cancelButtonText: {
+    color: '#333',
+    fontSize: wp('4.5%'),
+    fontFamily: 'FredokaOne-Regular',
+  },
+  submitButton: {
+    backgroundColor: '#4A90E2',
+  },
+  submitButtonText: {
+    color: '#fff',
+    fontSize: wp('4.5%'),
+    fontFamily: 'FredokaOne-Regular',
+  },
+  hintText: {
+    marginTop: hp('2%'),
+    fontSize: wp('3%'),
+    color: '#999',
+    fontStyle: 'italic',
   },
 });
 

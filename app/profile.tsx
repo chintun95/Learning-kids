@@ -15,8 +15,10 @@ import {
   ActivityIndicator,
   Modal,
   FlatList,
+  TextInput,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { auth } from '../firebase';
 import { 
   signOut,
@@ -56,6 +58,11 @@ const Profile: React.FC = () => {
   const [profileImageUri, setProfileImageUri] = useState<string | null>(null);
   const [uploadingImage, setUploadingImage] = useState(false);
   const [showAvatarModal, setShowAvatarModal] = useState(false);
+  const [showPinModal, setShowPinModal] = useState(false);
+  const [currentPin, setCurrentPin] = useState('');
+  const [newPin, setNewPin] = useState('');
+  const [confirmPin, setConfirmPin] = useState('');
+  const [pinError, setPinError] = useState('');
 
   // Predefined cute avatar options from local assets
   const predefinedAvatars = [
@@ -205,6 +212,57 @@ const Profile: React.FC = () => {
       Alert.alert('Error', 'Failed to update profile picture. Please try again.');
     } finally {
       setUploadingImage(false);
+    }
+  };
+
+  const handleOpenPinModal = () => {
+    setShowPinModal(true);
+    setCurrentPin('');
+    setNewPin('');
+    setConfirmPin('');
+    setPinError('');
+  };
+
+  const handleChangePin = async () => {
+    setPinError('');
+
+    // Get stored PIN or use default
+    const storedPin = await AsyncStorage.getItem('parentPin');
+    const validPin = storedPin || '1234';
+
+    // Validate current PIN
+    if (currentPin !== validPin) {
+      setPinError('Current PIN is incorrect');
+      return;
+    }
+
+    // Validate new PIN
+    if (newPin.length !== 4) {
+      setPinError('New PIN must be 4 digits');
+      return;
+    }
+
+    if (!/^\d{4}$/.test(newPin)) {
+      setPinError('PIN must contain only numbers');
+      return;
+    }
+
+    // Validate confirmation
+    if (newPin !== confirmPin) {
+      setPinError('New PINs do not match');
+      return;
+    }
+
+    try {
+      await AsyncStorage.setItem('parentPin', newPin);
+      Alert.alert('Success', 'PIN changed successfully!');
+      setShowPinModal(false);
+      setCurrentPin('');
+      setNewPin('');
+      setConfirmPin('');
+    } catch (error) {
+      console.error('Error saving PIN:', error);
+      setPinError('Failed to save PIN. Please try again.');
     }
   };
 
@@ -437,6 +495,13 @@ const Profile: React.FC = () => {
             <Text style={styles.actionButtonText}>+ Add Child</Text>
           </TouchableOpacity>
 
+          <TouchableOpacity 
+            style={[styles.actionButton, { backgroundColor: '#FF9500' }]} 
+            onPress={handleOpenPinModal}
+          >
+            <Text style={styles.actionButtonText}>🔒 Change PIN</Text>
+          </TouchableOpacity>
+
           <TouchableOpacity
             style={[styles.actionButton, styles.signOutButton]}
             onPress={handleSignOut}>
@@ -479,6 +544,88 @@ const Profile: React.FC = () => {
                 </TouchableOpacity>
               )}
             />
+          </View>
+        </View>
+      </Modal>
+
+      {/* Change PIN Modal */}
+      <Modal
+        visible={showPinModal}
+        animationType="fade"
+        transparent={true}
+        onRequestClose={() => setShowPinModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.pinChangeModal}>
+            <Text style={styles.pinChangeTitle}>🔒 Change PIN</Text>
+            <Text style={styles.pinChangeSubtitle}>Update your parental control PIN</Text>
+
+            {pinError ? (
+              <Text style={styles.pinErrorText}>{pinError}</Text>
+            ) : null}
+
+            <View style={styles.pinInputContainer}>
+              <Text style={styles.pinInputLabel}>Current PIN</Text>
+              <TextInput
+                style={styles.pinChangeInput}
+                value={currentPin}
+                onChangeText={setCurrentPin}
+                keyboardType="number-pad"
+                secureTextEntry={true}
+                maxLength={4}
+                placeholder="••••"
+                placeholderTextColor="#ccc"
+              />
+            </View>
+
+            <View style={styles.pinInputContainer}>
+              <Text style={styles.pinInputLabel}>New PIN</Text>
+              <TextInput
+                style={styles.pinChangeInput}
+                value={newPin}
+                onChangeText={setNewPin}
+                keyboardType="number-pad"
+                secureTextEntry={true}
+                maxLength={4}
+                placeholder="••••"
+                placeholderTextColor="#ccc"
+              />
+            </View>
+
+            <View style={styles.pinInputContainer}>
+              <Text style={styles.pinInputLabel}>Confirm New PIN</Text>
+              <TextInput
+                style={styles.pinChangeInput}
+                value={confirmPin}
+                onChangeText={setConfirmPin}
+                keyboardType="number-pad"
+                secureTextEntry={true}
+                maxLength={4}
+                placeholder="••••"
+                placeholderTextColor="#ccc"
+              />
+            </View>
+
+            <View style={styles.pinChangeButtons}>
+              <TouchableOpacity
+                style={[styles.pinChangeButton, styles.pinCancelButton]}
+                onPress={() => setShowPinModal(false)}
+              >
+                <Text style={styles.pinCancelText}>Cancel</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.pinChangeButton, styles.pinSubmitButton]}
+                onPress={handleChangePin}
+                disabled={!currentPin || !newPin || !confirmPin}
+              >
+                <Text style={styles.pinSubmitText}>Save</Text>
+              </TouchableOpacity>
+            </View>
+
+            <Text style={styles.pinHintText}>
+              Current default PIN is 1234 if not changed
+            </Text>
           </View>
         </View>
       </Modal>
@@ -801,6 +948,104 @@ const styles = StyleSheet.create({
   authButton: {
     width: wp('80%'),
     marginBottom: 0,
+  },
+  pinChangeModal: {
+    backgroundColor: '#fff',
+    borderRadius: 25,
+    padding: wp('6%'),
+    width: wp('85%'),
+    maxHeight: hp('80%'),
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  pinChangeTitle: {
+    fontSize: wp('7%'),
+    fontFamily: 'FredokaOne-Regular',
+    color: '#1E1E1E',
+    marginBottom: hp('1%'),
+    textAlign: 'center',
+  },
+  pinChangeSubtitle: {
+    fontSize: wp('4%'),
+    color: '#666',
+    marginBottom: hp('3%'),
+    textAlign: 'center',
+  },
+  pinErrorText: {
+    color: '#FF3B30',
+    fontSize: wp('3.5%'),
+    fontFamily: 'FredokaOne-Regular',
+    marginBottom: hp('1%'),
+    textAlign: 'center',
+    backgroundColor: '#FFE5E5',
+    padding: wp('2%'),
+    borderRadius: 10,
+    width: '100%',
+  },
+  pinInputContainer: {
+    width: '100%',
+    marginBottom: hp('2%'),
+  },
+  pinInputLabel: {
+    fontSize: wp('4%'),
+    fontFamily: 'FredokaOne-Regular',
+    color: '#333',
+    marginBottom: hp('0.5%'),
+  },
+  pinChangeInput: {
+    width: '100%',
+    height: hp('6.5%'),
+    borderWidth: 2,
+    borderColor: '#4A90E2',
+    borderRadius: 15,
+    fontSize: wp('6%'),
+    textAlign: 'center',
+    fontFamily: 'FredokaOne-Regular',
+    backgroundColor: '#F5F5F5',
+    color: '#000',
+  },
+  pinChangeButtons: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    width: '100%',
+    marginTop: hp('2%'),
+    gap: wp('3%'),
+  },
+  pinChangeButton: {
+    flex: 1,
+    height: hp('6%'),
+    borderRadius: 25,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+  },
+  pinCancelButton: {
+    backgroundColor: '#E0E0E0',
+    borderColor: '#999',
+  },
+  pinCancelText: {
+    color: '#333',
+    fontSize: wp('4.5%'),
+    fontFamily: 'FredokaOne-Regular',
+  },
+  pinSubmitButton: {
+    backgroundColor: '#FF9500',
+    borderColor: '#E68A00',
+  },
+  pinSubmitText: {
+    color: '#fff',
+    fontSize: wp('4.5%'),
+    fontFamily: 'FredokaOne-Regular',
+  },
+  pinHintText: {
+    marginTop: hp('2%'),
+    fontSize: wp('3%'),
+    color: '#999',
+    fontStyle: 'italic',
+    textAlign: 'center',
   },
 });
 
