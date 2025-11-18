@@ -34,6 +34,8 @@ const CreateQuestions = memo(() => {
   const [optionC, setOptionC] = useState('');
   const [optionD, setOptionD] = useState('');
   const [correctAnswer, setCorrectAnswer] = useState('');
+  const [selectedChildId, setSelectedChildId] = useState(null);
+  const [children, setChildren] = useState([]);
 
   const [quizzes, setQuizzes] = useState([]);
   const [selectedQuiz, setSelectedQuiz] = useState(null);
@@ -59,8 +61,24 @@ const CreateQuestions = memo(() => {
       fetchQuestions();
       fetchQuestionLimit();
       loadQuizzes();
+      loadChildren();
     }
   }, [uid]);
+
+  // Load children for selection
+  const loadChildren = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('child_profiles')
+        .select('*')
+        .eq('parent_user_id', uid);
+      
+      if (error) throw error;
+      setChildren(data || []);
+    } catch (err) {
+      console.error('Load children error:', err);
+    }
+  };
 
   // Fetch question limit from Supabase
   const fetchQuestionLimit = async () => {
@@ -102,6 +120,7 @@ const CreateQuestions = memo(() => {
     let payload = {
       question,
       parent_id: uid,
+      child_id: selectedChildId,
       options: null,
       correct_answer: '',
       question_type: questionType,
@@ -147,6 +166,7 @@ const CreateQuestions = memo(() => {
     setOptionC('');
     setOptionD('');
     setCorrectAnswer('');
+    setSelectedChildId(null);
   };
 
   // Generate questions with ChatGPT
@@ -224,6 +244,7 @@ const CreateQuestions = memo(() => {
       const payload = {
         question: generatedQ.question,
         parent_id: uid,
+        child_id: selectedChildId,
         options: generatedQ.options,
         correct_answer: generatedQ.correct_answer,
         question_type: generatedQ.type,
@@ -249,6 +270,7 @@ const CreateQuestions = memo(() => {
       const payload = generatedQuestions.map(q => ({
         question: q.question,
         parent_id: uid,
+        child_id: selectedChildId,
         options: q.options,
         correct_answer: q.correct_answer,
         question_type: q.type,
@@ -497,6 +519,48 @@ const CreateQuestions = memo(() => {
           <Text style={styles.title}>Create a Question</Text>
           <TextInput placeholder="Enter question" value={question} onChangeText={setQuestion} style={styles.input} />
 
+          {/* Child Selector */}
+          <Text style={styles.label}>Assign To:</Text>
+          <ScrollView 
+            horizontal 
+            showsHorizontalScrollIndicator={false}
+            style={styles.childSelectorScroll}
+            contentContainerStyle={styles.childSelectorContent}
+          >
+            <TouchableOpacity
+              style={[
+                styles.childChip,
+                selectedChildId === null && styles.childChipSelected
+              ]}
+              onPress={() => setSelectedChildId(null)}
+            >
+              <Text style={[
+                styles.childChipText,
+                selectedChildId === null && styles.childChipTextSelected
+              ]}>
+                👥 All Children
+              </Text>
+            </TouchableOpacity>
+            
+            {children.map((child) => (
+              <TouchableOpacity
+                key={child.id}
+                style={[
+                  styles.childChip,
+                  selectedChildId === child.id && styles.childChipSelected
+                ]}
+                onPress={() => setSelectedChildId(child.id)}
+              >
+                <Text style={[
+                  styles.childChipText,
+                  selectedChildId === child.id && styles.childChipTextSelected
+                ]}>
+                  {child.child_name}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+
           <Text style={styles.label}>Question Type:</Text>
           <View style={styles.optionsRow}>
             <TouchableOpacity
@@ -564,6 +628,48 @@ const CreateQuestions = memo(() => {
           <Text style={styles.aiSubtitle}>
             Describe what kind of questions you want, and AI will generate them for you!
           </Text>
+
+          {/* Child Selector */}
+          <Text style={styles.label}>Assign To:</Text>
+          <ScrollView 
+            horizontal 
+            showsHorizontalScrollIndicator={false}
+            style={styles.childSelectorScroll}
+            contentContainerStyle={styles.childSelectorContent}
+          >
+            <TouchableOpacity
+              style={[
+                styles.childChip,
+                selectedChildId === null && styles.childChipSelected
+              ]}
+              onPress={() => setSelectedChildId(null)}
+            >
+              <Text style={[
+                styles.childChipText,
+                selectedChildId === null && styles.childChipTextSelected
+              ]}>
+                👥 All Children
+              </Text>
+            </TouchableOpacity>
+            
+            {children.map((child) => (
+              <TouchableOpacity
+                key={child.id}
+                style={[
+                  styles.childChip,
+                  selectedChildId === child.id && styles.childChipSelected
+                ]}
+                onPress={() => setSelectedChildId(child.id)}
+              >
+                <Text style={[
+                  styles.childChipText,
+                  selectedChildId === child.id && styles.childChipTextSelected
+                ]}>
+                  {child.child_name}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
 
           <TextInput
             placeholder="e.g., Create math questions about addition for 1st graders"
@@ -678,11 +784,22 @@ const CreateQuestions = memo(() => {
                 ? 'True/False'
                 : '';
 
+            // Find the child name if there's a child_id
+            const assignedChild = item.child_id 
+              ? children.find(c => c.id === item.child_id)
+              : null;
+            const assignedTo = assignedChild 
+              ? `👤 ${assignedChild.child_name}` 
+              : '👥 All Children';
+
             return (
               <View style={styles.questionCard}>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.questionText}>{item.question}</Text>
-                  <Text style={styles.questionTypeText}>{formattedType}</Text>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: hp('0.5%') }}>
+                    <Text style={styles.questionTypeText}>{formattedType}</Text>
+                    <Text style={styles.questionAssignedText}>{assignedTo}</Text>
+                  </View>
                 </View>
 
                 <TouchableOpacity
@@ -874,6 +991,7 @@ const styles = StyleSheet.create({
   },
   questionText: { fontFamily: 'FredokaOne-Regular', fontSize: wp('4%'), color: '#333', flex: 1, marginRight: 10 },
   questionTypeText: { fontFamily: 'FredokaOne-Regular', fontSize: wp('3.5%'), color: '#888', fontStyle: 'italic', marginRight: 10 },
+  questionAssignedText: { fontFamily: 'FredokaOne-Regular', fontSize: wp('3.2%'), color: '#4A90E2', fontStyle: 'italic' },
   backContainer: { position: 'absolute', left: wp('4%'), zIndex: 10 },
   backButton: { flexDirection: 'row', alignItems: 'center', paddingVertical: 6, paddingHorizontal: 8, minWidth: 48 },
   backLabel: { marginLeft: 2, fontFamily: 'FredokaOne-Regular', fontSize: wp('4.2%'), color: '#000' },
@@ -888,6 +1006,37 @@ const styles = StyleSheet.create({
   tabButton: { padding: 10, borderRadius: 8, flex: 1, alignItems: 'center' },
   tabButtonActive: { backgroundColor: '#4A90E2' },
   tabText: { fontFamily: 'FredokaOne-Regular', color: '#000', fontSize: wp('4%') },
+  
+  // Child Selector Styles
+  childSelectorScroll: {
+    marginBottom: hp('2%'),
+    maxHeight: hp('7%'),
+  },
+  childSelectorContent: {
+    paddingHorizontal: wp('7.5%'),
+    alignItems: 'center',
+  },
+  childChip: {
+    backgroundColor: '#E8E8E8',
+    paddingVertical: hp('1%'),
+    paddingHorizontal: wp('4%'),
+    borderRadius: 20,
+    marginRight: wp('2%'),
+    borderWidth: 2,
+    borderColor: '#E8E8E8',
+  },
+  childChipSelected: {
+    backgroundColor: '#4A90E2',
+    borderColor: '#2E6DB5',
+  },
+  childChipText: {
+    fontFamily: 'FredokaOne-Regular',
+    fontSize: wp('3.8%'),
+    color: '#666',
+  },
+  childChipTextSelected: {
+    color: '#fff',
+  },
   
   // AI Tab Styles
   aiSubtitle: {

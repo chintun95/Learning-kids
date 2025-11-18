@@ -176,7 +176,7 @@ function SnakeGame({ navigation }: { navigation: any }): JSX.Element {
         const limit = settingsData?.question_limit || DEFAULT_QUESTION_LIMIT;
         setQuestionsToComplete(limit);
 
-        let fetchedQuestions = await fetchQuestions(uid); // Questions are fetched by parent
+        let fetchedQuestions = await fetchQuestions(uid, selectedChild?.id); // Questions are fetched by parent, filtered by child
         fetchedQuestions = fetchedQuestions.filter(q => q.question_type !== 'typed_answer' && q.options);
 
         if (!fetchedQuestions || fetchedQuestions.length === 0) {

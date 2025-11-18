@@ -98,15 +98,15 @@ export default function FruitNinjaGame() {
 
   // Load questions on mount
   useEffect(() => {
-    if (uid) {
-      console.log('Fruit Ninja: Loading questions for uid:', uid);
-      fetchQuestions(uid).then((questions) => {
+    if (uid && selectedChild) {
+      console.log('Fruit Ninja: Loading questions for uid:', uid, 'child:', selectedChild.id);
+      fetchQuestions(uid, selectedChild.id).then((questions) => {
         console.log('Fruit Ninja: Loaded questions:', questions.length);
         setAllQuestions(questions);
         setAvailableQuestions(questions);
       }).catch((err) => console.error('Failed to load questions:', err));
     }
-  }, [uid]);
+  }, [uid, selectedChild]);
 
   useEffect(() => () => {
     if (rafSlice.current) cancelAnimationFrame(rafSlice.current);

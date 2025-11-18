@@ -149,7 +149,7 @@ export default function StartFlappyGame() {
         setQuestionsToComplete(limit);
 
         // Fetch questions
-        let fetchedQuestions = await fetchQuestions(uid);
+        let fetchedQuestions = await fetchQuestions(uid, selectedChild?.id);
         fetchedQuestions = fetchedQuestions.filter(q => 
           q.question_type !== 'typed_answer' && q.options
         );

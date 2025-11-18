@@ -73,8 +73,8 @@ const QuizScreen = () => {
       if (quizId) {
         userQuestions = await getQuizQuestions(quizId);
       } else {
-        // Otherwise, load all questions (fallback to old behavior)
-        userQuestions = await fetchQuestions(uid);
+        // Otherwise, load all questions for the current child
+        userQuestions = await fetchQuestions(uid, selectedChild?.id);
       }
       
       if (userQuestions.length === 0) {
