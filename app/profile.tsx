@@ -57,20 +57,20 @@ const Profile: React.FC = () => {
   const [uploadingImage, setUploadingImage] = useState(false);
   const [showAvatarModal, setShowAvatarModal] = useState(false);
 
-  // Predefined cute avatar options
+  // Predefined cute avatar options from local assets
   const predefinedAvatars = [
-    'https://api.dicebear.com/7.x/avataaars/png?seed=Felix',
-    'https://api.dicebear.com/7.x/avataaars/png?seed=Aneka',
-    'https://api.dicebear.com/7.x/avataaars/png?seed=Luna',
-    'https://api.dicebear.com/7.x/avataaars/png?seed=Max',
-    'https://api.dicebear.com/7.x/avataaars/png?seed=Sophie',
-    'https://api.dicebear.com/7.x/avataaars/png?seed=Oliver',
-    'https://api.dicebear.com/7.x/bottts/png?seed=Robot1',
-    'https://api.dicebear.com/7.x/bottts/png?seed=Robot2',
-    'https://api.dicebear.com/7.x/fun-emoji/png?seed=Happy',
-    'https://api.dicebear.com/7.x/fun-emoji/png?seed=Cool',
-    'https://api.dicebear.com/7.x/fun-emoji/png?seed=Star',
-    'https://api.dicebear.com/7.x/fun-emoji/png?seed=Smile',
+    require('../assets/profile-pictures/Gemini_Generated_Image_ls633als633als63 (1).png'),
+    require('../assets/profile-pictures/Gemini_Generated_Image_kj41a5kj41a5kj41.png'),
+    require('../assets/profile-pictures/Gemini_Generated_Image_crzg05crzg05crzg.png'),
+    require('../assets/profile-pictures/Gemini_Generated_Image_c6ow26c6ow26c6ow.png'),
+    require('../assets/profile-pictures/Gemini_Generated_Image_v5ohovv5ohovv5oh.png'),
+    require('../assets/profile-pictures/Gemini_Generated_Image_ls633als633als63.png'),
+    require('../assets/profile-pictures/Gemini_Generated_Image_ohdroyohdroyohdr.png'),
+    require('../assets/profile-pictures/Gemini_Generated_Image_p6j0hbp6j0hbp6j0.png'),
+    require('../assets/profile-pictures/Gemini_Generated_Image_ls633als633als63 (4).png'),
+    require('../assets/profile-pictures/Gemini_Generated_Image_ls633als633als63 (3).png'),
+    require('../assets/profile-pictures/Gemini_Generated_Image_ls633als633als63 (2).png'),
+    require('../assets/profile-pictures/Gemini_Generated_Image_kj41a5kj41a5kj41 (1).png'),
   ];
 
   useFocusEffect(
@@ -185,16 +185,18 @@ const Profile: React.FC = () => {
     }
   };
 
-  const handleSelectPredefinedAvatar = async (avatarUrl: string) => {
+  const handleSelectPredefinedAvatar = async (avatarSource: any) => {
     try {
       setUploadingImage(true);
       const user = auth.currentUser;
       if (user) {
+        // Store the avatar index as a string identifier in Firebase
+        const avatarIndex = predefinedAvatars.indexOf(avatarSource);
         await updateProfile(user, {
-          photoURL: avatarUrl,
+          photoURL: `local_avatar_${avatarIndex}`,
         });
         
-        setProfileImageUri(avatarUrl);
+        setProfileImageUri(`local_avatar_${avatarIndex}`);
         setShowAvatarModal(false);
         Alert.alert('Success', 'Profile picture updated successfully!');
       }
@@ -229,7 +231,9 @@ const Profile: React.FC = () => {
             <Image
               source={
                 profileImageUri
-                  ? { uri: profileImageUri }
+                  ? profileImageUri.startsWith('local_avatar_')
+                    ? predefinedAvatars[parseInt(profileImageUri.replace('local_avatar_', ''))]
+                    : { uri: profileImageUri }
                   : { uri: 'https://placehold.co/150x150/a2d2ff/333?text=User' }
               }
               style={styles.profileImage}
@@ -471,7 +475,7 @@ const Profile: React.FC = () => {
                   style={styles.avatarOption}
                   onPress={() => handleSelectPredefinedAvatar(item)}
                 >
-                  <Image source={{ uri: item }} style={styles.avatarImage} />
+                  <Image source={item} style={styles.avatarImage} />
                 </TouchableOpacity>
               )}
             />
