@@ -34,6 +34,8 @@ const CreateQuestions = memo(() => {
   const [optionC, setOptionC] = useState('');
   const [optionD, setOptionD] = useState('');
   const [correctAnswer, setCorrectAnswer] = useState('');
+  const [selectedChildId, setSelectedChildId] = useState(null);
+  const [children, setChildren] = useState([]);
 
   const [quizzes, setQuizzes] = useState([]);
   const [selectedQuiz, setSelectedQuiz] = useState(null);
@@ -46,6 +48,9 @@ const CreateQuestions = memo(() => {
   const [questionsList, setQuestionsList] = useState([]);
   const [activeTab, setActiveTab] = useState('create');
   const [questionsToComplete, setQuestionsToComplete] = useState(5);
+  const [aiPrompt, setAiPrompt] = useState('');
+  const [aiLoading, setAiLoading] = useState(false);
+  const [generatedQuestions, setGeneratedQuestions] = useState([]);
 
   const navigation = useNavigation();
   const auth = getAuth();
@@ -56,8 +61,24 @@ const CreateQuestions = memo(() => {
       fetchQuestions();
       fetchQuestionLimit();
       loadQuizzes();
+      loadChildren();
     }
   }, [uid]);
+
+  // Load children for selection
+  const loadChildren = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('child_profiles')
+        .select('*')
+        .eq('parent_user_id', uid);
+      
+      if (error) throw error;
+      setChildren(data || []);
+    } catch (err) {
+      console.error('Load children error:', err);
+    }
+  };
 
   // Fetch question limit from Supabase
   const fetchQuestionLimit = async () => {
@@ -99,6 +120,7 @@ const CreateQuestions = memo(() => {
     let payload = {
       question,
       parent_id: uid,
+      child_id: selectedChildId,
       options: null,
       correct_answer: '',
       question_type: questionType,
@@ -144,6 +166,129 @@ const CreateQuestions = memo(() => {
     setOptionC('');
     setOptionD('');
     setCorrectAnswer('');
+    setSelectedChildId(null);
+  };
+
+  // Generate questions with ChatGPT
+  const handleGenerateWithAI = async () => {
+    if (!aiPrompt.trim()) {
+      Alert.alert('Error', 'Please enter a prompt describing what questions you want to create.');
+      return;
+    }
+
+    setAiLoading(true);
+    setError('');
+
+    try {
+      const response = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer YOUR_OPENAI_API_KEY_HERE',
+        },
+
+        body: JSON.stringify({
+          model: 'gpt-3.5-turbo',
+          messages: [
+            {
+              role: 'system',
+              content: 'You are a helpful educational assistant that creates quiz questions for children. Always respond with valid JSON array format.'
+            },
+            {
+              role: 'user',
+              content: `Create 5 educational quiz questions based on: "${aiPrompt}". Return ONLY a JSON array: [{"question": "text", "type": "multiple_choice" or "true_false", "options": {"a": "A", "b": "B", "c": "C", "d": "D"}, "correct_answer": "a"}]. For true_false use options {"a": "True", "b": "False"}.`
+            }
+          ],
+          temperature: 0.7,
+          max_tokens: 1500,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error?.message || 'Failed to generate questions');
+      }
+
+      const data = await response.json();
+      const content = data.choices[0].message.content;
+      
+      let questions;
+      try {
+        questions = JSON.parse(content);
+      } catch (parseError) {
+        const jsonMatch = content.match(/```(?:json)?\s*([\s\S]*?)```/);
+        if (jsonMatch) {
+          questions = JSON.parse(jsonMatch[1]);
+        } else {
+          throw new Error('Invalid response format from AI');
+        }
+      }
+
+      if (!Array.isArray(questions) || questions.length === 0) {
+        throw new Error('No questions generated');
+      }
+
+      setGeneratedQuestions(questions);
+      Alert.alert('Success', `Generated ${questions.length} questions! Review and save them below.`);
+    } catch (err) {
+      console.error('AI generation error:', err);
+      setError(err.message || 'Failed to generate questions with AI');
+      Alert.alert('Error', err.message || 'Failed to generate questions. Please check your API key.');
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
+  const handleSaveGeneratedQuestion = async (generatedQ, index) => {
+    try {
+      const payload = {
+        question: generatedQ.question,
+        parent_id: uid,
+        child_id: selectedChildId,
+        options: generatedQ.options,
+        correct_answer: generatedQ.correct_answer,
+        question_type: generatedQ.type,
+      };
+
+      const { error: insertError } = await supabase.from('questions').insert([payload]);
+      if (insertError) throw insertError;
+
+      setGeneratedQuestions(prev => prev.filter((_, i) => i !== index));
+      Alert.alert('Saved', 'Question added to your question bank!');
+      fetchQuestions();
+    } catch (err) {
+      console.error('Save generated question error:', err);
+      Alert.alert('Error', 'Failed to save question');
+    }
+  };
+
+  const handleSaveAllGenerated = async () => {
+    if (generatedQuestions.length === 0) return;
+
+    setLoading(true);
+    try {
+      const payload = generatedQuestions.map(q => ({
+        question: q.question,
+        parent_id: uid,
+        child_id: selectedChildId,
+        options: q.options,
+        correct_answer: q.correct_answer,
+        question_type: q.type,
+      }));
+
+      const { error: insertError } = await supabase.from('questions').insert(payload);
+      if (insertError) throw insertError;
+
+      Alert.alert('Success', `All ${generatedQuestions.length} questions saved!`);
+      setGeneratedQuestions([]);
+      setAiPrompt('');
+      fetchQuestions();
+    } catch (err) {
+      console.error('Save all questions error:', err);
+      Alert.alert('Error', 'Failed to save questions');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const renderQuestionInputs = () => {
@@ -357,13 +502,13 @@ const CreateQuestions = memo(() => {
 
       {/* Tab selector */}
       <View style={styles.tabRow}>
-        {['create', 'questions', 'quizzes'].map((tab) => (
+        {['create', 'ai', 'questions', 'quizzes'].map((tab) => (
           <TouchableOpacity
             key={tab}
             style={[styles.tabButton, activeTab === tab && styles.tabButtonActive]}
             onPress={() => setActiveTab(tab)}
           >
-            <Text style={styles.tabText}>{tab.toUpperCase()}</Text>
+            <Text style={styles.tabText}>{tab === 'ai' ? '🤖 AI' : tab.toUpperCase()}</Text>
           </TouchableOpacity>
         ))}
       </View>
@@ -373,6 +518,48 @@ const CreateQuestions = memo(() => {
         <ScrollView contentContainerStyle={styles.scrollContent}>
           <Text style={styles.title}>Create a Question</Text>
           <TextInput placeholder="Enter question" value={question} onChangeText={setQuestion} style={styles.input} />
+
+          {/* Child Selector */}
+          <Text style={styles.label}>Assign To:</Text>
+          <ScrollView 
+            horizontal 
+            showsHorizontalScrollIndicator={false}
+            style={styles.childSelectorScroll}
+            contentContainerStyle={styles.childSelectorContent}
+          >
+            <TouchableOpacity
+              style={[
+                styles.childChip,
+                selectedChildId === null && styles.childChipSelected
+              ]}
+              onPress={() => setSelectedChildId(null)}
+            >
+              <Text style={[
+                styles.childChipText,
+                selectedChildId === null && styles.childChipTextSelected
+              ]}>
+                👥 All Children
+              </Text>
+            </TouchableOpacity>
+            
+            {children.map((child) => (
+              <TouchableOpacity
+                key={child.id}
+                style={[
+                  styles.childChip,
+                  selectedChildId === child.id && styles.childChipSelected
+                ]}
+                onPress={() => setSelectedChildId(child.id)}
+              >
+                <Text style={[
+                  styles.childChipText,
+                  selectedChildId === child.id && styles.childChipTextSelected
+                ]}>
+                  {child.child_name}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
 
           <Text style={styles.label}>Question Type:</Text>
           <View style={styles.optionsRow}>
@@ -434,6 +621,155 @@ const CreateQuestions = memo(() => {
         </ScrollView>
       )}
 
+      {/* AI Generate Tab */}
+      {activeTab === 'ai' && (
+        <ScrollView contentContainerStyle={styles.scrollContent}>
+          <Text style={styles.title}>🤖 AI Question Generator</Text>
+          <Text style={styles.aiSubtitle}>
+            Describe what kind of questions you want, and AI will generate them for you!
+          </Text>
+
+          {/* Child Selector */}
+          <Text style={styles.label}>Assign To:</Text>
+          <ScrollView 
+            horizontal 
+            showsHorizontalScrollIndicator={false}
+            style={styles.childSelectorScroll}
+            contentContainerStyle={styles.childSelectorContent}
+          >
+            <TouchableOpacity
+              style={[
+                styles.childChip,
+                selectedChildId === null && styles.childChipSelected
+              ]}
+              onPress={() => setSelectedChildId(null)}
+            >
+              <Text style={[
+                styles.childChipText,
+                selectedChildId === null && styles.childChipTextSelected
+              ]}>
+                👥 All Children
+              </Text>
+            </TouchableOpacity>
+            
+            {children.map((child) => (
+              <TouchableOpacity
+                key={child.id}
+                style={[
+                  styles.childChip,
+                  selectedChildId === child.id && styles.childChipSelected
+                ]}
+                onPress={() => setSelectedChildId(child.id)}
+              >
+                <Text style={[
+                  styles.childChipText,
+                  selectedChildId === child.id && styles.childChipTextSelected
+                ]}>
+                  {child.child_name}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+
+          <TextInput
+            placeholder="e.g., Create math questions about addition for 1st graders"
+            value={aiPrompt}
+            onChangeText={setAiPrompt}
+            style={[styles.input, styles.aiPromptInput]}
+            multiline
+            numberOfLines={4}
+            placeholderTextColor="#999"
+          />
+
+          <Text style={styles.aiExamplesTitle}>Example prompts:</Text>
+          <View style={styles.aiExamplesContainer}>
+            <TouchableOpacity
+              style={styles.aiExampleButton}
+              onPress={() => setAiPrompt('Create 5 science questions about animals for elementary students')}
+            >
+              <Text style={styles.aiExampleText}>🐾 Animals & Science</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.aiExampleButton}
+              onPress={() => setAiPrompt('Create 5 math questions about multiplication for 3rd graders')}
+            >
+              <Text style={styles.aiExampleText}>🔢 Math Multiplication</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.aiExampleButton}
+              onPress={() => setAiPrompt('Create 5 geography questions about continents and oceans')}
+            >
+              <Text style={styles.aiExampleText}>🌍 Geography</Text>
+            </TouchableOpacity>
+          </View>
+
+          {error ? <Text style={styles.error}>{error}</Text> : null}
+
+          <TouchableOpacity
+            style={[styles.button, styles.aiGenerateButton]}
+            onPress={handleGenerateWithAI}
+            disabled={aiLoading}
+          >
+            {aiLoading ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={styles.buttonText}>✨ Generate Questions with AI</Text>
+            )}
+          </TouchableOpacity>
+
+          {/* Generated Questions List */}
+          {generatedQuestions.length > 0 && (
+            <View style={styles.generatedSection}>
+              <View style={styles.generatedHeader}>
+                <Text style={styles.generatedTitle}>Generated Questions ({generatedQuestions.length})</Text>
+                <TouchableOpacity
+                  style={styles.saveAllButton}
+                  onPress={handleSaveAllGenerated}
+                  disabled={loading}
+                >
+                  <Text style={styles.saveAllButtonText}>💾 Save All</Text>
+                </TouchableOpacity>
+              </View>
+
+              {generatedQuestions.map((q, index) => (
+                <View key={index} style={styles.generatedQuestionCard}>
+                  <View style={styles.generatedQuestionHeader}>
+                    <Text style={styles.generatedQuestionType}>
+                      {q.type === 'multiple_choice' ? '📝 Multiple Choice' : '✓✗ True/False'}
+                    </Text>
+                  </View>
+                  <Text style={styles.generatedQuestionText}>{q.question}</Text>
+                  
+                  <View style={styles.generatedOptionsContainer}>
+                    {Object.entries(q.options).map(([key, value]) => (
+                      <View
+                        key={key}
+                        style={[
+                          styles.generatedOption,
+                          q.correct_answer === key && styles.generatedCorrectOption
+                        ]}
+                      >
+                        <Text style={styles.generatedOptionText}>
+                          {key.toUpperCase()}: {value}
+                          {q.correct_answer === key && ' ✓'}
+                        </Text>
+                      </View>
+                    ))}
+                  </View>
+
+                  <TouchableOpacity
+                    style={styles.saveOneButton}
+                    onPress={() => handleSaveGeneratedQuestion(q, index)}
+                  >
+                    <Text style={styles.saveOneButtonText}>💾 Save This Question</Text>
+                  </TouchableOpacity>
+                </View>
+              ))}
+            </View>
+          )}
+        </ScrollView>
+      )}
+
       {/* Questions Tab */}
       {activeTab === 'questions' && (
         <FlatList
@@ -448,11 +784,22 @@ const CreateQuestions = memo(() => {
                 ? 'True/False'
                 : '';
 
+            // Find the child name if there's a child_id
+            const assignedChild = item.child_id 
+              ? children.find(c => c.id === item.child_id)
+              : null;
+            const assignedTo = assignedChild 
+              ? `👤 ${assignedChild.child_name}` 
+              : '👥 All Children';
+
             return (
               <View style={styles.questionCard}>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.questionText}>{item.question}</Text>
-                  <Text style={styles.questionTypeText}>{formattedType}</Text>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: hp('0.5%') }}>
+                    <Text style={styles.questionTypeText}>{formattedType}</Text>
+                    <Text style={styles.questionAssignedText}>{assignedTo}</Text>
+                  </View>
                 </View>
 
                 <TouchableOpacity
@@ -644,6 +991,7 @@ const styles = StyleSheet.create({
   },
   questionText: { fontFamily: 'FredokaOne-Regular', fontSize: wp('4%'), color: '#333', flex: 1, marginRight: 10 },
   questionTypeText: { fontFamily: 'FredokaOne-Regular', fontSize: wp('3.5%'), color: '#888', fontStyle: 'italic', marginRight: 10 },
+  questionAssignedText: { fontFamily: 'FredokaOne-Regular', fontSize: wp('3.2%'), color: '#4A90E2', fontStyle: 'italic' },
   backContainer: { position: 'absolute', left: wp('4%'), zIndex: 10 },
   backButton: { flexDirection: 'row', alignItems: 'center', paddingVertical: 6, paddingHorizontal: 8, minWidth: 48 },
   backLabel: { marginLeft: 2, fontFamily: 'FredokaOne-Regular', fontSize: wp('4.2%'), color: '#000' },
@@ -658,6 +1006,158 @@ const styles = StyleSheet.create({
   tabButton: { padding: 10, borderRadius: 8, flex: 1, alignItems: 'center' },
   tabButtonActive: { backgroundColor: '#4A90E2' },
   tabText: { fontFamily: 'FredokaOne-Regular', color: '#000', fontSize: wp('4%') },
+  
+  // Child Selector Styles
+  childSelectorScroll: {
+    marginBottom: hp('2%'),
+    maxHeight: hp('7%'),
+  },
+  childSelectorContent: {
+    paddingHorizontal: wp('7.5%'),
+    alignItems: 'center',
+  },
+  childChip: {
+    backgroundColor: '#E8E8E8',
+    paddingVertical: hp('1%'),
+    paddingHorizontal: wp('4%'),
+    borderRadius: 20,
+    marginRight: wp('2%'),
+    borderWidth: 2,
+    borderColor: '#E8E8E8',
+  },
+  childChipSelected: {
+    backgroundColor: '#4A90E2',
+    borderColor: '#2E6DB5',
+  },
+  childChipText: {
+    fontFamily: 'FredokaOne-Regular',
+    fontSize: wp('3.8%'),
+    color: '#666',
+  },
+  childChipTextSelected: {
+    color: '#fff',
+  },
+  
+  // AI Tab Styles
+  aiSubtitle: {
+    fontFamily: 'FredokaOne-Regular',
+    fontSize: wp('4%'),
+    color: '#666',
+    textAlign: 'center',
+    marginBottom: hp('2%'),
+    width: wp('85%'),
+  },
+  aiPromptInput: {
+    height: hp('15%'),
+    textAlignVertical: 'top',
+    paddingTop: wp('3.5%'),
+  },
+  aiExamplesTitle: {
+    fontFamily: 'FredokaOne-Regular',
+    fontSize: wp('4%'),
+    color: '#333',
+    marginTop: hp('1%'),
+    marginBottom: hp('1%'),
+  },
+  aiExamplesContainer: {
+    width: wp('85%'),
+    marginBottom: hp('2%'),
+  },
+  aiExampleButton: {
+    backgroundColor: '#E3F2FD',
+    padding: wp('3%'),
+    borderRadius: 10,
+    marginBottom: hp('1%'),
+    borderWidth: 1,
+    borderColor: '#90CAF9',
+  },
+  aiExampleText: {
+    fontFamily: 'FredokaOne-Regular',
+    fontSize: wp('3.8%'),
+    color: '#1976D2',
+  },
+  aiGenerateButton: {
+    backgroundColor: '#9C27B0',
+  },
+  generatedSection: {
+    width: wp('85%'),
+    marginTop: hp('3%'),
+  },
+  generatedHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: hp('2%'),
+  },
+  generatedTitle: {
+    fontFamily: 'FredokaOne-Regular',
+    fontSize: wp('5%'),
+    color: '#333',
+  },
+  saveAllButton: {
+    backgroundColor: '#4CAF50',
+    paddingVertical: hp('1%'),
+    paddingHorizontal: wp('4%'),
+    borderRadius: 20,
+  },
+  saveAllButtonText: {
+    color: '#fff',
+    fontFamily: 'FredokaOne-Regular',
+    fontSize: wp('3.5%'),
+  },
+  generatedQuestionCard: {
+    backgroundColor: '#fff',
+    padding: wp('4%'),
+    borderRadius: 12,
+    marginBottom: hp('2%'),
+    borderWidth: 2,
+    borderColor: '#E3F2FD',
+  },
+  generatedQuestionHeader: {
+    marginBottom: hp('1%'),
+  },
+  generatedQuestionType: {
+    fontFamily: 'FredokaOne-Regular',
+    fontSize: wp('3.5%'),
+    color: '#1976D2',
+  },
+  generatedQuestionText: {
+    fontFamily: 'FredokaOne-Regular',
+    fontSize: wp('4.2%'),
+    color: '#333',
+    marginBottom: hp('1.5%'),
+  },
+  generatedOptionsContainer: {
+    marginBottom: hp('1.5%'),
+  },
+  generatedOption: {
+    backgroundColor: '#F5F5F5',
+    padding: wp('2.5%'),
+    borderRadius: 8,
+    marginBottom: hp('0.5%'),
+  },
+  generatedCorrectOption: {
+    backgroundColor: '#C8E6C9',
+    borderWidth: 1,
+    borderColor: '#4CAF50',
+  },
+  generatedOptionText: {
+    fontFamily: 'FredokaOne-Regular',
+    fontSize: wp('3.8%'),
+    color: '#333',
+  },
+  saveOneButton: {
+    backgroundColor: '#2196F3',
+    paddingVertical: hp('1.2%'),
+    paddingHorizontal: wp('4%'),
+    borderRadius: 20,
+    alignSelf: 'flex-start',
+  },
+  saveOneButtonText: {
+    color: '#fff',
+    fontFamily: 'FredokaOne-Regular',
+    fontSize: wp('3.5%'),
+  },
 });
 
 export default CreateQuestions;

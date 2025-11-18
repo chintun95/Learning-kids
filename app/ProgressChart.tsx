@@ -277,7 +277,7 @@ const ProgressionChart: React.FC = () => {
 
   // ---------------- UI ----------------
   return (
-    <View style={styles.container}>
+    <ScrollView style={styles.container} contentContainerStyle={{paddingBottom: 20}}>
       <Text style={styles.sectionTitle}>Date Range</Text>
       <View style={styles.presetRow}>
         {["7d", "30d", "6m", "1y", "all"].map((p) => (
@@ -359,7 +359,7 @@ const ProgressionChart: React.FC = () => {
         </View>
 
         <Text style={styles.sectionTitle}>Questions Answered in {activeTab}</Text>
-        <ScrollView>
+        <View>
           {questions.map((q, i) => (
             <View
               key={i}
@@ -376,9 +376,9 @@ const ProgressionChart: React.FC = () => {
               <Text style={styles.qDate}>{new Date(q.answered_at).toLocaleString()}</Text>
             </View>
           ))}
-        </ScrollView>
+        </View>
       </View>
-    </View>
+    </ScrollView>
   );
 };
 

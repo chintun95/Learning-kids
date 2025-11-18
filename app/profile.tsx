@@ -1,7 +1,5 @@
 // app/profile.tsx
 
-// app/profile.tsx
-
 import React, { useEffect, useState, useCallback } from 'react';
 import {
   View,
@@ -15,13 +13,16 @@ import {
   ImageBackground,
   Switch,
   ActivityIndicator,
-  TextInput, 
+  Modal,
+  FlatList,
+  TextInput,
 } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { auth } from '../firebase';
 import { 
-  signOut, 
-  reauthenticateWithCredential, 
-  EmailAuthProvider 
+  signOut,
+  updateProfile
 } from 'firebase/auth';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -54,21 +55,34 @@ const Profile: React.FC = () => {
   const [editHour, setEditHour] = useState(9);
   const [editMinute, setEditMinute] = useState(0);
   const [loadingProfile, setLoadingProfile] = useState(true);
+  const [profileImageUri, setProfileImageUri] = useState<string | null>(null);
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const [showAvatarModal, setShowAvatarModal] = useState(false);
+  const [showPinModal, setShowPinModal] = useState(false);
+  const [currentPin, setCurrentPin] = useState('');
+  const [newPin, setNewPin] = useState('');
+  const [confirmPin, setConfirmPin] = useState('');
+  const [pinError, setPinError] = useState('');
 
-  // --- ADDED STATE FOR PASSWORD GATE ---
-  const [password, setPassword] = useState('');
-  const [isAuthenticating, setIsAuthenticating] = useState(false);
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  // --- END OF ADDED STATE ---
+  // Predefined cute avatar options from local assets
+  const predefinedAvatars = [
+    require('../assets/profile-pictures/Gemini_Generated_Image_ls633als633als63 (1).png'),
+    require('../assets/profile-pictures/Gemini_Generated_Image_kj41a5kj41a5kj41.png'),
+    require('../assets/profile-pictures/Gemini_Generated_Image_crzg05crzg05crzg.png'),
+    require('../assets/profile-pictures/Gemini_Generated_Image_c6ow26c6ow26c6ow.png'),
+    require('../assets/profile-pictures/Gemini_Generated_Image_v5ohovv5ohovv5oh.png'),
+    require('../assets/profile-pictures/Gemini_Generated_Image_ls633als633als63.png'),
+    require('../assets/profile-pictures/Gemini_Generated_Image_ohdroyohdroyohdr.png'),
+    require('../assets/profile-pictures/Gemini_Generated_Image_p6j0hbp6j0hbp6j0.png'),
+    require('../assets/profile-pictures/Gemini_Generated_Image_ls633als633als63 (4).png'),
+    require('../assets/profile-pictures/Gemini_Generated_Image_ls633als633als63 (3).png'),
+    require('../assets/profile-pictures/Gemini_Generated_Image_ls633als633als63 (2).png'),
+    require('../assets/profile-pictures/Gemini_Generated_Image_kj41a5kj41a5kj41 (1).png'),
+  ];
 
-  
   useFocusEffect(
     useCallback(() => {
-     
-      setIsAuthenticated(false); // Require auth every time
-      setPassword('');          // Clear password field
       setLoadingProfile(true);
-      // --- END OF MODIFIED LOGIC ---
 
       const user = auth.currentUser;
       if (user) {
@@ -82,6 +96,11 @@ const Profile: React.FC = () => {
           name: user.displayName || 'User',
           joinDate,
         }));
+
+        // Load profile picture
+        if (user.photoURL) {
+          setProfileImageUri(user.photoURL);
+        }
 
         (async () => {
           const scheduled = await isDailyReminderScheduled();
@@ -118,39 +137,134 @@ const Profile: React.FC = () => {
   };
 
   const handleEditProfile = () => navigation.navigate('EditProfilePage');
-  const handleGames = () => navigation.navigate('GamePage');
 
-  // ✅ Chart navigation
+  // ✅ UPDATED: Navigate to child selector instead of GamePage
+  const handleGames = () => navigation.navigate('ChildSelectScreen');
+
   const handleViewChart = () => navigation.navigate('ProgressChart');
 
-  // --- ADDED PASSWORD VERIFICATION FUNCTION ---
-  const handleReAuthentication = async () => {
-    const user = auth.currentUser;
-    if (!user || !user.email) {
-      Alert.alert("Error", "No user is currently logged in.");
-      navigation.navigate('LogInPage');
-      return;
-    }
-  
-    if (!password) {
-      Alert.alert("Password Required", "Please enter your password.");
-      return;
-    }
-  
-    setIsAuthenticating(true);
+  const handlePickImage = async () => {
     try {
-      const credential = EmailAuthProvider.credential(user.email, password);
-      await reauthenticateWithCredential(user, credential);
-      setIsAuthenticated(true); // <-- Grant access
-      setPassword('');
-    } catch (error: any) {
-      Alert.alert("Authentication Failed", "The password you entered is incorrect. Please try again.");
-      console.error("Re-authentication error:", error);
-    } finally {
-      setIsAuthenticating(false);
+      // Request permissions
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert(
+          'Permission Required',
+          'Sorry, we need camera roll permissions to upload a profile picture.'
+        );
+        return;
+      }
+
+      // Launch image picker
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.7,
+      });
+
+      if (!result.canceled && result.assets[0]) {
+        setUploadingImage(true);
+        const imageUri = result.assets[0].uri;
+        
+        try {
+          const user = auth.currentUser;
+          if (user) {
+            // Update Firebase user profile with photo URL
+            await updateProfile(user, {
+              photoURL: imageUri,
+            });
+            
+            setProfileImageUri(imageUri);
+            Alert.alert('Success', 'Profile picture updated successfully!');
+          }
+        } catch (error) {
+          console.error('Error updating profile picture:', error);
+          Alert.alert('Error', 'Failed to update profile picture. Please try again.');
+        } finally {
+          setUploadingImage(false);
+        }
+      }
+    } catch (error) {
+      console.error('Error picking image:', error);
+      Alert.alert('Error', 'Failed to pick image. Please try again.');
+      setUploadingImage(false);
     }
   };
-  // --- END OF ADDED FUNCTION ---
+
+  const handleSelectPredefinedAvatar = async (avatarSource: any) => {
+    try {
+      setUploadingImage(true);
+      const user = auth.currentUser;
+      if (user) {
+        // Store the avatar index as a string identifier in Firebase
+        const avatarIndex = predefinedAvatars.indexOf(avatarSource);
+        await updateProfile(user, {
+          photoURL: `local_avatar_${avatarIndex}`,
+        });
+        
+        setProfileImageUri(`local_avatar_${avatarIndex}`);
+        setShowAvatarModal(false);
+        Alert.alert('Success', 'Profile picture updated successfully!');
+      }
+    } catch (error) {
+      console.error('Error updating profile picture:', error);
+      Alert.alert('Error', 'Failed to update profile picture. Please try again.');
+    } finally {
+      setUploadingImage(false);
+    }
+  };
+
+  const handleOpenPinModal = () => {
+    setShowPinModal(true);
+    setCurrentPin('');
+    setNewPin('');
+    setConfirmPin('');
+    setPinError('');
+  };
+
+  const handleChangePin = async () => {
+    setPinError('');
+
+    // Get stored PIN or use default
+    const storedPin = await AsyncStorage.getItem('parentPin');
+    const validPin = storedPin || '1234';
+
+    // Validate current PIN
+    if (currentPin !== validPin) {
+      setPinError('Current PIN is incorrect');
+      return;
+    }
+
+    // Validate new PIN
+    if (newPin.length !== 4) {
+      setPinError('New PIN must be 4 digits');
+      return;
+    }
+
+    if (!/^\d{4}$/.test(newPin)) {
+      setPinError('PIN must contain only numbers');
+      return;
+    }
+
+    // Validate confirmation
+    if (newPin !== confirmPin) {
+      setPinError('New PINs do not match');
+      return;
+    }
+
+    try {
+      await AsyncStorage.setItem('parentPin', newPin);
+      Alert.alert('Success', 'PIN changed successfully!');
+      setShowPinModal(false);
+      setCurrentPin('');
+      setNewPin('');
+      setConfirmPin('');
+    } catch (error) {
+      console.error('Error saving PIN:', error);
+      setPinError('Failed to save PIN. Please try again.');
+    }
+  };
 
   if (loadingProfile) {
     return (
@@ -163,62 +277,44 @@ const Profile: React.FC = () => {
     );
   }
 
-  // --- ADDED PASSWORD PROMPT RENDER ---
-  if (!isAuthenticated) {
-    return (
-      <ImageBackground
-        source={require('../assets/images/app-background.png')}
-        style={[styles.image, styles.authContainer]}
-      >
-        <ScrollView contentContainerStyle={styles.authContainer}>
-          <View style={styles.authBox}>
-            <Text style={styles.authTitle}>Verify Your Identity</Text>
-            <Text style={styles.authSubtitle}>Please enter your password to view your profile.</Text>
-            <TextInput
-              style={styles.authInput}
-              placeholder="Password"
-              placeholderTextColor="#888"
-              secureTextEntry
-              value={password}
-              onChangeText={setPassword}
-              autoCapitalize="none"
-            />
-            <TouchableOpacity 
-              style={[styles.actionButton, styles.authButton]} 
-              onPress={handleReAuthentication} 
-              disabled={isAuthenticating}
-            >
-              {isAuthenticating ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <Text style={styles.actionButtonText}>Continue</Text>
-              )}
-            </TouchableOpacity>
-            <TouchableOpacity 
-              style={[styles.actionButton, styles.signOutButton, {marginTop: 10, backgroundColor: '#6c757d'}]} 
-              onPress={() => navigation.goBack()}
-            >
-              <Text style={styles.actionButtonText}>Back</Text>
-            </TouchableOpacity>
-          </View>
-        </ScrollView>
-      </ImageBackground>
-    );
-  }
-  // --- END OF ADDED RENDER ---
-
-  // This part below will only render if isAuthenticated is true
   return (
     <ImageBackground
       source={require('../assets/images/app-background.png')}
       style={styles.image}>
       <ScrollView contentContainerStyle={styles.scrollContainer}>
+        
         {/* Header */}
         <View style={styles.header}>
-          <Image
-            source={{ uri: 'https://placehold.co/150x150/a2d2ff/333?text=User' }}
-            style={styles.profileImage}
-          />
+          <View style={styles.profileImageContainer}>
+            <Image
+              source={
+                profileImageUri
+                  ? profileImageUri.startsWith('local_avatar_')
+                    ? predefinedAvatars[parseInt(profileImageUri.replace('local_avatar_', ''))]
+                    : { uri: profileImageUri }
+                  : { uri: 'https://placehold.co/150x150/a2d2ff/333?text=User' }
+              }
+              style={styles.profileImage}
+            />
+            <TouchableOpacity
+              style={styles.editImageButton}
+              onPress={handlePickImage}
+              disabled={uploadingImage}
+            >
+              {uploadingImage ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Text style={styles.editImageIcon}>📷</Text>
+              )}
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.avatarSelectorButton}
+              onPress={() => setShowAvatarModal(true)}
+              disabled={uploadingImage}
+            >
+              <Text style={styles.editImageIcon}>🎨</Text>
+            </TouchableOpacity>
+          </View>
           <Text style={styles.name}>{userData.name}</Text>
           <Text style={styles.email}>{userData.email}</Text>
           <Text style={styles.joinDate}>Member since {userData.joinDate}</Text>
@@ -263,15 +359,15 @@ const Profile: React.FC = () => {
           </TouchableOpacity>
         </View>
 
-        {/* Games */}
+        {/* Games → now Child Selector */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Games</Text>
+          <Text style={styles.sectionTitle}>Pick a child</Text>
           <TouchableOpacity style={styles.gamesButton} onPress={handleGames}>
-            <Text style={styles.gamesButtonText}>Play Games</Text>
+            <Text style={styles.gamesButtonText}>Select Child</Text>
           </TouchableOpacity>
         </View>
 
-        {/* 🔔 Daily Reminder Section */}
+        {/* Daily Reminder */}
         <View style={[styles.section, styles.reminderSection]}>
           <View style={styles.reminderHeader}>
             <Text style={styles.sectionTitle}>Daily Reminder</Text>
@@ -321,13 +417,16 @@ const Profile: React.FC = () => {
                 {editMinute.toString().padStart(2, '0')}{' '}
                 {editHour >= 12 ? 'PM' : 'AM'}
               </Text>
+
               <View style={styles.timeAdjustRow}>
                 <TouchableOpacity
                   onPress={() => setEditHour(h => (h + 23) % 24)}
                   style={styles.smallButton}>
                   <Text style={styles.smallButtonText}>H-</Text>
                 </TouchableOpacity>
+
                 <Text style={styles.timeValue}>{editHour.toString().padStart(2, '0')}</Text>
+
                 <TouchableOpacity
                   onPress={() => setEditHour(h => (h + 1) % 24)}
                   style={styles.smallButton}>
@@ -341,7 +440,9 @@ const Profile: React.FC = () => {
                   style={styles.smallButton}>
                   <Text style={styles.smallButtonText}>M-</Text>
                 </TouchableOpacity>
+
                 <Text style={styles.timeValue}>{editMinute.toString().padStart(2, '0')}</Text>
+
                 <TouchableOpacity
                   onPress={() => setEditMinute(m => (m + 1) % 60)}
                   style={styles.smallButton}>
@@ -369,6 +470,7 @@ const Profile: React.FC = () => {
                   }}>
                   <Text style={styles.smallActionText}>Save</Text>
                 </TouchableOpacity>
+
                 <TouchableOpacity
                   style={[styles.smallActionButton, { backgroundColor: '#FF3B30' }]}
                   onPress={() => setIsEditingTime(false)}>
@@ -377,50 +479,159 @@ const Profile: React.FC = () => {
               </View>
             </View>
           )}
-
-          {/* Dev test notification button */}
-          {__DEV__ && (
-            <TouchableOpacity
-              style={styles.testButton}
-              onPress={async () => {
-                try {
-                  const id = await scheduleLocalNotification('Test Notification', 'This should appear in ~5s', 5);
-                  console.log('Scheduled test notification id:', id);
-                } catch (e) {
-                  console.error('Failed to schedule test notification:', e);
-                }
-              }}>
-              <Text style={styles.testButtonText}>Send test notification (5s)</Text>
-            </TouchableOpacity>
-          )}
         </View>
 
         {/* Footer Buttons */}
         <View style={styles.bottomButtonContainer}>
+
           <TouchableOpacity style={styles.actionButton} onPress={handleEditProfile}>
             <Text style={styles.actionButtonText}>Info & Questions</Text>
           </TouchableOpacity>
-          
-          {/* --- THIS IS THE NEW BUTTON --- */}
+
           <TouchableOpacity 
             style={[styles.actionButton, { backgroundColor: '#34A853' }]} 
             onPress={() => navigation.navigate('AddChildScreen')}
           >
             <Text style={styles.actionButtonText}>+ Add Child</Text>
           </TouchableOpacity>
-          {/* --- END NEW BUTTON --- */}
+
+          <TouchableOpacity 
+            style={[styles.actionButton, { backgroundColor: '#FF9500' }]} 
+            onPress={handleOpenPinModal}
+          >
+            <Text style={styles.actionButtonText}>🔒 Change PIN</Text>
+          </TouchableOpacity>
 
           <TouchableOpacity
             style={[styles.actionButton, styles.signOutButton]}
             onPress={handleSignOut}>
             <Text style={styles.actionButtonText}>Sign Out</Text>
           </TouchableOpacity>
+
         </View>
+
       </ScrollView>
+
+      {/* Avatar Selection Modal */}
+      <Modal
+        visible={showAvatarModal}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowAvatarModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.avatarModal}>
+            <View style={styles.avatarModalHeader}>
+              <Text style={styles.avatarModalTitle}>Choose an Avatar</Text>
+              <TouchableOpacity
+                onPress={() => setShowAvatarModal(false)}
+                style={styles.closeModalButton}
+              >
+                <Text style={styles.closeModalText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+            <FlatList
+              data={predefinedAvatars}
+              keyExtractor={(item, index) => index.toString()}
+              numColumns={3}
+              contentContainerStyle={styles.avatarGrid}
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  style={styles.avatarOption}
+                  onPress={() => handleSelectPredefinedAvatar(item)}
+                >
+                  <Image source={item} style={styles.avatarImage} />
+                </TouchableOpacity>
+              )}
+            />
+          </View>
+        </View>
+      </Modal>
+
+      {/* Change PIN Modal */}
+      <Modal
+        visible={showPinModal}
+        animationType="fade"
+        transparent={true}
+        onRequestClose={() => setShowPinModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.pinChangeModal}>
+            <Text style={styles.pinChangeTitle}>🔒 Change PIN</Text>
+            <Text style={styles.pinChangeSubtitle}>Update your parental control PIN</Text>
+
+            {pinError ? (
+              <Text style={styles.pinErrorText}>{pinError}</Text>
+            ) : null}
+
+            <View style={styles.pinInputContainer}>
+              <Text style={styles.pinInputLabel}>Current PIN</Text>
+              <TextInput
+                style={styles.pinChangeInput}
+                value={currentPin}
+                onChangeText={setCurrentPin}
+                keyboardType="number-pad"
+                secureTextEntry={true}
+                maxLength={4}
+                placeholder="••••"
+                placeholderTextColor="#ccc"
+              />
+            </View>
+
+            <View style={styles.pinInputContainer}>
+              <Text style={styles.pinInputLabel}>New PIN</Text>
+              <TextInput
+                style={styles.pinChangeInput}
+                value={newPin}
+                onChangeText={setNewPin}
+                keyboardType="number-pad"
+                secureTextEntry={true}
+                maxLength={4}
+                placeholder="••••"
+                placeholderTextColor="#ccc"
+              />
+            </View>
+
+            <View style={styles.pinInputContainer}>
+              <Text style={styles.pinInputLabel}>Confirm New PIN</Text>
+              <TextInput
+                style={styles.pinChangeInput}
+                value={confirmPin}
+                onChangeText={setConfirmPin}
+                keyboardType="number-pad"
+                secureTextEntry={true}
+                maxLength={4}
+                placeholder="••••"
+                placeholderTextColor="#ccc"
+              />
+            </View>
+
+            <View style={styles.pinChangeButtons}>
+              <TouchableOpacity
+                style={[styles.pinChangeButton, styles.pinCancelButton]}
+                onPress={() => setShowPinModal(false)}
+              >
+                <Text style={styles.pinCancelText}>Cancel</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.pinChangeButton, styles.pinSubmitButton]}
+                onPress={handleChangePin}
+                disabled={!currentPin || !newPin || !confirmPin}
+              >
+                <Text style={styles.pinSubmitText}>Save</Text>
+              </TouchableOpacity>
+            </View>
+
+            <Text style={styles.pinHintText}>
+              Current default PIN is 1234 if not changed
+            </Text>
+          </View>
+        </View>
+      </Modal>
     </ImageBackground>
   );
 };
-
 
 const styles = StyleSheet.create({
   image: { flex: 1 },
@@ -442,13 +653,114 @@ const styles = StyleSheet.create({
     width: wp('90%'),
     marginTop: hp('5%'),
   },
+  profileImageContainer: {
+    position: 'relative',
+    marginBottom: hp('1.5%'),
+    width: wp('35%'),
+    marginLeft: wp('5%'),
+  },
   profileImage: {
     width: PixelRatio.roundToNearestPixel(120),
     height: PixelRatio.roundToNearestPixel(120),
     borderRadius: 60,
     borderWidth: 3,
     borderColor: '#000',
-    marginBottom: hp('1.5%'),
+  },
+  editImageButton: {
+    position: 'absolute',
+    bottom: 0,
+    left: wp('-10%'),
+    backgroundColor: '#4A90E2',
+    width: wp('10%'),
+    height: wp('10%'),
+    borderRadius: wp('5%'),
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 3,
+    borderColor: '#fff',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  avatarSelectorButton: {
+    position: 'absolute',
+    bottom: 0,
+    right: wp('-6%'),
+    backgroundColor: '#FF6B9D',
+    width: wp('10%'),
+    height: wp('10%'),
+    borderRadius: wp('5%'),
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 3,
+    borderColor: '#fff',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  editImageIcon: {
+    fontSize: wp('5%'),
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  avatarModal: {
+    backgroundColor: '#fff',
+    borderRadius: 20,
+    padding: wp('4%'),
+    width: wp('90%'),
+    maxHeight: hp('70%'),
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  avatarModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: hp('2%'),
+    paddingBottom: hp('1%'),
+    borderBottomWidth: 2,
+    borderBottomColor: '#E0E0E0',
+  },
+  avatarModalTitle: {
+    fontSize: wp('6%'),
+    fontFamily: 'FredokaOne-Regular',
+    color: '#1E1E1E',
+  },
+  closeModalButton: {
+    padding: wp('2%'),
+  },
+  closeModalText: {
+    fontSize: wp('7%'),
+    color: '#666',
+    fontWeight: 'bold',
+  },
+  avatarGrid: {
+    paddingVertical: hp('1%'),
+  },
+  avatarOption: {
+    width: wp('25%'),
+    height: wp('25%'),
+    margin: wp('1.5%'),
+    borderRadius: wp('12.5%'),
+    borderWidth: 3,
+    borderColor: '#E0E0E0',
+    overflow: 'hidden',
+    backgroundColor: '#F5F5F5',
+  },
+  avatarImage: {
+    width: '100%',
+    height: '100%',
   },
   name: {
     fontSize: wp('7%'),
@@ -578,8 +890,6 @@ const styles = StyleSheet.create({
   editorButtons: { flexDirection: 'row', justifyContent: 'space-around', width: '80%', marginTop: hp('1%') },
   smallActionButton: { paddingVertical: hp('1%'), paddingHorizontal: wp('6%'), borderRadius: 20 },
   smallActionText: { color: '#fff', fontSize: wp('4%'), fontFamily: 'FredokaOne-Regular' },
-  testButton: { backgroundColor: '#6c757d', paddingVertical: hp('1%'), paddingHorizontal: wp('4%'), borderRadius: 15, marginTop: hp('2%') },
-  testButtonText: { color: '#fff', fontSize: wp('3.5%'), fontFamily: 'FredokaOne-Regular' },
   bottomButtonContainer: { width: wp('90%'), alignItems: 'center', marginTop: hp('2%'), marginBottom: hp('3%') },
   actionButton: {
     width: wp('70%'),
@@ -594,8 +904,6 @@ const styles = StyleSheet.create({
   },
   signOutButton: { backgroundColor: '#FF3B30' },
   actionButtonText: { color: '#fff', fontSize: wp('5%'), fontFamily: 'FredokaOne-Regular' },
-
-  // --- NEW AUTH STYLES ---
   authContainer: {
     flex: 1,
     justifyContent: 'center',
@@ -635,13 +943,110 @@ const styles = StyleSheet.create({
     fontFamily: 'FredokaOne-Regular',
     backgroundColor: '#fff',
     marginBottom: hp('2%'),
-    color: '#000', // Ensure text is visible
+    color: '#000',
   },
   authButton: {
     width: wp('80%'),
     marginBottom: 0,
   },
- 
+  pinChangeModal: {
+    backgroundColor: '#fff',
+    borderRadius: 25,
+    padding: wp('6%'),
+    width: wp('85%'),
+    maxHeight: hp('80%'),
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  pinChangeTitle: {
+    fontSize: wp('7%'),
+    fontFamily: 'FredokaOne-Regular',
+    color: '#1E1E1E',
+    marginBottom: hp('1%'),
+    textAlign: 'center',
+  },
+  pinChangeSubtitle: {
+    fontSize: wp('4%'),
+    color: '#666',
+    marginBottom: hp('3%'),
+    textAlign: 'center',
+  },
+  pinErrorText: {
+    color: '#FF3B30',
+    fontSize: wp('3.5%'),
+    fontFamily: 'FredokaOne-Regular',
+    marginBottom: hp('1%'),
+    textAlign: 'center',
+    backgroundColor: '#FFE5E5',
+    padding: wp('2%'),
+    borderRadius: 10,
+    width: '100%',
+  },
+  pinInputContainer: {
+    width: '100%',
+    marginBottom: hp('2%'),
+  },
+  pinInputLabel: {
+    fontSize: wp('4%'),
+    fontFamily: 'FredokaOne-Regular',
+    color: '#333',
+    marginBottom: hp('0.5%'),
+  },
+  pinChangeInput: {
+    width: '100%',
+    height: hp('6.5%'),
+    borderWidth: 2,
+    borderColor: '#4A90E2',
+    borderRadius: 15,
+    fontSize: wp('6%'),
+    textAlign: 'center',
+    fontFamily: 'FredokaOne-Regular',
+    backgroundColor: '#F5F5F5',
+    color: '#000',
+  },
+  pinChangeButtons: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    width: '100%',
+    marginTop: hp('2%'),
+    gap: wp('3%'),
+  },
+  pinChangeButton: {
+    flex: 1,
+    height: hp('6%'),
+    borderRadius: 25,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+  },
+  pinCancelButton: {
+    backgroundColor: '#E0E0E0',
+    borderColor: '#999',
+  },
+  pinCancelText: {
+    color: '#333',
+    fontSize: wp('4.5%'),
+    fontFamily: 'FredokaOne-Regular',
+  },
+  pinSubmitButton: {
+    backgroundColor: '#FF9500',
+    borderColor: '#E68A00',
+  },
+  pinSubmitText: {
+    color: '#fff',
+    fontSize: wp('4.5%'),
+    fontFamily: 'FredokaOne-Regular',
+  },
+  pinHintText: {
+    marginTop: hp('2%'),
+    fontSize: wp('3%'),
+    color: '#999',
+    fontStyle: 'italic',
+    textAlign: 'center',
+  },
 });
 
 export default Profile;

@@ -1,15 +1,19 @@
 import React, { useState, useCallback, useRef } from 'react';
 import { StyleSheet, Text, View, ActivityIndicator, TouchableOpacity, Alert, Animated } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useNavigation, useFocusEffect } from '@react-navigation/native';
+import { useNavigation, useFocusEffect, useRoute } from '@react-navigation/native';
 import { getAuth } from 'firebase/auth';
 import { supabase } from '../backend/supabase';
 import { fetchQuestions } from '../backend/fetchquestions';
+import { getQuizQuestions } from '../backend/quizzes';
 import { widthPercentageToDP as wp, heightPercentageToDP as hp } from 'react-native-responsive-screen';
 import { useChild } from './ChildContext';
 
 const QuizScreen = () => {
   const navigation = useNavigation();
+  const route = useRoute();
+  const quizId = route.params?.quizId;
+  const quizName = route.params?.quizName;
   const [questions, setQuestions] = useState([]);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -63,9 +67,18 @@ const QuizScreen = () => {
       const limit = await fetchQuestionLimit();
       setQuestionsPerSession(limit);
 
-      const userQuestions = await fetchQuestions(uid); // Questions fetched by parent
+      let userQuestions;
+      
+      // If quizId is provided, load questions from that quiz
+      if (quizId) {
+        userQuestions = await getQuizQuestions(quizId);
+      } else {
+        // Otherwise, load all questions for the current child
+        userQuestions = await fetchQuestions(uid, selectedChild?.id);
+      }
+      
       if (userQuestions.length === 0) {
-        Alert.alert("No Questions", "Please ask your parent to create some questions first!");
+        Alert.alert("No Questions", "This quiz has no questions!");
         navigation.goBack();
         return;
       }
@@ -80,7 +93,7 @@ const QuizScreen = () => {
     } finally {
       setLoading(false);
     }
-  }, [uid, navigation, fetchQuestionLimit, selectedChild]); // Add selectedChild dependency
+  }, [uid, navigation, fetchQuestionLimit, selectedChild, quizId]); // Add selectedChild dependency
 
   useFocusEffect(
     useCallback(() => {
@@ -122,9 +135,14 @@ const QuizScreen = () => {
 
     // --- REPLACE ALERTS WITH THIS ---
     if (isCorrect) {
-      setFeedbackContent({ icon: '🎉👍', text: 'Great job!' });
+      setFeedbackContent({ icon: '🎉👍', text: 'Great job!', correctAnswer: null });
     } else {
-      setFeedbackContent({ icon: '❌', text: 'Incorrect' });
+      const correctAnswerText = currentQuestion.options[currentQuestion.correct_answer];
+      setFeedbackContent({ 
+        icon: '❌', 
+        text: 'Incorrect', 
+        correctAnswer: `Correct answer: ${currentQuestion.correct_answer.toUpperCase()}: ${correctAnswerText}` 
+      });
     }
 
     // --- REPLACE setTimeout WITH ANIMATION ---
@@ -185,7 +203,7 @@ const QuizScreen = () => {
   return (
     <SafeAreaView style={styles.container}>
       <Text style={styles.progressText}>
-        Question {currentQuestionIndex + 1} of {questions.length}
+        {quizName ? quizName : 'Quiz'} - Question {currentQuestionIndex + 1} of {questions.length}
       </Text>
       <Text style={styles.question}>{currentQuestion.question}</Text>
       {renderOptions()}
@@ -212,6 +230,9 @@ const QuizScreen = () => {
           <Text style={styles.feedbackIcon}>{feedbackContent.icon}</Text>
           {feedbackContent.text ? (
             <Text style={styles.feedbackText}>{feedbackContent.text}</Text>
+          ) : null}
+          {feedbackContent.correctAnswer ? (
+            <Text style={styles.correctAnswerText}>{feedbackContent.correctAnswer}</Text>
           ) : null}
         </Animated.View>
       )}
@@ -285,5 +306,17 @@ const styles = StyleSheet.create({
     textShadowColor: 'rgba(0, 0, 0, 0.5)',
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 2,
+  },
+  correctAnswerText: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#4CAF50',
+    marginTop: 15,
+    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 10,
+    textAlign: 'center',
+    maxWidth: '90%',
   },
 });

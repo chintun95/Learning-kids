@@ -27,7 +27,7 @@ const GAMES = [
   { key: 'flappy', title: 'Flappy', image: require('@/assets/images/kiwi.png'), onPressType: 'embed', tint: '#FF6B6B' },
   { key: 'snake', title: 'Snake', image: require('@/assets/images/snake.png'), onPressType: 'embed', tint: '#4ECDC4' },
    { key: 'fruit',  title: 'Fruit Slice', image: require('@/assets/images/watermelon.png'), onPressType: 'embed', tint: '#FF9F1C' },
-  { key: 'quiz', title: 'Quiz', image: require('@/assets/images/saftey-sign.png'), onPressType: 'route', routeName: 'QuizScreen', tint: '#FFD166' },
+  { key: 'quiz', title: 'Quiz', image: require('@/assets/images/saftey-sign.png'), onPressType: 'route', routeName: 'QuizSelectionScreen', tint: '#FFD166' },
 ];
 
 // --- Game Card ---

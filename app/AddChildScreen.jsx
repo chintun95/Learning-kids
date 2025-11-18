@@ -6,7 +6,10 @@ import {
   Alert,
   View,
   FlatList,
-  StyleSheet
+  StyleSheet,
+  Image,
+  Modal,
+  ScrollView
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
@@ -14,6 +17,21 @@ import { getAuth } from 'firebase/auth';
 import { supabase } from '../backend/supabase';
 import { useChild } from './ChildContext';
 import { widthPercentageToDP as wp, heightPercentageToDP as hp } from 'react-native-responsive-screen';
+
+const predefinedAvatars = [
+  require('../assets/profile-pictures/Gemini_Generated_Image_ls633als633als63 (1).png'),
+  require('../assets/profile-pictures/Gemini_Generated_Image_kj41a5kj41a5kj41.png'),
+  require('../assets/profile-pictures/Gemini_Generated_Image_crzg05crzg05crzg.png'),
+  require('../assets/profile-pictures/Gemini_Generated_Image_c6ow26c6ow26c6ow.png'),
+  require('../assets/profile-pictures/Gemini_Generated_Image_v5ohovv5ohovv5oh.png'),
+  require('../assets/profile-pictures/Gemini_Generated_Image_ls633als633als63.png'),
+  require('../assets/profile-pictures/Gemini_Generated_Image_ohdroyohdroyohdr.png'),
+  require('../assets/profile-pictures/Gemini_Generated_Image_p6j0hbp6j0hbp6j0.png'),
+  require('../assets/profile-pictures/Gemini_Generated_Image_ls633als633als63 (4).png'),
+  require('../assets/profile-pictures/Gemini_Generated_Image_ls633als633als63 (3).png'),
+  require('../assets/profile-pictures/Gemini_Generated_Image_ls633als633als63 (2).png'),
+  require('../assets/profile-pictures/Gemini_Generated_Image_kj41a5kj41a5kj41 (1).png'),
+];
 
 const AddChildScreen = () => {
   const navigation = useNavigation();
@@ -25,6 +43,8 @@ const AddChildScreen = () => {
   const [age, setAge] = useState('');
   const [children, setChildren] = useState([]);
   const [childToEdit, setChildToEdit] = useState(null);
+  const [selectedAvatar, setSelectedAvatar] = useState(null);
+  const [showAvatarModal, setShowAvatarModal] = useState(false);
 
   // Load all children
   const loadChildren = async () => {
@@ -44,20 +64,22 @@ const AddChildScreen = () => {
   const handleSaveChild = async () => {
     if (!name.trim()) return Alert.alert("Please enter a name");
 
+    const childData = {
+      child_name: name,
+      child_age: parseInt(age) || 0,
+      avatar: selectedAvatar
+    };
+
     if (childToEdit) {
       await supabase.from("child_profiles")
-        .update({
-          child_name: name,
-          child_age: parseInt(age) || 0
-        })
+        .update(childData)
         .eq("id", childToEdit.id);
 
       Alert.alert("Child updated!");
     } else {
       const { data } = await supabase.from("child_profiles")
         .insert([{
-          child_name: name,
-          child_age: parseInt(age) || 0,
+          ...childData,
           parent_user_id: uid
         }])
         .select()
@@ -69,6 +91,7 @@ const AddChildScreen = () => {
 
     setName("");
     setAge("");
+    setSelectedAvatar(null);
     setChildToEdit(null);
     loadChildren();
   };
@@ -103,6 +126,31 @@ const AddChildScreen = () => {
         placeholderTextColor="#555"
       />
 
+      {/* Avatar Selection */}
+      <View style={styles.avatarSection}>
+        <Text style={styles.avatarLabel}>Choose Avatar (Optional)</Text>
+        <TouchableOpacity 
+          style={styles.avatarSelectButton}
+          onPress={() => setShowAvatarModal(true)}
+        >
+          {selectedAvatar ? (
+            <Image 
+              source={
+                selectedAvatar.startsWith('local_avatar_')
+                  ? predefinedAvatars[parseInt(selectedAvatar.replace('local_avatar_', ''))]
+                  : { uri: selectedAvatar }
+              } 
+              style={styles.selectedAvatarPreview} 
+            />
+          ) : (
+            <View style={styles.avatarPlaceholder}>
+              <Text style={styles.avatarPlaceholderText}>🎨</Text>
+              <Text style={styles.avatarPlaceholderLabel}>Select Avatar</Text>
+            </View>
+          )}
+        </TouchableOpacity>
+      </View>
+
       <TouchableOpacity style={styles.addButton} onPress={handleSaveChild}>
         <Text style={styles.addButtonText}>
           {childToEdit ? "💾 Save Changes" : "➕ Add Child"}
@@ -126,6 +174,7 @@ const AddChildScreen = () => {
                   setChildToEdit(item);
                   setName(item.child_name);
                   setAge(item.child_age.toString());
+                  setSelectedAvatar(item.avatar || null);
                 }}
                 style={styles.editButton}
               >
@@ -149,6 +198,44 @@ const AddChildScreen = () => {
       >
         <Text style={styles.backButtonText}>⬅ Back to Profile</Text>
       </TouchableOpacity>
+
+      {/* Avatar Selection Modal */}
+      <Modal
+        visible={showAvatarModal}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowAvatarModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.avatarModal}>
+            <View style={styles.avatarModalHeader}>
+              <Text style={styles.avatarModalTitle}>Choose an Avatar</Text>
+              <TouchableOpacity
+                onPress={() => setShowAvatarModal(false)}
+                style={styles.closeModalButton}
+              >
+                <Text style={styles.closeModalText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+            <ScrollView>
+              <View style={styles.avatarGrid}>
+                {predefinedAvatars.map((avatar, index) => (
+                  <TouchableOpacity
+                    key={index}
+                    style={styles.avatarOption}
+                    onPress={() => {
+                      setSelectedAvatar(`local_avatar_${index}`);
+                      setShowAvatarModal(false);
+                    }}
+                  >
+                    <Image source={avatar} style={styles.avatarImage} />
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 };
@@ -269,5 +356,120 @@ const styles = StyleSheet.create({
     fontFamily: "FredokaOne-Regular",
     fontSize: wp("5%"),
     color: "#4A90E2",
+  },
+
+  avatarSection: {
+    width: wp("80%"),
+    alignItems: "center",
+    marginBottom: hp("2%"),
+  },
+
+  avatarLabel: {
+    fontFamily: "FredokaOne-Regular",
+    fontSize: wp("4.5%"),
+    color: "#333",
+    marginBottom: hp("1%"),
+  },
+
+  avatarSelectButton: {
+    width: wp("30%"),
+    height: wp("30%"),
+    borderRadius: wp("15%"),
+    borderWidth: 3,
+    borderColor: "#4A90E2",
+    backgroundColor: "#fff",
+    justifyContent: "center",
+    alignItems: "center",
+    overflow: "hidden",
+  },
+
+  selectedAvatarPreview: {
+    width: "100%",
+    height: "100%",
+  },
+
+  avatarPlaceholder: {
+    justifyContent: "center",
+    alignItems: "center",
+  },
+
+  avatarPlaceholderText: {
+    fontSize: wp("12%"),
+  },
+
+  avatarPlaceholderLabel: {
+    fontFamily: "FredokaOne-Regular",
+    fontSize: wp("3%"),
+    color: "#666",
+    marginTop: hp("0.5%"),
+  },
+
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.6)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+
+  avatarModal: {
+    backgroundColor: "#fff",
+    borderRadius: 25,
+    padding: wp("5%"),
+    width: wp("90%"),
+    maxHeight: hp("80%"),
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+
+  avatarModalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: hp("2%"),
+  },
+
+  avatarModalTitle: {
+    fontSize: wp("6%"),
+    fontFamily: "FredokaOne-Regular",
+    color: "#1E1E1E",
+  },
+
+  closeModalButton: {
+    width: wp("8%"),
+    height: wp("8%"),
+    borderRadius: wp("4%"),
+    backgroundColor: "#E0E0E0",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+
+  closeModalText: {
+    fontSize: wp("5%"),
+    color: "#333",
+  },
+
+  avatarGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "center",
+  },
+
+  avatarOption: {
+    width: wp("25%"),
+    height: wp("25%"),
+    margin: wp("1.5%"),
+    borderRadius: wp("12.5%"),
+    borderWidth: 3,
+    borderColor: "#E0E0E0",
+    overflow: "hidden",
+    backgroundColor: "#F5F5F5",
+  },
+
+  avatarImage: {
+    width: "100%",
+    height: "100%",
   },
 });
