@@ -4,9 +4,15 @@ import "react-native-gesture-handler";
 import { NavigationContainer } from "@react-navigation/native";
 import { createStackNavigator } from "@react-navigation/stack";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
-import { ActivityIndicator, View, Platform } from "react-native";
+import { ActivityIndicator, View, Platform, LogBox } from "react-native";
 import { auth } from "../firebase";
 import { onAuthStateChanged } from "firebase/auth";
+
+// Suppress expo-notifications warning for Expo Go
+LogBox.ignoreLogs([
+  'expo-notifications',
+  'remote notifications',
+]);
 
 import SnakeGame from "./SnakeGame";
 import GamePage from "./game-page";

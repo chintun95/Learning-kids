@@ -16,14 +16,15 @@ export default function Food({
         position: 'absolute',
         left: x * cell,
         top: y * cell,
-        width: cell,
-        height: cell,
+        width: cell * 1.5,
+        height: cell * 1.5,
         alignItems: 'center',
         justifyContent: 'center',
         transform: [{ scale: s }],
+        zIndex: 1000,
       }}
     >
-      <Text style={{ fontSize: Math.floor(cell) }}>{emoji ?? '🟡'}</Text>
+      <Text style={{ fontSize: Math.floor(cell * 1.5) }}>{emoji ?? '🟡'}</Text>
     </Animated.View>
   );
 }

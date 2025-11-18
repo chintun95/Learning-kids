@@ -17,9 +17,7 @@ import { supabase } from "../backend/supabase";
 import { auth } from "../firebase";
 import { useFocusEffect } from "@react-navigation/native";
 
-import * as FileSystem from "expo-file-system";
 import * as Sharing from "expo-sharing";
-import * as Print from "expo-print";
 import { captureRef } from "react-native-view-shot";
 
 const screenWidth = Dimensions.get("window").width;
@@ -40,7 +38,7 @@ const ProgressionChart: React.FC = () => {
   const parentUid = auth.currentUser?.uid;
   const exportRef = useRef(null);
 
-  const tabs = ["Flappy Bird", "Snake", "Quiz"];
+  const tabs = ["Flappy Bird", "Snake", "Fruit Ninja", "Quiz"];
 
   // Date-range
   const [rangeLabel, setRangeLabel] = useState("All time");
@@ -197,71 +195,6 @@ const ProgressionChart: React.FC = () => {
 
   const getIncorrectList = () => questions.filter((q) => !q.is_correct);
 
-  // ---------------- CSV -----------------
-  const shareCSV = async () => {
-    if (!(await Sharing.isAvailableAsync())) {
-      Alert.alert("Sharing not available on this platform");
-      return;
-    }
-
-    const header = ["Child", "Game", "Question", "Correct", "Date"];
-    const rows = questions.map((q) => [
-      q.childName,
-      activeTab,
-      (q.question || "").replace(/[\n\r]/g, " "),
-      q.is_correct ? "TRUE" : "FALSE",
-      new Date(q.answered_at).toISOString(),
-    ]);
-
-    const csvString = [header, ...rows].map((r) => r.join(",")).join("\n");
-    const fileUri = `${FileSystem.documentDirectory}progress_${Date.now()}.csv`;
-
-    await FileSystem.writeAsStringAsync(fileUri, csvString, { encoding: "utf8" });
-    await Sharing.shareAsync(fileUri, { mimeType: "text/csv", dialogTitle: "Export CSV" });
-  };
-
-  // ---------------- PDF -----------------
-  const sharePDF = async () => {
-    if (!(await Sharing.isAvailableAsync())) {
-      Alert.alert("Sharing not available on this platform");
-      return;
-    }
-
-    if (!exportRef.current) return Alert.alert("Nothing to capture");
-
-    const imgUri = await captureRef(exportRef.current, { format: "png", quality: 1 });
-    const b64 = await FileSystem.readAsStringAsync(imgUri, { encoding: "base64" });
-    const imgData = `data:image/png;base64,${b64}`;
-
-    const incorrect = getIncorrectList();
-    const html = `
-      <html>
-        <body>
-          <h1>Learning Kids — Progress Report</h1>
-          <p><b>Game:</b> ${activeTab}</p>
-          <p><b>Date Range:</b> ${formatRange()}</p>
-          <img src="${imgData}" style="width:100%;height:auto;"/>
-          <h2>Incorrect Questions</h2>
-          ${
-            incorrect.length === 0
-              ? "<p>None</p>"
-              : `<ul>${incorrect
-                  .map(
-                    (q) =>
-                      `<li>${q.childName}: ${q.question} — ${new Date(
-                        q.answered_at
-                      ).toLocaleString()}</li>`
-                  )
-                  .join("")}</ul>`
-          }
-        </body>
-      </html>
-    `;
-
-    const { uri } = await Print.printToFileAsync({ html });
-    await Sharing.shareAsync(uri, { mimeType: "application/pdf", dialogTitle: "Progress PDF" });
-  };
-
   // ---------------- Image -----------------
   const shareImage = async () => {
     if (!(await Sharing.isAvailableAsync())) {
@@ -289,12 +222,6 @@ const ProgressionChart: React.FC = () => {
       <Text style={styles.rangeLabel}>{rangeLabel}</Text>
 
       <View style={styles.exportRow}>
-        <TouchableOpacity style={styles.exportBtn} onPress={shareCSV}>
-          <Text style={styles.exportText}>CSV</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.exportBtn} onPress={sharePDF}>
-          <Text style={styles.exportText}>PDF</Text>
-        </TouchableOpacity>
         <TouchableOpacity style={styles.exportBtn} onPress={shareImage}>
           <Text style={styles.exportText}>Image</Text>
         </TouchableOpacity>
