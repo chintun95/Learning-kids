@@ -42,11 +42,6 @@ const Profile: React.FC = () => {
     name: 'User',
     email: auth.currentUser?.email || 'No email',
     joinDate: 'Loading...',
-    achievements: [
-      { id: 1, title: 'First Login', completed: true },
-      { id: 2, title: 'Complete Profile', completed: false },
-      { id: 3, title: 'Play First Game', completed: true },
-    ],
   });
 
   const [reminderEnabled, setReminderEnabled] = useState(false);
@@ -318,38 +313,6 @@ const Profile: React.FC = () => {
           <Text style={styles.name}>{userData.name}</Text>
           <Text style={styles.email}>{userData.email}</Text>
           <Text style={styles.joinDate}>Member since {userData.joinDate}</Text>
-        </View>
-
-        {/* Stats */}
-        <View style={styles.statsContainer}>
-          <View style={styles.statBox}>
-            <Text style={styles.statNumber}>12</Text>
-            <Text style={styles.statLabel}>Lessons</Text>
-          </View>
-          <View style={styles.statBox}>
-            <Text style={styles.statNumber}>85%</Text>
-            <Text style={styles.statLabel}>Accuracy</Text>
-          </View>
-          <View style={styles.statBox}>
-            <Text style={styles.statNumber}>3</Text>
-            <Text style={styles.statLabel}>Badges</Text>
-          </View>
-        </View>
-
-        {/* Achievements */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Achievements</Text>
-          {userData.achievements.map(achievement => (
-            <View key={achievement.id} style={styles.achievementItem}>
-              <View
-                style={[
-                  styles.achievementStatus,
-                  achievement.completed ? styles.completed : styles.incomplete,
-                ]}
-              />
-              <Text style={styles.achievementTitle}>{achievement.title}</Text>
-            </View>
-          ))}
         </View>
 
         {/* Progress Chart */}
