@@ -119,6 +119,7 @@ function SnakeGame({ navigation }: { navigation: any }): JSX.Element {
   const [isQuestionVisible, setIsQuestionVisible] = useState<boolean>(false);
   const [questionsAnsweredCount, setQuestionsAnsweredCount] = useState<number>(0);
   const [questionsToComplete, setQuestionsToComplete] = useState<number>(DEFAULT_QUESTION_LIMIT);
+  const [foodsEatenSinceQuestion, setFoodsEatenSinceQuestion] = useState<number>(0);
   const [userProfile, setUserProfile] = useState<any>(null);
 
   const [combo, setCombo] = useState(1);
@@ -308,10 +309,19 @@ function SnakeGame({ navigation }: { navigation: any }): JSX.Element {
     snakeRef.current.some((c) => equal(c, p)) || equal(foodRef.current, p) || walls.some(w => equal(w, p));
 
   const spawnFood = () => {
-      let pos = randomFoodPosition(GAME_BOUNDS.xMax, GAME_BOUNDS.yMax);
-    pos.x = clamp(pos.x, GAME_BOUNDS.xMin, GAME_BOUNDS.xMax - 1);
-    pos.y = clamp(pos.y, GAME_BOUNDS.yMin, GAME_BOUNDS.yMax - 1);
-    while (occupied(pos)) pos = randomFoodPosition(GAME_BOUNDS.xMax, GAME_BOUNDS.yMax);
+      // Use padding of 6 to keep food away from edges (food is 1.5x size)
+      let pos = randomFoodPosition(GAME_BOUNDS.xMax - 2, GAME_BOUNDS.yMax - 2, 6);
+    // Clamp with extra margin for safety
+    pos.x = clamp(pos.x, GAME_BOUNDS.xMin + 6, GAME_BOUNDS.xMax - 7);
+    pos.y = clamp(pos.y, GAME_BOUNDS.yMin + 6, GAME_BOUNDS.yMax - 7);
+    // Keep finding new positions until we find an unoccupied spot
+    let attempts = 0;
+    while (occupied(pos) && attempts < 100) {
+      pos = randomFoodPosition(GAME_BOUNDS.xMax - 2, GAME_BOUNDS.yMax - 2, 6);
+      pos.x = clamp(pos.x, GAME_BOUNDS.xMin + 6, GAME_BOUNDS.xMax - 7);
+      pos.y = clamp(pos.y, GAME_BOUNDS.yMin + 6, GAME_BOUNDS.yMax - 7);
+      attempts++;
+    }
     setFood(pos);
     foodRef.current = pos;
     popFood();
@@ -386,7 +396,12 @@ function SnakeGame({ navigation }: { navigation: any }): JSX.Element {
 
       setSnake([newHead, ...current]);
 
-      if (questionsAnsweredCount < questionsToComplete && availableQuestions.length > 0) {
+      // Track foods eaten and only show questions every 3 foods
+      const newFoodsEaten = foodsEatenSinceQuestion + 1;
+      setFoodsEatenSinceQuestion(newFoodsEaten);
+
+      // Only show questions if we haven't reached the limit and every 3rd food
+      if (questionsAnsweredCount < questionsToComplete && availableQuestions.length > 0 && newFoodsEaten >= 3) {
           const randomIndex = Math.floor(Math.random() * availableQuestions.length);
           const questionToAsk = availableQuestions[randomIndex];
 
@@ -396,9 +411,9 @@ function SnakeGame({ navigation }: { navigation: any }): JSX.Element {
           setIsQuestionVisible(true);
           setIsPaused(true);
           setPhase('paused');
-      } else if (questionsAnsweredCount >= questionsToComplete) {
-          endGame('quiz_complete');
+          setFoodsEatenSinceQuestion(0); // Reset counter after showing question
       }
+      // Removed the game-ending logic - game continues after questions complete
 
       spawnFood();
       triggerEatRipple();
@@ -459,12 +474,9 @@ function SnakeGame({ navigation }: { navigation: any }): JSX.Element {
       const newAnsweredCount = questionsAnsweredCount + 1;
       setQuestionsAnsweredCount(newAnsweredCount);
 
-      if (newAnsweredCount >= questionsToComplete) {
-          endGame('quiz_complete');
-      } else {
-          setPhase('countdown');
-          setIsPaused(true);
-      }
+      // Game continues even after reaching question limit
+      setPhase('countdown');
+      setIsPaused(true);
       setCurrentQuestion(null);
     });
   };
@@ -498,6 +510,7 @@ function SnakeGame({ navigation }: { navigation: any }): JSX.Element {
     foodRef.current = FOOD_INITIAL_POSITION;
     setScore(0);
     setDirection(Direction.Right);
+    setFoodsEatenSinceQuestion(0);
     setIsGameOver(false);
     setIsPaused(true);
     setLives(2);

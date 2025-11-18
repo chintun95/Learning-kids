@@ -40,7 +40,7 @@ const ProgressionChart: React.FC = () => {
   const parentUid = auth.currentUser?.uid;
   const exportRef = useRef(null);
 
-  const tabs = ["Flappy Bird", "Snake", "Quiz"];
+  const tabs = ["Flappy Bird", "Snake", "Fruit Ninja", "Quiz"];
 
   // Date-range
   const [rangeLabel, setRangeLabel] = useState("All time");
@@ -199,67 +199,144 @@ const ProgressionChart: React.FC = () => {
 
   // ---------------- CSV -----------------
   const shareCSV = async () => {
-    if (!(await Sharing.isAvailableAsync())) {
-      Alert.alert("Sharing not available on this platform");
-      return;
+    try {
+      if (!(await Sharing.isAvailableAsync())) {
+        Alert.alert("Error", "Sharing not available on this platform");
+        return;
+      }
+
+      if (!questions || questions.length === 0) {
+        Alert.alert("No Data", "There is no data to export");
+        return;
+      }
+
+      // Escape CSV values properly
+      const escapeCSV = (str: string) => {
+        if (!str) return "";
+        const s = String(str).replace(/"/g, '""');
+        return s.includes(',') || s.includes('\n') || s.includes('"') ? `"${s}"` : s;
+      };
+
+      const header = ["Child", "Game", "Question", "Correct", "Date"];
+      const rows = questions.map((q) => [
+        escapeCSV(q.childName || "Unknown"),
+        escapeCSV(activeTab),
+        escapeCSV((q.question || "No question").replace(/[\n\r]+/g, " ")),
+        q.is_correct ? "TRUE" : "FALSE",
+        new Date(q.answered_at).toLocaleString(),
+      ]);
+
+      const csvString = [header.join(","), ...rows.map((r) => r.join(","))].join("\n");
+      const fileName = `progress_${activeTab.replace(/\s+/g, '_')}_${Date.now()}.csv`;
+      const fileUri = `${FileSystem.documentDirectory}${fileName}`;
+
+      await FileSystem.writeAsStringAsync(fileUri, csvString, { encoding: "utf8" });
+      await Sharing.shareAsync(fileUri, { 
+        mimeType: "text/csv", 
+        dialogTitle: `Export ${activeTab} Progress`,
+        UTI: "public.comma-separated-values-text"
+      });
+      
+      Alert.alert("Success", "CSV exported successfully!");
+    } catch (error) {
+      console.error("CSV export error:", error);
+      Alert.alert("Error", "Failed to export CSV. Please try again.");
     }
-
-    const header = ["Child", "Game", "Question", "Correct", "Date"];
-    const rows = questions.map((q) => [
-      q.childName,
-      activeTab,
-      (q.question || "").replace(/[\n\r]/g, " "),
-      q.is_correct ? "TRUE" : "FALSE",
-      new Date(q.answered_at).toISOString(),
-    ]);
-
-    const csvString = [header, ...rows].map((r) => r.join(",")).join("\n");
-    const fileUri = `${FileSystem.documentDirectory}progress_${Date.now()}.csv`;
-
-    await FileSystem.writeAsStringAsync(fileUri, csvString, { encoding: "utf8" });
-    await Sharing.shareAsync(fileUri, { mimeType: "text/csv", dialogTitle: "Export CSV" });
   };
 
   // ---------------- PDF -----------------
   const sharePDF = async () => {
-    if (!(await Sharing.isAvailableAsync())) {
-      Alert.alert("Sharing not available on this platform");
-      return;
+    try {
+      if (!(await Sharing.isAvailableAsync())) {
+        Alert.alert("Error", "Sharing not available on this platform");
+        return;
+      }
+
+      if (!exportRef.current) {
+        Alert.alert("Error", "Unable to capture chart. Please try again.");
+        return;
+      }
+
+      if (!questions || questions.length === 0) {
+        Alert.alert("No Data", "There is no data to export");
+        return;
+      }
+
+      const imgUri = await captureRef(exportRef.current, { format: "png", quality: 1 });
+      const b64 = await FileSystem.readAsStringAsync(imgUri, { encoding: "base64" });
+      const imgData = `data:image/png;base64,${b64}`;
+
+      const incorrect = getIncorrectList();
+      const selectedChildName = selectedChildId === "all" 
+        ? "All Children" 
+        : children.find(c => c.id === selectedChildId)?.child_name || "Unknown";
+
+      const html = `
+        <!DOCTYPE html>
+        <html>
+          <head>
+            <meta charset="utf-8">
+            <style>
+              body { font-family: Arial, sans-serif; padding: 20px; }
+              h1 { color: #333; border-bottom: 2px solid #4CAF50; padding-bottom: 10px; }
+              h2 { color: #666; margin-top: 30px; }
+              .info { background: #f5f5f5; padding: 10px; border-radius: 5px; margin: 10px 0; }
+              .info p { margin: 5px 0; }
+              img { max-width: 100%; height: auto; margin: 20px 0; border: 1px solid #ddd; }
+              ul { list-style-type: none; padding: 0; }
+              li { padding: 10px; margin: 5px 0; background: #fff3cd; border-left: 4px solid #ffc107; }
+              .stats { display: flex; gap: 20px; margin: 20px 0; }
+              .stat-box { flex: 1; padding: 15px; background: #e3f2fd; border-radius: 5px; text-align: center; }
+            </style>
+          </head>
+          <body>
+            <h1>🎮 Learning Kids — Progress Report</h1>
+            <div class="info">
+              <p><b>Game:</b> ${activeTab}</p>
+              <p><b>Child:</b> ${selectedChildName}</p>
+              <p><b>Date Range:</b> ${formatRange()}</p>
+              <p><b>Total Questions:</b> ${questions.length}</p>
+              <p><b>Correct:</b> ${questions.filter(q => q.is_correct).length}</p>
+              <p><b>Incorrect:</b> ${incorrect.length}</p>
+            </div>
+            
+            <h2>📊 Performance Chart</h2>
+            <img src="${imgData}" alt="Progress Chart"/>
+            
+            <h2>❌ Questions to Review</h2>
+            ${
+              incorrect.length === 0
+                ? "<p style='color: #4CAF50; font-weight: bold;'>🎉 No incorrect answers! Great job!</p>"
+                : `<ul>${incorrect
+                    .map(
+                      (q) =>
+                        `<li>
+                          <strong>${q.childName}</strong><br/>
+                          Q: ${q.question || "No question"}<br/>
+                          <small>${new Date(q.answered_at).toLocaleString()}</small>
+                        </li>`
+                    )
+                    .join("")}</ul>`
+            }
+            <div style="margin-top: 40px; padding-top: 20px; border-top: 1px solid #ddd; text-align: center; color: #999;">
+              <small>Generated on ${new Date().toLocaleString()}</small>
+            </div>
+          </body>
+        </html>
+      `;
+
+      const { uri } = await Print.printToFileAsync({ html });
+      await Sharing.shareAsync(uri, { 
+        mimeType: "application/pdf", 
+        dialogTitle: `${activeTab} Progress Report`,
+        UTI: "com.adobe.pdf"
+      });
+      
+      Alert.alert("Success", "PDF exported successfully!");
+    } catch (error) {
+      console.error("PDF export error:", error);
+      Alert.alert("Error", "Failed to export PDF. Please try again.");
     }
-
-    if (!exportRef.current) return Alert.alert("Nothing to capture");
-
-    const imgUri = await captureRef(exportRef.current, { format: "png", quality: 1 });
-    const b64 = await FileSystem.readAsStringAsync(imgUri, { encoding: "base64" });
-    const imgData = `data:image/png;base64,${b64}`;
-
-    const incorrect = getIncorrectList();
-    const html = `
-      <html>
-        <body>
-          <h1>Learning Kids — Progress Report</h1>
-          <p><b>Game:</b> ${activeTab}</p>
-          <p><b>Date Range:</b> ${formatRange()}</p>
-          <img src="${imgData}" style="width:100%;height:auto;"/>
-          <h2>Incorrect Questions</h2>
-          ${
-            incorrect.length === 0
-              ? "<p>None</p>"
-              : `<ul>${incorrect
-                  .map(
-                    (q) =>
-                      `<li>${q.childName}: ${q.question} — ${new Date(
-                        q.answered_at
-                      ).toLocaleString()}</li>`
-                  )
-                  .join("")}</ul>`
-          }
-        </body>
-      </html>
-    `;
-
-    const { uri } = await Print.printToFileAsync({ html });
-    await Sharing.shareAsync(uri, { mimeType: "application/pdf", dialogTitle: "Progress PDF" });
   };
 
   // ---------------- Image -----------------

@@ -8,7 +8,7 @@ const { width: W, height: H } = Dimensions.get('window');
 const TERMINAL_FALL = 12;      // clamp fall speed
 const FLAP_VY = -6.2;          // upward vel on tap
 const SPEED_STEP_EVERY = 5;    // increase speed every N points
-const SPEED_STEP = 0.25;       // increment amount
+const SPEED_STEP = 0.15;       // increment amount (reduced for easier gameplay)
 
 function movePair(pair, dx) {
   Matter.Body.translate(pair.top.body, { x: dx, y: 0 });
@@ -57,8 +57,8 @@ const Physics = (entities, { touches, time, dispatch }) => {
 
   Matter.Engine.update(engine, time.delta);
 
-  // speed can scale with score/difficulty
-  const speed = -(meta.speed || 3);
+  // speed can scale with score/difficulty (reduced base speed for easier gameplay)
+  const speed = -(meta.speed || 2);
 
   // iterate both pipe groups
   ['Pipes1', 'Pipes2'].forEach((key) => {
@@ -81,7 +81,7 @@ const Physics = (entities, { touches, time, dispatch }) => {
 
       // difficulty step-up
       if (meta.score % SPEED_STEP_EVERY === 0) {
-        meta.speed = (meta.speed || 3) + SPEED_STEP;
+        meta.speed = (meta.speed || 2) + SPEED_STEP;
         meta.difficulty += 1;
       }
     }
