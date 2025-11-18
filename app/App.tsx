@@ -17,6 +17,7 @@ import EditProfilePage from "./edit-profile";
 import ShopPage from "./shop";
 import CreateQuestionsPage from "./CreateQuestions";
 import QuizScreen from "./QuizScreen";
+import QuizSelectionScreen from "./QuizSelectionScreen";
 import ProgressChart from "./ProgressChart";
 import ChildSelectScreen from "./ChildSelectScreen";
 import AddChildScreen from "./AddChildScreen";
@@ -104,6 +105,7 @@ const App: React.FC = () => {
             <Stack.Screen name="EditProfilePage" component={EditProfilePage} options={{ headerShown: false }} />
             <Stack.Screen name="ShopPage" component={ShopPage} options={{ headerShown: false }} />
             <Stack.Screen name="CreateQuestionsPage" component={CreateQuestionsPage} options={{ headerShown: false }} />
+            <Stack.Screen name="QuizSelectionScreen" component={QuizSelectionScreen} options={{ headerShown: false }} />
             <Stack.Screen name="QuizScreen" component={QuizScreen} options={{ headerShown: false }} />
             <Stack.Screen name="SnakeGame" component={SnakeGame} options={{ headerShown: false }} />
             <Stack.Screen name="ChildSelectScreen" component={ChildSelectScreen} options={{ headerShown: false }} />
