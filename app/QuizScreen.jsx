@@ -1,30 +1,29 @@
+// app/QuizScreen.jsx
+
 import React, { useState, useCallback, useRef } from 'react';
 import { StyleSheet, Text, View, ActivityIndicator, TouchableOpacity, Alert, Animated } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useNavigation, useFocusEffect, useRoute } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { getAuth } from 'firebase/auth';
 import { supabase } from '../backend/supabase';
 import { fetchQuestions } from '../backend/fetchquestions';
-import { getQuizQuestions } from '../backend/quizzes';
 import { widthPercentageToDP as wp, heightPercentageToDP as hp } from 'react-native-responsive-screen';
 import { useChild } from './ChildContext';
 
+// --- NEW IMPORTS ---
+import { checkAndGrantAchievement, ACHIEVEMENT_CODES } from './utils/achievements';
+
 const QuizScreen = () => {
   const navigation = useNavigation();
-  const route = useRoute();
-  const quizId = route.params?.quizId;
-  const quizName = route.params?.quizName;
   const [questions, setQuestions] = useState([]);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [questionsPerSession, setQuestionsPerSession] = useState(5); // default limit
+  const [questionsPerSession, setQuestionsPerSession] = useState(5);
 
-  // --- ADD THESE ---
   const [isAnswering, setIsAnswering] = useState(false);
   const [feedbackContent, setFeedbackContent] = useState(null);
   const feedbackAnim = useRef(new Animated.Value(0)).current;
-  const { selectedChild } = useChild(); // <-- 2. GET SELECTED CHILD
-  // --- END ADD ---
+  const { selectedChild } = useChild(); 
 
   const auth = getAuth();
   const uid = auth.currentUser?.uid; // This is the PARENT'S ID
@@ -54,31 +53,20 @@ const QuizScreen = () => {
       navigation.goBack();
       return;
     }
-    // --- This check is now crucial ---
     if (!selectedChild) {
       Alert.alert("Error", "No child selected.");
       navigation.navigate("ChildSelectScreen");
       return;
     }
-    // --- End check ---
 
     setLoading(true);
     try {
       const limit = await fetchQuestionLimit();
       setQuestionsPerSession(limit);
 
-      let userQuestions;
-      
-      // If quizId is provided, load questions from that quiz
-      if (quizId) {
-        userQuestions = await getQuizQuestions(quizId);
-      } else {
-        // Otherwise, load all questions for the current child
-        userQuestions = await fetchQuestions(uid, selectedChild?.id);
-      }
-      
+      const userQuestions = await fetchQuestions(uid); 
       if (userQuestions.length === 0) {
-        Alert.alert("No Questions", "This quiz has no questions!");
+        Alert.alert("No Questions", "Please ask your parent to create some questions first!");
         navigation.goBack();
         return;
       }
@@ -93,7 +81,7 @@ const QuizScreen = () => {
     } finally {
       setLoading(false);
     }
-  }, [uid, navigation, fetchQuestionLimit, selectedChild, quizId]); // Add selectedChild dependency
+  }, [uid, navigation, fetchQuestionLimit, selectedChild]);
 
   useFocusEffect(
     useCallback(() => {
@@ -101,27 +89,25 @@ const QuizScreen = () => {
     }, [loadQuiz])
   );
 
-  // ✅ Handle answer + log to Supabase for ProgressionChart
+  // ✅ Handle answer + log to Supabase
   const handleAnswer = async (option) => {
-    // --- ADD THESE ---
-    if (isAnswering) return; // Don't allow multiple answers
+    if (isAnswering) return; 
     setIsAnswering(true);
-    // --- END ADD ---
 
     const currentQuestion = questions[currentQuestionIndex];
     if (!currentQuestion) {
-      setIsAnswering(false); // Failsafe
+      setIsAnswering(false);
       return;
     }
 
     const isCorrect = option === currentQuestion.correct_answer;
 
-    // --- 3. UPDATED LOGIC ---
-    // Log answer in Supabase
+    // --- UPDATED: Stats & Achievement Logic ---
     if (uid && selectedChild?.id && currentQuestion.id) {
+      // 1. Log Answer
       const { error } = await supabase.from('answer_log').insert({
-        user_id: uid, // Parent's ID
-        child_id: selectedChild.id, // Child's ID
+        user_id: uid,
+        child_id: selectedChild.id,
         question_id: currentQuestion.id,
         is_correct: isCorrect,
         game_name: 'Quiz',
@@ -130,22 +116,43 @@ const QuizScreen = () => {
       if (error) {
         console.error('Error logging quiz answer:', error.message);
       }
+
+      // 2. Update User Stats & Check Achievements
+      try {
+          const { data: stats } = await supabase
+              .from('user_stats')
+              .select('total_questions_answered, correct_answers')
+              .eq('user_id', uid)
+              .maybeSingle();
+          
+          const total = (stats?.total_questions_answered || 0) + 1;
+          const correct = (stats?.correct_answers || 0) + (isCorrect ? 1 : 0);
+
+          await supabase
+              .from('user_stats')
+              .upsert({ 
+                  user_id: uid, 
+                  total_questions_answered: total,
+                  correct_answers: correct
+              }, { onConflict: 'user_id' });
+              
+          if (isCorrect) {
+              if (correct === 3) await checkAndGrantAchievement(uid, ACHIEVEMENT_CODES.THREE_CORRECT);
+              if (correct === 5) await checkAndGrantAchievement(uid, ACHIEVEMENT_CODES.FIVE_CORRECT);
+          }
+
+      } catch (e) {
+          console.error("Error updating stats:", e);
+      }
     }
     // --- END UPDATED LOGIC ---
 
-    // --- REPLACE ALERTS WITH THIS ---
     if (isCorrect) {
-      setFeedbackContent({ icon: '🎉👍', text: 'Great job!', correctAnswer: null });
+      setFeedbackContent({ icon: '🎉👍', text: 'Great job!' });
     } else {
-      const correctAnswerText = currentQuestion.options[currentQuestion.correct_answer];
-      setFeedbackContent({ 
-        icon: '❌', 
-        text: 'Incorrect', 
-        correctAnswer: `Correct answer: ${currentQuestion.correct_answer.toUpperCase()}: ${correctAnswerText}` 
-      });
+      setFeedbackContent({ icon: '❌', text: 'Incorrect' });
     }
 
-    // --- REPLACE setTimeout WITH ANIMATION ---
     feedbackAnim.setValue(0);
     Animated.sequence([
       Animated.timing(feedbackAnim, {
@@ -159,20 +166,20 @@ const QuizScreen = () => {
         duration: 200,
         useNativeDriver: true,
       }),
-    ]).start(() => {
-      // Logic to run AFTER animation
+    ]).start(async () => {
       setFeedbackContent(null);
 
       if (currentQuestionIndex < questions.length - 1) {
         setCurrentQuestionIndex(currentQuestionIndex + 1);
-        setIsAnswering(false); // Re-enable buttons
+        setIsAnswering(false); 
       } else {
+        // Quiz Complete
+        if (uid) await checkAndGrantAchievement(uid, ACHIEVEMENT_CODES.FIRST_GAME);
+
         Alert.alert("Quiz Complete!", "You've finished the quiz!");
         navigation.navigate('GamePage');
-        // No need to set isAnswering(false) here since we are navigating away
       }
     });
-    // --- END REPLACEMENT ---
   };
 
   if (loading || questions.length === 0) {
@@ -183,8 +190,6 @@ const QuizScreen = () => {
     );
   }
 
-  const currentQuestion = questions[currentQuestionIndex];
-
   const renderOptions = () => {
     if (!currentQuestion?.options) return null;
 
@@ -193,7 +198,7 @@ const QuizScreen = () => {
         key={key}
         style={styles.button}
         onPress={() => handleAnswer(key)}
-        disabled={isAnswering} // <-- ADD THIS
+        disabled={isAnswering}
       >
         <Text style={styles.buttonText}>{`${key.toUpperCase()}: ${value}`}</Text>
       </TouchableOpacity>
@@ -203,12 +208,11 @@ const QuizScreen = () => {
   return (
     <SafeAreaView style={styles.container}>
       <Text style={styles.progressText}>
-        {quizName ? quizName : 'Quiz'} - Question {currentQuestionIndex + 1} of {questions.length}
+        Question {currentQuestionIndex + 1} of {questions.length}
       </Text>
       <Text style={styles.question}>{currentQuestion.question}</Text>
       {renderOptions()}
 
-      {/* --- ADD THIS NEW OVERLAY --- */}
       {feedbackContent && (
         <Animated.View
           pointerEvents="none"
@@ -231,12 +235,8 @@ const QuizScreen = () => {
           {feedbackContent.text ? (
             <Text style={styles.feedbackText}>{feedbackContent.text}</Text>
           ) : null}
-          {feedbackContent.correctAnswer ? (
-            <Text style={styles.correctAnswerText}>{feedbackContent.correctAnswer}</Text>
-          ) : null}
         </Animated.View>
       )}
-      {/* --- END ADD --- */}
       
     </SafeAreaView>
   );
@@ -244,7 +244,6 @@ const QuizScreen = () => {
 
 export default QuizScreen;
 
-// ... (Styles remain unchanged) ...
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -306,17 +305,5 @@ const styles = StyleSheet.create({
     textShadowColor: 'rgba(0, 0, 0, 0.5)',
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 2,
-  },
-  correctAnswerText: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#4CAF50',
-    marginTop: 15,
-    backgroundColor: 'rgba(255, 255, 255, 0.95)',
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 10,
-    textAlign: 'center',
-    maxWidth: '90%',
   },
 });

@@ -1,3 +1,5 @@
+// app/SnakeGame.tsx
+
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Text, View, SafeAreaView, StyleSheet, Button, Animated, ActivityIndicator, Alert, TextInput } from 'react-native';
 import { PanGestureHandler, GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -14,7 +16,10 @@ import { fetchUserProfile } from '../backend/fetchUserProfile';
 import { supabase } from '../backend/supabase';
 import { getAuth } from 'firebase/auth';
 import { SNAKE_MODES, SnakeModeKey } from './snakeModes';
-import { useChild } from './ChildContext'; // <-- 1. ADDED IMPORT
+import { useChild } from './ChildContext';
+// --- NEW IMPORTS ---
+import { checkAndGrantAchievement, ACHIEVEMENT_CODES } from './utils/achievements';
+
 
 const FOOD_INITIAL_POSITION: Coordinate = { x: 5, y: 20 };
 const GAME_BOUNDS = { xMin: 0, xMax: 36, yMin: 0, yMax: 58 };
@@ -31,7 +36,6 @@ type Phase = 'ready' | 'countdown' | 'playing' | 'paused' | 'gameover' | 'quiz_c
 const clamp = (n: number, min: number, max: number) => Math.max(min, Math.min(max, n));
 const equal = (a: Coordinate, b: Coordinate) => a.x === b.x && a.y === b.y;
 
-// ... (Grid, StartOverlay, CountdownOverlay components remain unchanged) ...
 const Grid = React.memo(function Grid({
   cols, rows, cell, radius = 18,
 }: { cols: number; rows: number; cell: number; radius?: number }) {
@@ -90,14 +94,13 @@ function CountdownOverlay({ n }: { n: number }) {
 
 function SnakeGame({ navigation }: { navigation: any }): JSX.Element {
   const auth = getAuth();
-  const uid = auth.currentUser?.uid; // This is the PARENT'S ID
-  const { selectedChild } = useChild(); // <-- 2. GET SELECTED CHILD
+  const uid = auth.currentUser?.uid;
+  const { selectedChild } = useChild();
 
   const [modeKey, setModeKey] = useState<SnakeModeKey>('classic');
   const mode = useMemo(() => SNAKE_MODES[modeKey], [modeKey]);
   const [showSettings, setShowSettings] = useState(false);
 
-  // ... (rest of the game state remains unchanged) ...
   const [phase, setPhase] = useState<Phase>('ready');
 
   const [direction, setDirection] = useState<Direction>(Direction.Right);
@@ -153,13 +156,11 @@ function SnakeGame({ navigation }: { navigation: any }): JSX.Element {
         navigation.navigate("LogInPage");
         return;
       }
-      // --- This check is now crucial ---
       if (!selectedChild) {
         Alert.alert("Error", "No child selected.");
         navigation.navigate("ChildSelectScreen");
         return;
       }
-      // --- End check ---
 
       setIsLoadingData(true);
       try {
@@ -169,14 +170,14 @@ function SnakeGame({ navigation }: { navigation: any }): JSX.Element {
         const { data: settingsData, error: settingsError } = await supabase
           .from('settings')
           .select('question_limit')
-          .eq('user_id', uid) // Settings are still per-parent
+          .eq('user_id', uid)
           .single();
 
         if (settingsError && settingsError.code !== 'PGRST116') throw settingsError;
         const limit = settingsData?.question_limit || DEFAULT_QUESTION_LIMIT;
         setQuestionsToComplete(limit);
 
-        let fetchedQuestions = await fetchQuestions(uid, selectedChild?.id); // Questions are fetched by parent, filtered by child
+        let fetchedQuestions = await fetchQuestions(uid);
         fetchedQuestions = fetchedQuestions.filter(q => q.question_type !== 'typed_answer' && q.options);
 
         if (!fetchedQuestions || fetchedQuestions.length === 0) {
@@ -197,9 +198,8 @@ function SnakeGame({ navigation }: { navigation: any }): JSX.Element {
     };
 
     loadInitialData();
-  }, [uid, navigation, selectedChild]); // Add selectedChild dependency
+  }, [uid, navigation, selectedChild]);
 
-   // ... (useEffect for high score remains unchanged) ...
    useEffect(() => {
     (async () => {
       try {
@@ -216,7 +216,6 @@ function SnakeGame({ navigation }: { navigation: any }): JSX.Element {
     } catch {}
   };
 
-  // ... (walls, animations, effectiveInterval, etc. remain unchanged) ...
   const walls = useMemo<Coordinate[]>(() => {
       if (!mode.hasWalls) return [];
     const arr: Coordinate[] = [];
@@ -277,7 +276,7 @@ function SnakeGame({ navigation }: { navigation: any }): JSX.Element {
         Alert.alert("Cannot Start", isLoadingData ? "Loading data..." : "No suitable questions available. Please ask your parent to add some.");
         return;
      }
-     if (!selectedChild) { // Check again before starting
+     if (!selectedChild) {
         Alert.alert("Error", "No child selected.");
         navigation.navigate("ChildSelectScreen");
         return;
@@ -303,7 +302,6 @@ function SnakeGame({ navigation }: { navigation: any }): JSX.Element {
     return () => clearInterval(id);
   }, [phase, hitFlash]);
 
-  // ... (occupied, spawnFood, endGame, consumeLifeOrEnd, moveSnake functions remain unchanged) ...
   const occupied = (p: Coordinate) =>
     snakeRef.current.some((c) => equal(c, p)) || equal(foodRef.current, p) || walls.some(w => equal(w, p));
 
@@ -317,10 +315,15 @@ function SnakeGame({ navigation }: { navigation: any }): JSX.Element {
     popFood();
   };
 
-  const endGame = (reason: 'crash' | 'quiz_complete') => {
+  const endGame = async (reason: 'crash' | 'quiz_complete') => {
     setIsGameOver(true);
     setIsPaused(true);
     setPhase(reason === 'quiz_complete' ? 'quiz_complete' : 'gameover');
+    
+    // --- ACHIEVEMENT CHECK: FIRST GAME ---
+    if (uid) {
+       await checkAndGrantAchievement(uid, ACHIEVEMENT_CODES.FIRST_GAME);
+    }
   };
 
    const consumeLifeOrEnd = () => {
@@ -409,8 +412,7 @@ function SnakeGame({ navigation }: { navigation: any }): JSX.Element {
     setSnake([newHead, ...current.slice(0, -1)]);
   };
 
-
-  // --- 3. UPDATED answerQuestion FUNCTION ---
+  // --- UPDATED: Now updates user_stats table ---
   const answerQuestion = async (isCorrect: boolean, selectedOptionKey?: string) => {
     setIsQuestionVisible(false);
     let bonusPoints = 0;
@@ -435,24 +437,48 @@ function SnakeGame({ navigation }: { navigation: any }): JSX.Element {
         duration: 200, 
         useNativeDriver: true 
       })
-    ]).start(() => {
+    ]).start(async () => {
       setFeedbackContent(null); 
 
-      // --- THIS IS THE MODIFIED LOGIC ---
       if (uid && selectedChild?.id && currentQuestion) {
-        supabase.from('answer_log').insert({
-          user_id: uid,              // The parent's ID
-          child_id: selectedChild.id, // The NEW child's ID
+        // 1. Log specific answer
+        await supabase.from('answer_log').insert({
+          user_id: uid,
+          child_id: selectedChild.id,
           question_id: currentQuestion.id,
           is_correct: isCorrect, 
           game_name: 'Snake'
-        }).then(({ error }) => {
-          if (error) {
-            console.error('Error logging answer:', error.message);
-          }
         });
+
+        // 2. Update aggregated user_stats for profile tracking
+        try {
+             const { data: stats } = await supabase
+                 .from('user_stats')
+                 .select('total_questions_answered, correct_answers')
+                 .eq('user_id', uid)
+                 .maybeSingle();
+             
+             const total = (stats?.total_questions_answered || 0) + 1;
+             const correct = (stats?.correct_answers || 0) + (isCorrect ? 1 : 0);
+
+             await supabase
+                 .from('user_stats')
+                 .upsert({ 
+                     user_id: uid, 
+                     total_questions_answered: total,
+                     correct_answers: correct
+                 }, { onConflict: 'user_id' });
+                 
+             // 3. Check cumulative achievements
+             if (isCorrect) {
+                 if (correct === 3) await checkAndGrantAchievement(uid, ACHIEVEMENT_CODES.THREE_CORRECT);
+                 if (correct === 5) await checkAndGrantAchievement(uid, ACHIEVEMENT_CODES.FIVE_CORRECT);
+             }
+
+        } catch (e) {
+            console.error("Error updating stats:", e);
+        }
       }
-      // --- END MODIFIED LOGIC ---
       
       setScore(s => s + bonusPoints);
 
@@ -468,8 +494,6 @@ function SnakeGame({ navigation }: { navigation: any }): JSX.Element {
       setCurrentQuestion(null);
     });
   };
-  // --- END UPDATED FUNCTION ---
-
 
   const handleGesture = (event: GestureEventType) => {
     if (isGameOver || isQuestionVisible || phase === 'quiz_complete') return;
@@ -532,7 +556,6 @@ function SnakeGame({ navigation }: { navigation: any }): JSX.Element {
       );
   }
 
-  // ... (Rest of the JSX remains unchanged) ...
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <PanGestureHandler onGestureEvent={handleGesture} enabled={!isQuestionVisible && phase === 'playing'}>
@@ -664,7 +687,6 @@ function SnakeGame({ navigation }: { navigation: any }): JSX.Element {
   );
 }
 
-// ... (Styles remain unchanged) ...
 const styles = StyleSheet.create({
     container: { flex: 1, justifyContent: 'flex-start', alignItems: 'center', backgroundColor: '#e0f7fa' },
     boundaries: {
@@ -784,7 +806,7 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         alignItems: 'center',
         backgroundColor: 'rgba(0, 0, 0, 0.4)',
-        borderRadius: 22, // Match boundaries
+        borderRadius: 22, 
     },
     feedbackIcon: {
         fontSize: 80,
