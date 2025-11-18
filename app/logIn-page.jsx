@@ -14,7 +14,7 @@ import { useFonts } from "expo-font"
 import { MaterialIcons } from '@expo/vector-icons';
 // Responsive Scaling
 import { widthPercentageToDP as wp, heightPercentageToDP as hp } from 'react-native-responsive-screen';
-import { signInWithEmailAndPassword } from 'firebase/auth';
+import { signInWithEmailAndPassword, sendPasswordResetEmail } from 'firebase/auth';
 import { auth } from '../firebase';
 import startFlappyGame from './Games/flappy';
 import { useNavigation } from '@react-navigation/native';
@@ -36,6 +36,9 @@ const LogInPage = memo(() => {
     const [isLoading, setIsLoading] = useState(false);
     const [errorMessage, setErrorMessage] = useState("");
     const [showTerms, setShowTerms] = useState(false);
+    const [showForgotPassword, setShowForgotPassword] = useState(false);
+    const [resetEmail, setResetEmail] = useState('');
+    const [isResetting, setIsResetting] = useState(false);
 
     if (!fontsLoaded) {
       return <Text>Loading fonts...</Text>;
@@ -63,6 +66,44 @@ const LogInPage = memo(() => {
         Alert.alert("Login failed!", msg);
       } finally {
         setIsLoading(false);
+      }
+    };
+
+    const handleForgotPassword = async () => {
+      const emailRegex = /^[a-zA-Z0-9._-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,6}$/;
+      if (!resetEmail || !emailRegex.test(resetEmail)) {
+        Alert.alert('Invalid Email', 'Please enter a valid email address.');
+        return;
+      }
+
+      try {
+        setIsResetting(true);
+        await sendPasswordResetEmail(auth, resetEmail);
+        Alert.alert(
+          'Email Sent!',
+          `A password reset link has been sent to ${resetEmail}. Please check your inbox and spam folder.`,
+          [
+            {
+              text: 'OK',
+              onPress: () => {
+                setShowForgotPassword(false);
+                setResetEmail('');
+              }
+            }
+          ]
+        );
+      } catch (error) {
+        let errorMsg = 'Failed to send reset email. Please try again.';
+        if (error.code === 'auth/user-not-found') {
+          errorMsg = 'No account found with this email address.';
+        } else if (error.code === 'auth/invalid-email') {
+          errorMsg = 'Invalid email address.';
+        } else if (error.code === 'auth/too-many-requests') {
+          errorMsg = 'Too many attempts. Please try again later.';
+        }
+        Alert.alert('Error', errorMsg);
+      } finally {
+        setIsResetting(false);
       }
     };
   
@@ -107,7 +148,9 @@ const LogInPage = memo(() => {
           value={password}
           onChangeText={setPassword}
         ></TextInput>
-        <Text style={styles.subText} >forgot password?</Text>
+        <Pressable onPress={() => setShowForgotPassword(true)}>
+          <Text style={styles.subText}>forgot password?</Text>
+        </Pressable>
       </View>
 
       <TouchableOpacity onPress={handleLogin}>
@@ -133,6 +176,57 @@ const LogInPage = memo(() => {
           Terms of Service
         </Text>
       </Text>
+
+      {/* Forgot Password Modal */}
+      <Modal
+        visible={showForgotPassword}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowForgotPassword(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.forgotPasswordModal}>
+            <Text style={styles.forgotPasswordTitle}>Reset Password</Text>
+            <Text style={styles.forgotPasswordSubtitle}>
+              Enter your email address and we'll send you a link to reset your password.
+            </Text>
+            
+            <TextInput
+              style={styles.forgotPasswordInput}
+              placeholder="Enter your email"
+              placeholderTextColor="#aaa"
+              autoCapitalize="none"
+              keyboardType="email-address"
+              value={resetEmail}
+              onChangeText={setResetEmail}
+            />
+
+            <View style={styles.forgotPasswordButtons}>
+              <TouchableOpacity
+                style={[styles.forgotPasswordButton, styles.cancelButton]}
+                onPress={() => {
+                  setShowForgotPassword(false);
+                  setResetEmail('');
+                }}
+              >
+                <Text style={styles.cancelButtonText}>Cancel</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.forgotPasswordButton, styles.sendButton]}
+                onPress={handleForgotPassword}
+                disabled={isResetting}
+              >
+                {isResetting ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Text style={styles.sendButtonText}>Send Link</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       {/* Terms of Service Modal */}
       <Modal
@@ -254,10 +348,82 @@ const styles = StyleSheet.create({
   },
   subText: {
     textAlign: 'right',
-    color: '#0A0A0A',
+    color: '#4A90E2',
     fontSize: wp('3.8%'),
     fontFamily: 'FredokaOne-Regular',
     marginTop: -10,
+    textDecorationLine: 'underline',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: wp('5%'),
+  },
+  forgotPasswordModal: {
+    backgroundColor: '#fff',
+    borderRadius: 20,
+    padding: wp('6%'),
+    width: wp('85%'),
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  forgotPasswordTitle: {
+    fontSize: wp('6.5%'),
+    fontFamily: 'FredokaOne-Regular',
+    color: '#1E1E1E',
+    textAlign: 'center',
+    marginBottom: hp('1.5%'),
+  },
+  forgotPasswordSubtitle: {
+    fontSize: wp('3.8%'),
+    color: '#666',
+    textAlign: 'center',
+    marginBottom: hp('3%'),
+    lineHeight: wp('5.5%'),
+  },
+  forgotPasswordInput: {
+    width: '100%',
+    height: hp('6.5%'),
+    borderWidth: 2,
+    borderColor: '#4A90E2',
+    borderRadius: 25,
+    fontSize: wp('4.2%'),
+    backgroundColor: '#F5F5F5',
+    paddingHorizontal: wp('4%'),
+    marginBottom: hp('3%'),
+  },
+  forgotPasswordButtons: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: wp('3%'),
+  },
+  forgotPasswordButton: {
+    flex: 1,
+    height: hp('6%'),
+    borderRadius: 25,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  cancelButton: {
+    backgroundColor: '#E0E0E0',
+  },
+  cancelButtonText: {
+    color: '#333',
+    fontSize: wp('4.5%'),
+    fontFamily: 'FredokaOne-Regular',
+  },
+  sendButton: {
+    backgroundColor: '#4A90E2',
+  },
+  sendButtonText: {
+    color: '#fff',
+    fontSize: wp('4.5%'),
+    fontFamily: 'FredokaOne-Regular',
   },
   button: {
     position: 'absolute',
