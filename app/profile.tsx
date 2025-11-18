@@ -13,13 +13,10 @@ import {
   ImageBackground,
   Switch,
   ActivityIndicator,
-  TextInput, 
 } from 'react-native';
 import { auth } from '../firebase';
 import { 
-  signOut, 
-  reauthenticateWithCredential, 
-  EmailAuthProvider 
+  signOut
 } from 'firebase/auth';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -53,14 +50,8 @@ const Profile: React.FC = () => {
   const [editMinute, setEditMinute] = useState(0);
   const [loadingProfile, setLoadingProfile] = useState(true);
 
-  const [password, setPassword] = useState('');
-  const [isAuthenticating, setIsAuthenticating] = useState(false);
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-
   useFocusEffect(
     useCallback(() => {
-      setIsAuthenticated(false);
-      setPassword('');
       setLoadingProfile(true);
 
       const user = auth.currentUser;
@@ -117,36 +108,6 @@ const Profile: React.FC = () => {
 
   const handleViewChart = () => navigation.navigate('ProgressChart');
 
-  const handleReAuthentication = async () => {
-    const user = auth.currentUser;
-    if (!user || !user.email) {
-      Alert.alert("Error", "No user is currently logged in.");
-      navigation.navigate('LogInPage');
-      return;
-    }
-  
-    if (!password) {
-      Alert.alert("Password Required", "Please enter your password.");
-      return;
-    }
-  
-    setIsAuthenticating(true);
-    try {
-      const credential = EmailAuthProvider.credential(user.email, password);
-      await reauthenticateWithCredential(user, credential);
-      setIsAuthenticated(true);
-      setPassword('');
-    } catch (error: any) {
-      Alert.alert(
-        "Authentication Failed",
-        "The password you entered is incorrect. Please try again."
-      );
-      console.error("Re-authentication error:", error);
-    } finally {
-      setIsAuthenticating(false);
-    }
-  };
-
   if (loadingProfile) {
     return (
       <ImageBackground
@@ -154,52 +115,6 @@ const Profile: React.FC = () => {
         style={[styles.image, styles.loadingContainer]}>
         <ActivityIndicator size="large" color="#fff" />
         <Text style={styles.loadingText}>Loading Profile...</Text>
-      </ImageBackground>
-    );
-  }
-
-  if (!isAuthenticated) {
-    return (
-      <ImageBackground
-        source={require('../assets/images/app-background.png')}
-        style={[styles.image, styles.authContainer]}
-      >
-        <ScrollView contentContainerStyle={styles.authContainer}>
-          <View style={styles.authBox}>
-            <Text style={styles.authTitle}>Verify Your Identity</Text>
-            <Text style={styles.authSubtitle}>Please enter your password to view your profile.</Text>
-
-            <TextInput
-              style={styles.authInput}
-              placeholder="Password"
-              placeholderTextColor="#888"
-              secureTextEntry
-              value={password}
-              onChangeText={setPassword}
-              autoCapitalize="none"
-            />
-
-            <TouchableOpacity 
-              style={[styles.actionButton, styles.authButton]} 
-              onPress={handleReAuthentication} 
-              disabled={isAuthenticating}
-            >
-              {isAuthenticating ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <Text style={styles.actionButtonText}>Continue</Text>
-              )}
-            </TouchableOpacity>
-
-            <TouchableOpacity 
-              style={[styles.actionButton, styles.signOutButton, {marginTop: 10, backgroundColor: '#6c757d'}]} 
-              onPress={() => navigation.goBack()}
-            >
-              <Text style={styles.actionButtonText}>Back</Text>
-            </TouchableOpacity>
-
-          </View>
-        </ScrollView>
       </ImageBackground>
     );
   }
