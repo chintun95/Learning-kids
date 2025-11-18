@@ -13,10 +13,14 @@ import {
   ImageBackground,
   Switch,
   ActivityIndicator,
+  Modal,
+  FlatList,
 } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
 import { auth } from '../firebase';
 import { 
-  signOut
+  signOut,
+  updateProfile
 } from 'firebase/auth';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -49,6 +53,25 @@ const Profile: React.FC = () => {
   const [editHour, setEditHour] = useState(9);
   const [editMinute, setEditMinute] = useState(0);
   const [loadingProfile, setLoadingProfile] = useState(true);
+  const [profileImageUri, setProfileImageUri] = useState<string | null>(null);
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const [showAvatarModal, setShowAvatarModal] = useState(false);
+
+  // Predefined cute avatar options
+  const predefinedAvatars = [
+    'https://api.dicebear.com/7.x/avataaars/png?seed=Felix',
+    'https://api.dicebear.com/7.x/avataaars/png?seed=Aneka',
+    'https://api.dicebear.com/7.x/avataaars/png?seed=Luna',
+    'https://api.dicebear.com/7.x/avataaars/png?seed=Max',
+    'https://api.dicebear.com/7.x/avataaars/png?seed=Sophie',
+    'https://api.dicebear.com/7.x/avataaars/png?seed=Oliver',
+    'https://api.dicebear.com/7.x/bottts/png?seed=Robot1',
+    'https://api.dicebear.com/7.x/bottts/png?seed=Robot2',
+    'https://api.dicebear.com/7.x/fun-emoji/png?seed=Happy',
+    'https://api.dicebear.com/7.x/fun-emoji/png?seed=Cool',
+    'https://api.dicebear.com/7.x/fun-emoji/png?seed=Star',
+    'https://api.dicebear.com/7.x/fun-emoji/png?seed=Smile',
+  ];
 
   useFocusEffect(
     useCallback(() => {
@@ -66,6 +89,11 @@ const Profile: React.FC = () => {
           name: user.displayName || 'User',
           joinDate,
         }));
+
+        // Load profile picture
+        if (user.photoURL) {
+          setProfileImageUri(user.photoURL);
+        }
 
         (async () => {
           const scheduled = await isDailyReminderScheduled();
@@ -108,6 +136,76 @@ const Profile: React.FC = () => {
 
   const handleViewChart = () => navigation.navigate('ProgressChart');
 
+  const handlePickImage = async () => {
+    try {
+      // Request permissions
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert(
+          'Permission Required',
+          'Sorry, we need camera roll permissions to upload a profile picture.'
+        );
+        return;
+      }
+
+      // Launch image picker
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.7,
+      });
+
+      if (!result.canceled && result.assets[0]) {
+        setUploadingImage(true);
+        const imageUri = result.assets[0].uri;
+        
+        try {
+          const user = auth.currentUser;
+          if (user) {
+            // Update Firebase user profile with photo URL
+            await updateProfile(user, {
+              photoURL: imageUri,
+            });
+            
+            setProfileImageUri(imageUri);
+            Alert.alert('Success', 'Profile picture updated successfully!');
+          }
+        } catch (error) {
+          console.error('Error updating profile picture:', error);
+          Alert.alert('Error', 'Failed to update profile picture. Please try again.');
+        } finally {
+          setUploadingImage(false);
+        }
+      }
+    } catch (error) {
+      console.error('Error picking image:', error);
+      Alert.alert('Error', 'Failed to pick image. Please try again.');
+      setUploadingImage(false);
+    }
+  };
+
+  const handleSelectPredefinedAvatar = async (avatarUrl: string) => {
+    try {
+      setUploadingImage(true);
+      const user = auth.currentUser;
+      if (user) {
+        await updateProfile(user, {
+          photoURL: avatarUrl,
+        });
+        
+        setProfileImageUri(avatarUrl);
+        setShowAvatarModal(false);
+        Alert.alert('Success', 'Profile picture updated successfully!');
+      }
+    } catch (error) {
+      console.error('Error updating profile picture:', error);
+      Alert.alert('Error', 'Failed to update profile picture. Please try again.');
+    } finally {
+      setUploadingImage(false);
+    }
+  };
+
   if (loadingProfile) {
     return (
       <ImageBackground
@@ -127,10 +225,34 @@ const Profile: React.FC = () => {
         
         {/* Header */}
         <View style={styles.header}>
-          <Image
-            source={{ uri: 'https://placehold.co/150x150/a2d2ff/333?text=User' }}
-            style={styles.profileImage}
-          />
+          <View style={styles.profileImageContainer}>
+            <Image
+              source={
+                profileImageUri
+                  ? { uri: profileImageUri }
+                  : { uri: 'https://placehold.co/150x150/a2d2ff/333?text=User' }
+              }
+              style={styles.profileImage}
+            />
+            <TouchableOpacity
+              style={styles.editImageButton}
+              onPress={handlePickImage}
+              disabled={uploadingImage}
+            >
+              {uploadingImage ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Text style={styles.editImageIcon}>📷</Text>
+              )}
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.avatarSelectorButton}
+              onPress={() => setShowAvatarModal(true)}
+              disabled={uploadingImage}
+            >
+              <Text style={styles.editImageIcon}>🎨</Text>
+            </TouchableOpacity>
+          </View>
           <Text style={styles.name}>{userData.name}</Text>
           <Text style={styles.email}>{userData.email}</Text>
           <Text style={styles.joinDate}>Member since {userData.joinDate}</Text>
@@ -320,6 +442,42 @@ const Profile: React.FC = () => {
         </View>
 
       </ScrollView>
+
+      {/* Avatar Selection Modal */}
+      <Modal
+        visible={showAvatarModal}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowAvatarModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.avatarModal}>
+            <View style={styles.avatarModalHeader}>
+              <Text style={styles.avatarModalTitle}>Choose an Avatar</Text>
+              <TouchableOpacity
+                onPress={() => setShowAvatarModal(false)}
+                style={styles.closeModalButton}
+              >
+                <Text style={styles.closeModalText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+            <FlatList
+              data={predefinedAvatars}
+              keyExtractor={(item, index) => index.toString()}
+              numColumns={3}
+              contentContainerStyle={styles.avatarGrid}
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  style={styles.avatarOption}
+                  onPress={() => handleSelectPredefinedAvatar(item)}
+                >
+                  <Image source={{ uri: item }} style={styles.avatarImage} />
+                </TouchableOpacity>
+              )}
+            />
+          </View>
+        </View>
+      </Modal>
     </ImageBackground>
   );
 };
@@ -344,13 +502,114 @@ const styles = StyleSheet.create({
     width: wp('90%'),
     marginTop: hp('5%'),
   },
+  profileImageContainer: {
+    position: 'relative',
+    marginBottom: hp('1.5%'),
+    width: wp('35%'),
+    marginLeft: wp('5%'),
+  },
   profileImage: {
     width: PixelRatio.roundToNearestPixel(120),
     height: PixelRatio.roundToNearestPixel(120),
     borderRadius: 60,
     borderWidth: 3,
     borderColor: '#000',
-    marginBottom: hp('1.5%'),
+  },
+  editImageButton: {
+    position: 'absolute',
+    bottom: 0,
+    left: wp('-10%'),
+    backgroundColor: '#4A90E2',
+    width: wp('10%'),
+    height: wp('10%'),
+    borderRadius: wp('5%'),
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 3,
+    borderColor: '#fff',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  avatarSelectorButton: {
+    position: 'absolute',
+    bottom: 0,
+    right: wp('-6%'),
+    backgroundColor: '#FF6B9D',
+    width: wp('10%'),
+    height: wp('10%'),
+    borderRadius: wp('5%'),
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 3,
+    borderColor: '#fff',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  editImageIcon: {
+    fontSize: wp('5%'),
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  avatarModal: {
+    backgroundColor: '#fff',
+    borderRadius: 20,
+    padding: wp('4%'),
+    width: wp('90%'),
+    maxHeight: hp('70%'),
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  avatarModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: hp('2%'),
+    paddingBottom: hp('1%'),
+    borderBottomWidth: 2,
+    borderBottomColor: '#E0E0E0',
+  },
+  avatarModalTitle: {
+    fontSize: wp('6%'),
+    fontFamily: 'FredokaOne-Regular',
+    color: '#1E1E1E',
+  },
+  closeModalButton: {
+    padding: wp('2%'),
+  },
+  closeModalText: {
+    fontSize: wp('7%'),
+    color: '#666',
+    fontWeight: 'bold',
+  },
+  avatarGrid: {
+    paddingVertical: hp('1%'),
+  },
+  avatarOption: {
+    width: wp('25%'),
+    height: wp('25%'),
+    margin: wp('1.5%'),
+    borderRadius: wp('12.5%'),
+    borderWidth: 3,
+    borderColor: '#E0E0E0',
+    overflow: 'hidden',
+    backgroundColor: '#F5F5F5',
+  },
+  avatarImage: {
+    width: '100%',
+    height: '100%',
   },
   name: {
     fontSize: wp('7%'),
