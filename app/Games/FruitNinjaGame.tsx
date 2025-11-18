@@ -9,7 +9,12 @@ import {
   PanResponder,
   Pressable,
   Easing,
+  TouchableOpacity,
 } from "react-native";
+import { getAuth } from 'firebase/auth';
+import { supabase } from '../../backend/supabase';
+import { fetchQuestions, Question } from '../../backend/fetchquestions';
+import { useChild } from '../ChildContext';
 
 const { width, height } = Dimensions.get("window");
 
@@ -52,6 +57,10 @@ interface Fruit {
 interface EffectBurst { id: number; x: number; y: number; }
 
 export default function FruitNinjaGame() {
+  const auth = getAuth();
+  const uid = auth.currentUser?.uid;
+  const { selectedChild } = useChild();
+
   const [fruits, setFruits] = useState<Fruit[]>([]);
   const [effects, setEffects] = useState<EffectBurst[]>([]);
   const [score, setScore] = useState(0);
@@ -59,7 +68,16 @@ export default function FruitNinjaGame() {
   const [timeLeft, setTimeLeft] = useState(ROUND_SECONDS);
   const [isRunning, setIsRunning] = useState(true);
   const [gameOver, setGameOver] = useState(false);
-  const [debug, setDebug] = useState(false); // debug toggle
+
+  // Question system
+  const [allQuestions, setAllQuestions] = useState<Question[]>([]);
+  const [availableQuestions, setAvailableQuestions] = useState<Question[]>([]);
+  const [currentQuestion, setCurrentQuestion] = useState<Question | null>(null);
+  const [isQuestionVisible, setIsQuestionVisible] = useState(false);
+  const [fruitsSliced, setFruitsSliced] = useState(0);
+  const [isAnswering, setIsAnswering] = useState(false);
+  const [feedbackContent, setFeedbackContent] = useState<{ icon: string; text: string; correctAnswer?: string } | null>(null);
+  const feedbackAnim = useRef(new Animated.Value(0)).current;
 
   const nextFruitId = useRef(0);
   const nextEffectId = useRef(0);
@@ -77,6 +95,18 @@ export default function FruitNinjaGame() {
   useEffect(() => { timeLeftRef.current = timeLeft; }, [timeLeft]);
   useEffect(() => { isRunningRef.current = isRunning; }, [isRunning]);
   useEffect(() => { gameOverRef.current = gameOver; }, [gameOver]);
+
+  // Load questions on mount
+  useEffect(() => {
+    if (uid) {
+      console.log('Fruit Ninja: Loading questions for uid:', uid);
+      fetchQuestions(uid).then((questions) => {
+        console.log('Fruit Ninja: Loaded questions:', questions.length);
+        setAllQuestions(questions);
+        setAvailableQuestions(questions);
+      }).catch((err) => console.error('Failed to load questions:', err));
+    }
+  }, [uid]);
 
   useEffect(() => () => {
     if (rafSlice.current) cancelAnimationFrame(rafSlice.current);
@@ -101,6 +131,36 @@ export default function FruitNinjaGame() {
     ]).start(() => {
       setFruits((curr) => curr.filter((f) => f.id !== fruit.id));
       slicingIds.current.delete(fruit.id);
+    });
+
+    // Check for question after state updates
+    setFruitsSliced((count) => {
+      const newCount = count + 1;
+      console.log('Fruit Ninja: Fruits sliced:', newCount);
+      // Show question every 5 fruits
+      if (newCount % 5 === 0) {
+        console.log('Fruit Ninja: Triggering question check at 5 fruits');
+        setAvailableQuestions((prevQuestions) => {
+          console.log('Fruit Ninja: Available questions:', prevQuestions.length);
+          if (prevQuestions.length > 0) {
+            setIsQuestionVisible((prevVisible) => {
+              console.log('Fruit Ninja: Is question already visible?', prevVisible);
+              if (!prevVisible) {
+                const randomIndex = Math.floor(Math.random() * prevQuestions.length);
+                const questionToAsk = prevQuestions[randomIndex];
+                console.log('Fruit Ninja: Showing question:', questionToAsk.question);
+                setCurrentQuestion(questionToAsk);
+                setIsRunning(false);
+                setAvailableQuestions(prevQuestions.filter((_, index) => index !== randomIndex));
+                return true;
+              }
+              return prevVisible;
+            });
+          }
+          return prevQuestions;
+        });
+      }
+      return newCount;
     });
   }, []);
 
@@ -132,7 +192,6 @@ export default function FruitNinjaGame() {
   // timer
   useEffect(() => {
     if (!isRunning || gameOver) return;
-    setTimeLeft(ROUND_SECONDS);
     const t = setInterval(() => {
       setTimeLeft((sec) => {
         if (sec <= 1) { clearInterval(t); endGame(); return 0; }
@@ -176,6 +235,58 @@ export default function FruitNinjaGame() {
     setFruits([]); setEffects([]); slicingIds.current.clear();
     if (spawnTimeout.current) clearTimeout(spawnTimeout.current);
     setScore(0); setTimeLeft(ROUND_SECONDS); setGameOver(false); setIsRunning(true);
+    setFruitsSliced(0);
+    setAvailableQuestions(allQuestions);
+    setIsQuestionVisible(false);
+    setCurrentQuestion(null);
+  };
+
+  // Answer question handler
+  const answerQuestion = async (selectedOptionKey: string) => {
+    if (isAnswering || !currentQuestion || !currentQuestion.options) return;
+    setIsAnswering(true);
+
+    const isCorrect = selectedOptionKey === currentQuestion.correct_answer;
+
+    // Log answer to database
+    if (uid && selectedChild?.id && currentQuestion) {
+      await supabase.from('answer_log').insert({
+        user_id: uid,
+        child_id: selectedChild.id,
+        question_id: currentQuestion.id,
+        is_correct: isCorrect,
+        game_name: 'Fruit Ninja',
+      });
+    }
+
+    // Set feedback based on correctness
+    if (isCorrect) {
+      setScore((s) => s + 25);
+      setFeedbackContent({ icon: '🎉👍', text: 'Great job!', correctAnswer: undefined });
+    } else {
+      const correctAnswerText = currentQuestion.options[currentQuestion.correct_answer];
+      setFeedbackContent({
+        icon: '❌',
+        text: 'Incorrect',
+        correctAnswer: `Correct answer: ${currentQuestion.correct_answer.toUpperCase()}: ${correctAnswerText}`,
+      });
+    }
+
+    // Hide question UI immediately
+    setIsQuestionVisible(false);
+
+    // Show feedback animation
+    feedbackAnim.setValue(0);
+    Animated.sequence([
+      Animated.timing(feedbackAnim, { toValue: 1, duration: 300, useNativeDriver: true }),
+      Animated.delay(1000),
+      Animated.timing(feedbackAnim, { toValue: 0, duration: 200, useNativeDriver: true }),
+    ]).start(() => {
+      setFeedbackContent(null);
+      setCurrentQuestion(null);
+      setIsAnswering(false);
+      setIsRunning(true);
+    });
   };
 
   // arcs
@@ -303,71 +414,6 @@ export default function FruitNinjaGame() {
     setEffects((prev) => prev.filter((e) => e.id !== id));
   }, []);
 
-  // debug overlay for latest fruit
-  const renderDebugOverlay = () => {
-    if (!debug || fruits.length === 0) return null;
-    const f = fruits[fruits.length - 1];
-    const tStar = apexT(f.p0.y, f.p1.y, f.p2.y);
-
-    // sample arc (no drift for clarity)
-    const samples: Vec2[] = [];
-    for (let i = 0; i <= 20; i++) {
-      const t = i / 20;
-      samples.push(quadBezier(t, f.p0, f.p1, f.p2));
-    }
-    const apexPt = quadBezier(tStar, f.p0, f.p1, f.p2);
-
-    const Dot = ({ p, size = 6, color = "#111" }: { p: Vec2; size?: number; color?: string }) => (
-      <View
-        pointerEvents="none"
-        style={{
-          position: "absolute",
-          left: p.x - size / 2,
-          top: p.y - size / 2,
-          width: size,
-          height: size,
-          borderRadius: size / 2,
-          backgroundColor: color,
-          opacity: 0.9,
-        }}
-      />
-    );
-
-    return (
-      <View pointerEvents="none" style={{ position: "absolute", left: 0, top: 0, right: 0, bottom: 0, zIndex: 1500 }}>
-        {/* sampled path */}
-        {samples.map((p, idx) => (
-          <Dot key={`s-${idx}`} p={p} size={4} color="#444" />
-        ))}
-
-        {/* control points + apex */}
-        <Dot p={f.p0} size={8} color="#e53935" />
-        <Dot p={f.p1} size={8} color="#43a047" />
-        <Dot p={f.p2} size={8} color="#1e88e5" />
-        <Dot p={apexPt} size={8} color="#fdd835" />
-
-        {/* labels */}
-        <Text style={[styles.debugLabel, { left: f.p0.x + 6, top: f.p0.y - 10 }]}>p0</Text>
-        <Text style={[styles.debugLabel, { left: f.p1.x + 6, top: f.p1.y - 10 }]}>p1</Text>
-        <Text style={[styles.debugLabel, { left: f.p2.x + 6, top: f.p2.y - 10 }]}>p2</Text>
-        <Text style={[styles.debugLabel, { left: apexPt.x + 6, top: apexPt.y - 10 }]}>{`apex t*=${tStar.toFixed(2)}`}</Text>
-
-        {/* info box */}
-        <View style={styles.debugBox}>
-          <Text style={styles.debugText}>
-            id:{f.id}  prog:{(f as any).progress?._value?.toFixed?.(2) ?? ""}  driftAmp:{f.driftAmp.toFixed(1)}  driftFreq:{f.driftFreq.toFixed(2)}
-          </Text>
-          <Text style={styles.debugText}>
-            p0({Math.round(f.p0.x)},{Math.round(f.p0.y)})  p1({Math.round(f.p1.x)},{Math.round(f.p1.y)})  p2({Math.round(f.p2.x)},{Math.round(f.p2.y)})
-          </Text>
-          <Text style={styles.debugText}>
-            apex t*={tStar.toFixed(3)}  now({Math.round(f.currentX)},{Math.round(f.currentY)})
-          </Text>
-        </View>
-      </View>
-    );
-  };
-
   return (
     <View style={styles.container}>
       {/* touch layer (high z so swipes always register) */}
@@ -411,18 +457,6 @@ export default function FruitNinjaGame() {
 
       {!gameOver && <Text style={styles.footer}>Swipe to slice fruits!</Text>}
 
-      {/* Debug toggle button (above touch layer) */}
-      <Pressable
-        onPress={() => setDebug((d) => !d)}
-        style={styles.debugBtn}
-        hitSlop={8}
-      >
-        <Text style={styles.debugBtnText}>{debug ? "DBG✓" : "DBG"}</Text>
-      </Pressable>
-
-      {/* Debug overlay (non-blocking) */}
-      {renderDebugOverlay()}
-
       {gameOver && (
         <View style={[styles.overlay, { zIndex: 1000 }]} pointerEvents="auto">
           <View style={styles.modal}>
@@ -432,6 +466,58 @@ export default function FruitNinjaGame() {
             <Pressable onPress={resetGame} style={styles.btn}><Text style={styles.btnText}>Play Again</Text></Pressable>
           </View>
         </View>
+      )}
+
+      {/* Question Overlay */}
+      {isQuestionVisible && currentQuestion && currentQuestion.options && (
+        <View style={styles.questionOverlay} pointerEvents="auto">
+          <View style={styles.questionCard}>
+            <Text style={styles.questionText}>{currentQuestion.question}</Text>
+            <View style={styles.optionsContainer}>
+              {Object.entries(currentQuestion.options).map(([key, value]) => (
+                <TouchableOpacity
+                  key={key}
+                  style={styles.optionButton}
+                  onPress={() => answerQuestion(key)}
+                  disabled={isAnswering}
+                >
+                  <Text style={styles.optionText}>
+                    {key.toUpperCase()}: {value}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+        </View>
+      )}
+
+      {/* Feedback Overlay */}
+      {feedbackContent && (
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            styles.feedbackOverlay,
+            {
+              opacity: feedbackAnim,
+              transform: [
+                {
+                  scale: feedbackAnim.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0.7, 1],
+                  }),
+                },
+              ],
+            },
+          ]}
+        >
+          <Text style={styles.feedbackIcon}>{feedbackContent.icon}</Text>
+          {feedbackContent.text ? (
+            <Text style={styles.feedbackText}>{feedbackContent.text}</Text>
+          ) : null}
+          {feedbackContent.correctAnswer ? (
+            <Text style={styles.correctAnswerText}>{feedbackContent.correctAnswer}</Text>
+          ) : null}
+        </Animated.View>
       )}
     </View>
   );
@@ -480,43 +566,24 @@ const styles = StyleSheet.create({
   footer: { fontSize: 18, marginBottom: 28, color: "#0F2C63", fontWeight: "700", backgroundColor: "rgba(255,255,255,0.5)", paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12, borderWidth: 2, borderColor: "rgba(0,0,0,0.1)", overflow: "hidden", zIndex: 10 },
   overlay: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(0,0,0,0.25)", alignItems: "center", justifyContent: "center" },
 
-  // Debug UI
-  debugBtn: {
-    position: "absolute",
-    top: 36,
-    right: 14,
-    zIndex: 2000, // above the touch layer
-    backgroundColor: "#111",
-    borderRadius: 10,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderWidth: 1,
-    borderColor: "#fff",
-  },
-  debugBtnText: { color: "#fff", fontWeight: "800" },
-  debugBox: {
-    position: "absolute",
-    left: 14,
-    top: 100,
-    padding: 8,
-    backgroundColor: "rgba(0,0,0,0.6)",
-    borderRadius: 8,
-  },
-  debugText: { color: "#fff", fontSize: 12 },
-  debugLabel: {
-    position: "absolute",
-    color: "#111",
-    fontSize: 12,
-    fontWeight: "800",
-    textShadowColor: "rgba(255,255,255,0.9)",
-    textShadowOffset: { width: 0, height: 0 },
-    textShadowRadius: 2,
-  },
-
   modal: { width: Math.min(width * 0.82, 360), padding: 20, borderRadius: 22, backgroundColor: "#FFFFFF", borderWidth: 2, borderColor: "#000", alignItems: "center" },
   endTitle: { fontSize: 28, fontWeight: "900", color: "#1E1E1E", marginBottom: 6 },
   endScore: { fontSize: 22, fontWeight: "800", color: "#2E7D32", marginBottom: 4 },
   endSub: { fontSize: 18, color: "#444", marginBottom: 14 },
   btn: { paddingVertical: 10, paddingHorizontal: 18, borderRadius: 14, backgroundColor: "#FF9F1C", borderWidth: 2, borderColor: "#000" },
   btnText: { fontSize: 18, fontWeight: "900", color: "#111" },
+
+  // Question Overlay Styles (popout with semi-transparent background)
+  questionOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0, 0, 0, 0.6)', justifyContent: 'center', alignItems: 'center', zIndex: 1500, padding: 20 },
+  questionCard: { backgroundColor: '#FFFFFF', borderRadius: 20, padding: 30, width: '100%', maxWidth: 500, alignItems: 'center', borderWidth: 3, borderColor: '#FF9F1C', shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 10 },
+  questionText: { fontSize: 24, fontWeight: '700', color: '#333', marginBottom: 30, textAlign: 'center', lineHeight: 32 },
+  optionsContainer: { width: '100%', gap: 12 },
+  optionButton: { backgroundColor: '#4A90E2', paddingVertical: 16, paddingHorizontal: 24, borderRadius: 30, width: '100%', alignItems: 'center' },
+  optionText: { color: '#fff', fontSize: 18, fontWeight: '700', textAlign: 'center' },
+
+  // Feedback Styles
+  feedbackOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0, 0, 0, 0.4)', zIndex: 2000 },
+  feedbackIcon: { fontSize: 80, textShadowColor: 'rgba(0, 0, 0, 0.3)', textShadowOffset: { width: 0, height: 2 }, textShadowRadius: 3 },
+  feedbackText: { fontSize: 24, fontWeight: 'bold', color: '#fff', marginTop: 10, textShadowColor: 'rgba(0, 0, 0, 0.5)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 2 },
+  correctAnswerText: { fontSize: 18, fontWeight: '600', color: '#4CAF50', marginTop: 15, backgroundColor: 'rgba(255, 255, 255, 0.95)', paddingHorizontal: 20, paddingVertical: 10, borderRadius: 10, textAlign: 'center', maxWidth: '90%' },
 });
