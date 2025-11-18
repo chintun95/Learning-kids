@@ -1,9 +1,12 @@
 // App.tsx
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import "react-native-gesture-handler";
 import { NavigationContainer } from "@react-navigation/native";
 import { createStackNavigator } from "@react-navigation/stack";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
+import { ActivityIndicator, View } from "react-native";
+import { auth } from "../firebase";
+import { onAuthStateChanged } from "firebase/auth";
 
 import SnakeGame from "./SnakeGame";
 import GamePage from "./game-page";
@@ -31,6 +34,19 @@ import {
 const Stack = createStackNavigator();
 
 const App: React.FC = () => {
+  const [initializing, setInitializing] = useState(true);
+  const [user, setUser] = useState<any>(null);
+
+  useEffect(() => {
+    // Listen for auth state changes
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+      if (initializing) setInitializing(false);
+    });
+
+    return unsubscribe;
+  }, []);
+
   useEffect(() => {
     initAnalyticsWeb();
 
@@ -56,11 +72,20 @@ const App: React.FC = () => {
     };
   }, []);
 
+  // Show loading screen while checking authentication state
+  if (initializing) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#A2D2FF' }}>
+        <ActivityIndicator size="large" color="#fff" />
+      </View>
+    );
+  }
+
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <ChildProvider>
         <NavigationContainer>
-          <Stack.Navigator initialRouteName="LogInPage">
+          <Stack.Navigator initialRouteName={user ? "ChildSelectScreen" : "LogInPage"}>
             <Stack.Screen name="LogInPage" component={LogInPage} options={{ headerShown: false }} />
             <Stack.Screen name="SignInPage" component={SignInPage} options={{ headerShown: false }} />
             <Stack.Screen name="ProfilePage" component={ProfilePage} options={{ headerShown: false }} />
