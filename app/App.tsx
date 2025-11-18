@@ -4,7 +4,7 @@ import "react-native-gesture-handler";
 import { NavigationContainer } from "@react-navigation/native";
 import { createStackNavigator } from "@react-navigation/stack";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
-import { ActivityIndicator, View } from "react-native";
+import { ActivityIndicator, View, Platform } from "react-native";
 import { auth } from "../firebase";
 import { onAuthStateChanged } from "firebase/auth";
 
@@ -22,6 +22,7 @@ import ChildSelectScreen from "./ChildSelectScreen";
 import AddChildScreen from "./AddChildScreen";
 
 import { ChildProvider } from "./ChildContext";
+import Constants from 'expo-constants';
 
 import { initAnalyticsWeb } from "../firebase";
 import {
@@ -50,26 +51,36 @@ const App: React.FC = () => {
   useEffect(() => {
     initAnalyticsWeb();
 
-    (async () => {
-      const token = await registerForPushNotificationsAsync();
-      if (token) console.log("Push token:", token);
+    // Check if running in Expo Go (which doesn't support push notifications in SDK 53+)
+    const isExpoGo = Constants.appOwnership === 'expo';
+    
+    if (!isExpoGo) {
+      (async () => {
+        try {
+          const token = await registerForPushNotificationsAsync();
+          if (token) console.log("Push token:", token);
 
-      const reminderId = await scheduleDailyReminder(9, 0);
-      if (reminderId) console.log("Daily reminder scheduled, id:", reminderId);
-    })();
+          const reminderId = await scheduleDailyReminder(9, 0);
+          if (reminderId) console.log("Daily reminder scheduled, id:", reminderId);
+        } catch (error) {
+          // Silently catch notification errors in Expo Go
+          console.log("Notifications disabled in Expo Go");
+        }
+      })();
 
-    const receivedSub = addNotificationReceivedListener((notification: any) => {
-      console.log("Notification received:", notification);
-    });
+      const receivedSub = addNotificationReceivedListener((notification: any) => {
+        console.log("Notification received:", notification);
+      });
 
-    const responseSub = addNotificationResponseReceivedListener((response: any) => {
-      console.log("Notification response:", response);
-    });
+      const responseSub = addNotificationResponseReceivedListener((response: any) => {
+        console.log("Notification response:", response);
+      });
 
-    return () => {
-      receivedSub.remove();
-      responseSub.remove();
-    };
+      return () => {
+        receivedSub.remove();
+        responseSub.remove();
+      };
+    }
   }, []);
 
   // Show loading screen while checking authentication state

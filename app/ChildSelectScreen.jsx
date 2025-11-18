@@ -1,11 +1,26 @@
 import React, { useState, useCallback } from 'react';
-import { StyleSheet, Text, TouchableOpacity, FlatList, ActivityIndicator, Alert, Modal, View, TextInput } from 'react-native';
+import { StyleSheet, Text, TouchableOpacity, FlatList, ActivityIndicator, Alert, Modal, View, TextInput, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { useChild } from './ChildContext';
 import { fetchUserProfile } from '../backend/fetchUserProfile';
 import { widthPercentageToDP as wp, heightPercentageToDP as hp } from 'react-native-responsive-screen';
+
+const predefinedAvatars = [
+  require('../assets/profile-pictures/Gemini_Generated_Image_ls633als633als63 (1).png'),
+  require('../assets/profile-pictures/Gemini_Generated_Image_kj41a5kj41a5kj41.png'),
+  require('../assets/profile-pictures/Gemini_Generated_Image_crzg05crzg05crzg.png'),
+  require('../assets/profile-pictures/Gemini_Generated_Image_c6ow26c6ow26c6ow.png'),
+  require('../assets/profile-pictures/Gemini_Generated_Image_v5ohovv5ohovv5oh.png'),
+  require('../assets/profile-pictures/Gemini_Generated_Image_ls633als633als63.png'),
+  require('../assets/profile-pictures/Gemini_Generated_Image_ohdroyohdroyohdr.png'),
+  require('../assets/profile-pictures/Gemini_Generated_Image_p6j0hbp6j0hbp6j0.png'),
+  require('../assets/profile-pictures/Gemini_Generated_Image_ls633als633als63 (4).png'),
+  require('../assets/profile-pictures/Gemini_Generated_Image_ls633als633als63 (3).png'),
+  require('../assets/profile-pictures/Gemini_Generated_Image_ls633als633als63 (2).png'),
+  require('../assets/profile-pictures/Gemini_Generated_Image_kj41a5kj41a5kj41 (1).png'),
+];
 
 const getRandomColor = () => {
   const letters = '0123456789ABCDEF';
@@ -107,15 +122,31 @@ const ChildSelectScreen = () => {
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.listContainer}
           renderItem={({ item }) => {
-            const color = getRandomColor();
+            const avatarSource = item.avatar 
+              ? (item.avatar.startsWith('local_avatar_')
+                  ? predefinedAvatars[parseInt(item.avatar.replace('local_avatar_', ''))]
+                  : { uri: item.avatar })
+              : null;
+
             return (
-              <TouchableOpacity
-                style={[styles.childCircle, { backgroundColor: color }]}
-                onPress={() => handleSelectChild(item)}       // play
-                onLongPress={() => handleEditChild(item)}      // edit/delete
-              >
-                <Text style={styles.childText}>{item.child_name}</Text>
-              </TouchableOpacity>
+              <View style={styles.childContainer}>
+                <TouchableOpacity
+                  style={styles.childCircle}
+                  onPress={() => handleSelectChild(item)}
+                  onLongPress={() => handleEditChild(item)}
+                >
+                  {avatarSource ? (
+                    <Image source={avatarSource} style={styles.childAvatar} />
+                  ) : (
+                    <View style={[styles.childCircle, { backgroundColor: getRandomColor() }]}>
+                      <Text style={styles.childInitial}>
+                        {item.child_name.charAt(0).toUpperCase()}
+                      </Text>
+                    </View>
+                  )}
+                </TouchableOpacity>
+                <Text style={styles.childName}>{item.child_name}</Text>
+              </View>
             );
           }}
         />
@@ -204,13 +235,39 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+  childContainer: {
+    alignItems: 'center',
+    marginHorizontal: wp('3%'),
+  },
   childCircle: {
     width: wp('35%'),
     height: wp('35%'),
     borderRadius: wp('17.5%'),
     justifyContent: 'center',
     alignItems: 'center',
-    marginHorizontal: wp('3%'),
+    overflow: 'hidden',
+    borderWidth: 3,
+    borderColor: '#fff',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  childAvatar: {
+    width: '100%',
+    height: '100%',
+  },
+  childInitial: {
+    color: '#fff',
+    fontFamily: 'FredokaOne-Regular',
+    fontSize: wp('15%'),
+  },
+  childName: {
+    color: '#333',
+    fontFamily: 'FredokaOne-Regular',
+    fontSize: wp('4.5%'),
+    marginTop: hp('1%'),
   },
   childText: {
     color: '#fff',
