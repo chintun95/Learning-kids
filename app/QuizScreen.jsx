@@ -18,12 +18,12 @@ const QuizScreen = () => {
   const [questions, setQuestions] = useState([]);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [questionsPerSession, setQuestionsPerSession] = useState(5);
+  const [questionsPerSession, setQuestionsPerSession] = useState(5); 
 
   const [isAnswering, setIsAnswering] = useState(false);
   const [feedbackContent, setFeedbackContent] = useState(null);
   const feedbackAnim = useRef(new Animated.Value(0)).current;
-  const { selectedChild } = useChild(); 
+  const { selectedChild } = useChild();
 
   const auth = getAuth();
   const uid = auth.currentUser?.uid; // This is the PARENT'S ID
@@ -64,7 +64,7 @@ const QuizScreen = () => {
       const limit = await fetchQuestionLimit();
       setQuestionsPerSession(limit);
 
-      const userQuestions = await fetchQuestions(uid); 
+      const userQuestions = await fetchQuestions(uid);
       if (userQuestions.length === 0) {
         Alert.alert("No Questions", "Please ask your parent to create some questions first!");
         navigation.goBack();
@@ -173,7 +173,7 @@ const QuizScreen = () => {
         setCurrentQuestionIndex(currentQuestionIndex + 1);
         setIsAnswering(false); 
       } else {
-        // Quiz Complete
+        // Quiz Complete - Grant First Game Achievement
         if (uid) await checkAndGrantAchievement(uid, ACHIEVEMENT_CODES.FIRST_GAME);
 
         Alert.alert("Quiz Complete!", "You've finished the quiz!");
